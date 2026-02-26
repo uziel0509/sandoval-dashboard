@@ -55,6 +55,35 @@ def frame(nav_title: str):
                 overflow-y: auto !important;
                 overflow-x: hidden !important;
             }
+
+            /* === MOBILE FIXES === */
+            @media (max-width: 768px) {
+                /* El drawer en móvil es un overlay, nunca push */
+                .q-drawer {
+                    position: fixed !important;
+                    z-index: 2000 !important;
+                    height: 100vh !important;
+                    top: 0 !important;
+                    overflow-y: auto !important;
+                }
+                /* El contenido principal nunca se desplaza por el drawer */
+                .q-drawer--left ~ .q-page-container {
+                    padding-left: 0 !important;
+                }
+                /* Header ocupa todo el ancho en móvil */
+                .q-header {
+                    left: 0 !important;
+                    width: 100% !important;
+                }
+                /* Ocultar el nombre de la empresa en móvil para ahorrar espacio */
+                .empresa-nombre-header {
+                    display: none !important;
+                }
+                /* Padding reducido en móvil */
+                .nicegui-content {
+                    padding: 12px !important;
+                }
+            }
             
             /* Asegurar que los iconos NO se vean afectados por el cambio de fuente */
             .material-icons, .q-icon {
@@ -474,7 +503,7 @@ def frame(nav_title: str):
                 ui.button(on_click=lambda: left_drawer.toggle(), icon='menu').props('flat color=grey-8').classes('p-2')
                 with ui.row().classes('items-center gap-3'):
                     ui.image('/assets/logo_sandoval.jpg').classes('w-10 h-10 rounded-lg shadow-sm border border-gray-100 object-contain bg-white')
-                    ui.label('MECÁNICA Y REPUESTOS SANDOVAL EIRL').classes('text-base font-bold text-gray-800 tracking-tight')
+                    ui.label('MECÁNICA Y REPUESTOS SANDOVAL EIRL').classes('text-base font-bold text-gray-800 tracking-tight empresa-nombre-header')
             
             # Right side: User Profile + Actions
             with ui.row().classes('items-center gap-6'):
@@ -508,7 +537,7 @@ def frame(nav_title: str):
                 except Exception:
                     pass
     
-    left_drawer = ui.left_drawer(value=True).classes('bg-white text-gray-800').props('width=280 bordered')
+    left_drawer = ui.left_drawer(value=True).classes('bg-white text-gray-800').props('width=280 bordered breakpoint=768')
     
     return left_drawer
 
