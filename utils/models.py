@@ -199,11 +199,50 @@ class Cita(Base):
     vista_admin = Column(Integer, default=0)  # 0=no vista, 1=ya vista por admin
 
 
+class NotaVenta(Base):
+    __tablename__ = 'notas_venta'
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    numero         = Column(String(30), unique=True, nullable=False)
+    fecha          = Column(DateTime, default=datetime.now)
+    cliente_id     = Column(String(20), ForeignKey('clientes.id'), nullable=True)
+    cliente_nombre = Column(String(150), default='')   # Para clientes sin registro
+    subtotal       = Column(Float, default=0)
+    igv            = Column(Float, default=0)
+    total          = Column(Float, default=0)
+    estado         = Column(String(20), default='pagada')  # borrador, pagada, anulada
+    notas          = Column(Text, default='')
+    items          = Column(JSON, default=list)   # [{codigo, nombre, cantidad, precio, subtotal}]
+
+    cliente_rel = relationship('Cliente', foreign_keys=[cliente_id])
+
+
 # ─────────────────────── INICIALIZACIÓN ───────────────────────
 
 def init_db():
     """Crea todas las tablas y datos iniciales"""
     Base.metadata.create_all(engine)
+
+    # Migración: crear tabla notas_venta si no existe (bases de datos antiguas)
+    try:
+        with engine.connect() as conn:
+            conn.execute(__import__('sqlalchemy').text("""
+                CREATE TABLE IF NOT EXISTS notas_venta (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    numero VARCHAR(30) UNIQUE NOT NULL,
+                    fecha DATETIME,
+                    cliente_id VARCHAR(20),
+                    cliente_nombre VARCHAR(150) DEFAULT '',
+                    subtotal FLOAT DEFAULT 0,
+                    igv FLOAT DEFAULT 0,
+                    total FLOAT DEFAULT 0,
+                    estado VARCHAR(20) DEFAULT 'pagada',
+                    notas TEXT DEFAULT '',
+                    items JSON DEFAULT '[]'
+                )
+            """))
+            conn.commit()
+    except Exception:
+        pass
     # Migración segura: agregar report_token si no existe
     try:
         with engine.connect() as conn:

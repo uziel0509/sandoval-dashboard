@@ -7,7 +7,7 @@ import json
 from datetime import datetime
 from nicegui import ui
 import plotly.graph_objects as go
-from utils.models import get_db, Orden, Cliente, Vehiculo, ItemInventario
+from utils.models import get_db, Orden, Cliente, Vehiculo, ItemInventario, NotaVenta
 import theme
 
 
@@ -60,10 +60,18 @@ def show_dashboard(container):
             items_todos  = db.query(ItemInventario).all()
             stock_alerts = [i for i in items_todos if i.stock <= i.stock_minimo]
 
+            # ── Ventas directas (Notas de Venta) ──────────────────────────────
+            notas_mes = [
+                n for n in db.query(NotaVenta).filter_by(estado='pagada').all()
+                if n.fecha and n.fecha.month == datetime.now().month
+                   and n.fecha.year == datetime.now().year
+            ]
+            ventas_mes = sum(n.total for n in notas_mes)
+
             # ── LAYOUT ────────────────────────────────────────────────────────
             _render_header()
             _render_kpis(avg_nps, total_ingresos, len(activas), n_clientes,
-                         len(completadas), len(encuestas))
+                         len(completadas), len(encuestas), ventas_mes)
 
             with ui.row().classes('w-full gap-5 mb-5'):
                 _render_estados_chart(ordenes)
@@ -109,12 +117,12 @@ def _render_header():
 #  KPIs — FILA DE 5 TARJETAS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _render_kpis(avg_nps, total_ingresos, n_activas, n_clientes, n_completadas, n_encuestas):
+def _render_kpis(avg_nps, total_ingresos, n_activas, n_clientes, n_completadas, n_encuestas, ventas_mes=0):
     kpis = [
-        ('Ingresos Totales',       f'S/ {total_ingresos:,.0f}', 'Proyectado acumulado',         'payments',     '#10b981', '#f0fdf4'),
-        ('Órdenes en Taller',      str(n_activas),              'Trabajos activos ahora',        'engineering',  '#274495', '#eff6ff'),
-        ('Clientes Registrados',   str(n_clientes),             'Base de fidelización',          'groups',       '#6366f1', '#eef2ff'),
-        ('Servicios Completados',  str(n_completadas),          'Órdenes entregadas',            'task_alt',     '#0ea5e9', '#f0f9ff'),
+        ('Ingresos Taller',        f'S/ {total_ingresos:,.0f}', 'Servicios acumulados',          'payments',     '#10b981', '#f0fdf4'),
+        ('Ventas Repuestos',       f'S/ {ventas_mes:,.0f}',     'Notas de venta este mes',       'receipt_long', '#274495', '#eff6ff'),
+        ('Órdenes en Taller',      str(n_activas),              'Trabajos activos ahora',        'engineering',  '#6366f1', '#eef2ff'),
+        ('Clientes Registrados',   str(n_clientes),             'Base de fidelización',          'groups',       '#0ea5e9', '#f0f9ff'),
         ('Satisfacción Global',    f'{avg_nps:.1f}/10',         f'{n_encuestas} encuestas',      'star_rate',    '#f59e0b', '#fffbeb'),
     ]
     with ui.row().classes('w-full gap-4 mb-5'):

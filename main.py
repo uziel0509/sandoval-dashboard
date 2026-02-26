@@ -51,7 +51,7 @@ try:
     from components import (
         sidebar, clientes, proveedores, ordenes_servicio,
         inventario, metricas, vehiculos, reportes, configuracion,
-        usuarios, citas, rentabilidad
+        usuarios, citas, rentabilidad, notas_venta
     )
     from pages.approval import approval_page
     from pages.reporte_entrega import reporte_entrega_page
@@ -141,6 +141,8 @@ try:
                     ordenes_servicio.show_ordenes(content_area)
                 elif page_name == 'inventario':
                     inventario.show_inventario(content_area)
+                elif page_name == 'notas_venta':
+                    notas_venta.show_notas_venta(content_area)
                 elif page_name == 'citas':
                     citas.show_citas(content_area)
                 elif page_name == 'reportes':
