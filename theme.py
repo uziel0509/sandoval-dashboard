@@ -40,6 +40,93 @@ def frame(nav_title: str):
         ui.add_head_html(CONEXION_ESTABLE_JS)
     except ImportError:
         pass
+
+    # Auto-logout por inactividad (4 minutos)
+    ui.add_head_html('''
+    <script>
+    (function() {
+        var TIMEOUT_MS  = 4 * 60 * 1000;   // 4 minutos
+        var WARN_MS     = 30 * 1000;        // aviso 30 seg antes
+        var _timer      = null;
+        var _warnTimer  = null;
+        var _toast      = null;
+        var _paused     = false;
+
+        function removeToast() {
+            if (_toast && _toast.parentNode) {
+                _toast.parentNode.removeChild(_toast);
+            }
+            _toast = null;
+        }
+
+        function showWarn() {
+            removeToast();
+            _toast = document.createElement('div');
+            _toast.id = 'inactivity-toast';
+            _toast.style.cssText = [
+                'position:fixed','bottom:24px','left:50%',
+                'transform:translateX(-50%)',
+                'background:#1e293b','color:#f8fafc',
+                'padding:14px 24px','border-radius:14px',
+                'font-family:Outfit,sans-serif','font-size:14px',
+                'font-weight:600','z-index:99999',
+                'box-shadow:0 8px 30px rgba(0,0,0,.3)',
+                'display:flex','align-items:center','gap:12px',
+                'animation:slideUp .3s ease'
+            ].join(';');
+
+            var count = 30;
+            _toast.innerHTML =
+                '<span style="font-size:20px">⏱</span>' +
+                '<span id="inact-msg">Sesión cerrará en <b id="inact-sec">30</b> seg. — Toca para continuar</span>';
+            document.body.appendChild(_toast);
+
+            var iv = setInterval(function() {
+                count--;
+                var el = document.getElementById('inact-sec');
+                if (el) el.textContent = count;
+                if (count <= 0) clearInterval(iv);
+            }, 1000);
+
+            _toast.addEventListener('click', function() { resetTimers(); });
+            _toast.addEventListener('touchstart', function() { resetTimers(); });
+        }
+
+        function doLogout() {
+            removeToast();
+            _paused = true;
+            fetch('/logout-session', {method:'POST'}).catch(function(){});
+            window.location.href = '/login';
+        }
+
+        function resetTimers() {
+            if (_paused) return;
+            removeToast();
+            clearTimeout(_timer);
+            clearTimeout(_warnTimer);
+            _warnTimer = setTimeout(showWarn, TIMEOUT_MS - WARN_MS);
+            _timer     = setTimeout(doLogout, TIMEOUT_MS);
+        }
+
+        // Iniciar al cargar la página
+        document.addEventListener('DOMContentLoaded', function() {
+            resetTimers();
+        });
+        // Si el DOM ya cargó
+        if (document.readyState !== 'loading') { resetTimers(); }
+
+        // Eventos que reinician el temporizador
+        ['mousemove','mousedown','keydown','scroll','touchstart','click'].forEach(function(ev) {
+            document.addEventListener(ev, resetTimers, {passive:true});
+        });
+
+        // Estilos de animación
+        var style = document.createElement('style');
+        style.textContent = '@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
+        document.head.appendChild(style);
+    })();
+    </script>
+    ''')
     
     ui.add_head_html('''
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
