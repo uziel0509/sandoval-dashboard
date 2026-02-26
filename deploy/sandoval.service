@@ -1,0 +1,17 @@
+[Unit]
+Description=SANDOVAL Dashboard - NiceGUI App
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/sandoval
+Environment="PATH=/var/www/sandoval/venv/bin"
+ExecStart=/var/www/sandoval/venv/bin/python main.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,46 @@
+[
+    {
+        "codigo": "REP-001",
+        "nombre": "Pastillas de freno delanteras",
+        "categoria": "Frenos",
+        "tipo": "Repuesto",
+        "costo": 80.00,
+        "rentabilidad": 50,
+        "precio": 120.00,
+        "stock": 15,
+        "descripcion": "Pastillas de freno cerámicas para vehículos livianos"
+    },
+    {
+        "codigo": "REP-002",
+        "nombre": "Filtro de aceite",
+        "categoria": "Filtros",
+        "tipo": "Repuesto",
+        "costo": 25.00,
+        "rentabilidad": 60,
+        "precio": 40.00,
+        "stock": 8,
+        "descripcion": "Filtro de aceite universal para motores 4 cilindros"
+    },
+    {
+        "codigo": "REP-003",
+        "nombre": "Aceite motor 5W-30",
+        "categoria": "Aceites",
+        "tipo": "Repuesto",
+        "costo": 45.00,
+        "rentabilidad": 55,
+        "precio": 70.00,
+        "stock": 3,
+        "descripcion": "Aceite sintético 5W-30 para motores gasolina/diesel"
+    },
+    {
+        "codigo": "MO-001",
+        "nombre": "Cambio de aceite y filtro",
+        "categoria": "Servicios",
+        "tipo": "Mano de Obra",
+        "costo": 0.00,
+        "rentabilidad": 0,
+        "precio": 50.00,
+        "stock": 0,
+        "descripcion": "Servicio de cambio de aceite y filtro motor"
+    }
+]

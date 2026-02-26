@@ -1,0 +1,44 @@
+[
+    {
+        "consecutivo": "#202602120001",
+        "fecha": "2026-02-12 10:47",
+        "cliente_id": "12345678",
+        "cliente": "Adbeel Sandoval",
+        "vehiculo_placa": "ABC-123",
+        "vehiculo": "Audi A4 2024",
+        "motivo": "Viene porque le esta fallando el motor con el obturador",
+        "estado": "APROBACIÓN",
+        "tecnico": "Técnico Genérico",
+        "km": "60000",
+        "tipo": "Express",
+        "color": "green-6"
+    },
+    {
+        "consecutivo": "#202602110003",
+        "fecha": "2026-02-11 14:20",
+        "cliente_id": "12345678",
+        "cliente": "Carlos Sandoval",
+        "vehiculo_placa": "XYZ-789",
+        "vehiculo": "Toyota Corolla 2020",
+        "motivo": "Mantenimiento 15k km - cambio de aceite y filtros",
+        "estado": "REPARACIÓN",
+        "tecnico": "Juan Pérez",
+        "km": "15000",
+        "tipo": "Estándar",
+        "color": "purple-6"
+    },
+    {
+        "consecutivo": "#202602100002",
+        "fecha": "2026-02-10 09:15",
+        "cliente_id": "20555555551",
+        "cliente": "Empresa Demo SAC",
+        "vehiculo_placa": "DEF-456",
+        "vehiculo": "Honda Civic 2019",
+        "motivo": "Cambio de pastillas de freno delanteras y traseras",
+        "estado": "CONTROL",
+        "tecnico": "Carlos López",
+        "km": "28000",
+        "tipo": "Express",
+        "color": "cyan-6"
+    }
+]

@@ -1,0 +1,32 @@
+[
+    {
+        "placa": "ABC-123",
+        "marca": "Audi",
+        "modelo": "A4",
+        "año": "2024",
+        "color": "Negro",
+        "vin": "KDMCDEDEM123",
+        "tipo": "Sedán",
+        "cliente_id": "12345678"
+    },
+    {
+        "placa": "XYZ-789",
+        "marca": "Toyota",
+        "modelo": "Corolla",
+        "año": "2020",
+        "color": "Blanco",
+        "vin": "1234567890ABC",
+        "tipo": "Sedán",
+        "cliente_id": "12345678"
+    },
+    {
+        "placa": "DEF-456",
+        "marca": "Honda",
+        "modelo": "Civic",
+        "año": "2019",
+        "color": "Rojo",
+        "vin": "ABCD1234EFGH",
+        "tipo": "Sedán",
+        "cliente_id": "20555555551"
+    }
+]

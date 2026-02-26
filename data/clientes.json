@@ -1,0 +1,22 @@
+[
+    {
+        "id": "12345678",
+        "nombre": "Carlos Sandoval",
+        "apellidos": "Sandoval",
+        "email": "carlos@test.com",
+        "telefono": "+51 999 888 777",
+        "direccion": "Av. Principal 123",
+        "ciudad": "Piura",
+        "tipo": "Persona"
+    },
+    {
+        "id": "20555555551",
+        "nombre": "Empresa Demo SAC",
+        "apellidos": "",
+        "email": "contacto@demo.com",
+        "telefono": "+51 012 223 333",
+        "direccion": "Calle Industrial 555",
+        "ciudad": "Lima",
+        "tipo": "Empresa"
+    }
+]

@@ -1,0 +1,22 @@
+[
+    {
+        "id": "20111222333",
+        "nombre": "Repuestos El Rayo SAC",
+        "email": "ventas@elrayo.com",
+        "telefono": "+51 073 123 456",
+        "direccion": "Av. Industrial 234",
+        "ciudad": "Piura",
+        "productos": "Pastillas, filtros, fajas, aceites",
+        "tipo": "Empresa"
+    },
+    {
+        "id": "20444555666",
+        "nombre": "Distribuidora Norte EIRL",
+        "email": "contacto@dnorte.com",
+        "telefono": "+51 073 789 012",
+        "direccion": "Jr. Comercio 456",
+        "ciudad": "Piura",
+        "productos": "Aceites, lubricantes, aditivos",
+        "tipo": "Empresa"
+    }
+]
