@@ -99,9 +99,9 @@ def require_role(role: str) -> bool:
 
 
 PERMISOS = {
-    'admin': ['dashboard', 'ordenes', 'clientes', 'vehiculos', 'proveedores', 'inventario', 'reportes', 'rentabilidad', 'config', 'usuarios', 'citas'],
-    'recepcionista': ['dashboard', 'ordenes', 'clientes', 'vehiculos', 'citas'],
-    'tecnico': ['dashboard', 'ordenes', 'inventario'],
+    'admin': ['dashboard', 'ordenes', 'clientes', 'vehiculos', 'proveedores', 'inventario', 'notas_venta', 'reportes', 'rentabilidad', 'config', 'usuarios', 'citas'],
+    'recepcionista': ['dashboard', 'ordenes', 'clientes', 'vehiculos', 'notas_venta', 'citas'],
+    'tecnico': ['dashboard', 'ordenes', 'inventario', 'notas_venta'],
     'cliente': ['portal_cliente', 'citas'],
 }
 
