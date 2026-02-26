@@ -122,6 +122,13 @@ try:
         
         def render_content(page_name):
             log_boot(f"-> {page_name}")
+            # Cerrar sidebar en móvil automáticamente al navegar
+            ui.run_javascript('''
+                if (window.innerWidth <= 768) {
+                    var backdrop = document.querySelector(".q-drawer__backdrop");
+                    if (backdrop) { backdrop.click(); }
+                }
+            ''')
             content_area.clear()
             try:
                 if page_name == 'dashboard':
