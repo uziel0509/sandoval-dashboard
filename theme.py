@@ -58,16 +58,13 @@ def frame(nav_title: str):
 
             /* === MOBILE FIXES === */
             @media (max-width: 768px) {
-                /* El drawer en móvil es un overlay, nunca push */
+                /* Drawer ocupa altura completa y tiene scroll propio */
                 .q-drawer {
-                    position: fixed !important;
-                    z-index: 2000 !important;
                     height: 100vh !important;
-                    top: 0 !important;
                     overflow-y: auto !important;
                 }
-                /* El contenido principal nunca se desplaza por el drawer */
-                .q-drawer--left ~ .q-page-container {
+                /* Drawer en móvil NO empuja el contenido */
+                .q-page-container {
                     padding-left: 0 !important;
                 }
                 /* Header ocupa todo el ancho en móvil */
