@@ -13,7 +13,7 @@ import json
 import theme
 
 ESTADOS = list(theme.ESTADOS_CONFIG.keys())
-TECNICOS_DEFAULT = ['Técnico 1', 'Técnico 2', 'Técnico 3']
+TECNICOS_DEFAULT = ['Milton Sandoval', 'Hector Damian']
 
 def _get_tecnicos():
     try:
@@ -2821,7 +2821,7 @@ def open_create_order_dialog(container, state, stats_container=None):
                 # Datos extra vehículo
                 with ui.row().classes('w-full gap-4'):
                     km_input = ui.input('Kilometraje').props('outlined dense type=number bg-color=white').classes('flex-1')
-                    combustible_input = ui.select(['Reserva', '1/4', '1/2', '3/4', 'Full'],  label='Nivel Combustible').props('outlined dense bg-color=white').classes('flex-1')
+                    combustible_input = ui.select(['Reserva', '1/8', '1/4', '1/2', '3/4', 'Full'], value='1/4', label='Nivel Combustible').props('outlined dense bg-color=white').classes('flex-1')
 
             # Columna Derecha: Detalles
             with ui.column().classes('flex-1 gap-4'):
