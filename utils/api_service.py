@@ -266,7 +266,10 @@ async def api_orden_get(request: Request) -> JSONResponse:
             'tecnico': o.tecnico or '',
             'tipo': o.tipo or 'Express',
             'items': o.items_cotizacion or [],
-            'notas': o.observaciones or '',
+            'observaciones': o.observaciones or '',
+            'diagnostico': o.diagnostico or '',
+            'fotos_evidencia': o.fotos_evidencia or [],
+            'checklist_reparacion': o.checklist_reparacion or [],
         })
     finally:
         db.close()
@@ -679,6 +682,11 @@ async def api_cliente_mis_ordenes(request: Request) -> JSONResponse:
                 'descripcion': o.motivo or '',
                 'items': o.items_cotizacion or [],
                 'report_token': o.report_token or '',
+                'km': o.km or '',
+                'diagnostico': o.diagnostico or '',
+                'observaciones': o.observaciones or '',
+                'fotos_evidencia': o.fotos_evidencia or [],
+                'checklist_reparacion': o.checklist_reparacion or [],
             })
         return json_ok(result)
     finally:

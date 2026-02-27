@@ -1577,15 +1577,23 @@
     function renderFaseMedia(o, faseNombre) {
       let medios = [];
       try {
-        const raw = (typeof o.fotos_evidencia === 'string') ? JSON.parse(o.fotos_evidencia) : (o.fotos_evidencia || []);
-        medios = raw.filter(m => {
-          if (typeof m === 'object' && m !== null) return m.fase === faseNombre;
-          if (typeof m === 'string' && (faseNombre === 'RECEPCIÓN' || !faseNombre)) return true;
-          return false;
-        }).map(m => (typeof m === 'object' && m !== null) ? m.path : m);
-      } catch (e) { console.error(e); }
+        let raw = o.fotos_evidencia;
+        if (typeof raw === 'string' && raw.trim().startsWith('[')) raw = JSON.parse(raw);
+        if (!Array.isArray(raw)) raw = raw ? [raw] : [];
 
-      if (!medios || !medios.length) return '<div class="bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center text-gray-400 text-xs font-bold italic uppercase tracking-widest">Sin evidencias en esta fase</div>';
+        medios = raw.filter(m => {
+          if (!m) return false;
+          if (typeof m === 'object' && m.path) {
+            return m.fase === faseNombre;
+          }
+          if (typeof m === 'string' && (faseNombre === 'RECEPCIÓN' || !faseNombre)) {
+            return true;
+          }
+          return false;
+        }).map(m => (typeof m === 'object') ? m.path : m);
+      } catch (e) { console.error("Error en renderFaseMedia:", e); }
+
+      if (!medios || !medios.length) return '<div class="bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center text-gray-400 text-[10px] font-black italic uppercase tracking-widest opacity-60">Sin evidencias en esta fase</div>';
 
       return `
         <div class="space-y-4">
@@ -1595,15 +1603,15 @@
         if (isVideo) {
           return `
                 <div class="media-container shadow-lg">
-                  <video controls playsinline preload="metadata" class="rounded-xl">
+                  <video controls playsinline preload="metadata" class="rounded-2xl">
                     <source src="${path}" type="video/mp4">
                   </video>
-                  <p class="text-[9px] text-white/50 absolute bottom-2 right-2 font-black tracking-widest">VIDEO</p>
+                  <p class="text-[9px] text-white/50 absolute bottom-3 right-3 font-black tracking-widest bg-black/20 p-1 px-2 rounded-lg">VIDEO</p>
                 </div>`;
         } else {
           return `
-                <div class="media-container shadow-md">
-                  <img src="${path}" class="w-full rounded-xl" onclick="window.open('${path}')">
+                <div class="media-container shadow-md border border-gray-100">
+                  <img src="${path}" class="w-full rounded-2xl" onclick="window.open('${path}')">
                 </div>`;
         }
       }).join('')}
@@ -1621,38 +1629,49 @@
 
       if (phaseId === 'RECEPCIÓN') {
         const obs = o.observaciones || '';
-        const combustible = obs.toLowerCase().includes('combustible:') ? obs.split(/combustible:/i)[1].trim() : 'No especificado';
+        let combustible = 'No especificado';
+        if (obs.toLowerCase().includes('combustible:')) {
+          const parts = obs.split(/combustible:/i);
+          combustible = parts[1].split('.')[0].split('\n')[0].trim();
+        }
 
         contentHtml = `
-          <p class="text-[10px] font-black text-gray-400 tracking-widest mb-2 uppercase">Información de Entrada</p>
-          <div class="space-y-3 mb-6">
-             <div class="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-               <p class="text-[9px] text-blue-900 font-black uppercase tracking-widest mb-1">Motivo / Problema</p>
-               <p class="text-sm text-gray-700 font-bold">${o.descripcion || o.motivo || 'Ingreso vehicular'}</p>
+          <p class="text-[10px] font-black text-gray-400 tracking-widest mb-3 uppercase opacity-80">Información de Entrada</p>
+          <div class="space-y-4 mb-8">
+             <div class="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
+               <p class="text-[9px] text-[#274495] font-black uppercase tracking-widest mb-1 opacity-70">Motivo / Problema</p>
+               <p class="text-base text-gray-800 font-bold leading-tight">${o.descripcion || o.motivo || 'Ingreso vehicular'}</p>
              </div>
              
-             <div class="grid grid-cols-2 gap-3">
-               <div class="bg-gray-50 p-3 rounded-2xl border border-gray-100">
+             <div class="grid grid-cols-2 gap-4">
+               <div class="bg-gray-50/50 p-4 rounded-3xl border border-gray-100">
                  <p class="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Kilometraje</p>
-                 <p class="text-sm font-black text-gray-800">${o.km || '—'} KM</p>
+                 <p class="text-base font-black text-gray-900">${o.km || '—'} <span class="text-[10px] text-gray-400">KM</span></p>
                </div>
-               <div class="bg-gray-50 p-3 rounded-2xl border border-gray-100">
+               <div class="bg-gray-50/50 p-4 rounded-3xl border border-gray-100">
                  <p class="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Combustible</p>
-                 <p class="text-sm font-black text-gray-800">${combustible}</p>
+                 <p class="text-base font-black text-gray-900">${combustible}</p>
                </div>
              </div>
              
-             <div class="bg-gray-50 p-3 rounded-2xl border border-gray-100">
-                <p class="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Fecha de Ingreso</p>
-                <p class="text-sm font-bold text-gray-800">${fmtDate(o.fecha)}</p>
+             <div class="bg-gray-50/50 p-4 rounded-3xl border border-gray-100 flex items-center justify-between">
+                <div>
+                  <p class="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Fecha de Ingreso</p>
+                  <p class="text-sm font-bold text-gray-800">${fmtDate(o.fecha)}</p>
+                </div>
+                <span class="material-icons-round text-blue-100" style="font-size:32px">calendar_today</span>
              </div>
           </div>
         `;
-      }
-      else if (phaseId === 'DIAGNÓSTICO') {
+      } else if (phaseId === 'DIAGNÓSTICO') {
+        const diag = o.diagnostico || '';
         contentHtml = `
-          <p class="text-sm font-bold text-gray-700 mb-2">Resultado del Diagnóstico:</p>
-          <div class="text-sm text-gray-600 mb-6 bg-gray-50 p-3 rounded-xl border border-gray-100 whitespace-pre-wrap">${o.diagnostico || 'El técnico está evaluando el vehículo...'}</div>
+          <p class="text-[10px] font-black text-gray-400 tracking-widest mb-3 uppercase opacity-80">Informe Técnico</p>
+          <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-8">
+            <p class="text-[9px] text-[#274495] font-black uppercase tracking-widest mb-3 opacity-70">Resultado del Diagnóstico</p>
+            <div class="text-sm text-gray-700 leading-relaxed font-medium whitespace-pre-wrap">${diag || 'El equipo técnico está finalizando la evaluación de su vehículo.'}</div>
+            ${!diag ? '<div class="mt-4 flex items-center gap-2 text-amber-600 font-bold text-[10px] uppercase"><span class="material-icons-round animate-spin text-sm">sync</span> Análisis en curso</div>' : ''}
+          </div>
         `;
       } else if (phaseId === 'REPUESTOS' || phaseId === 'APROBACIÓN') {
         contentHtml = `
