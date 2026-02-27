@@ -470,7 +470,7 @@ def open_new_diagnostic_modal(consecutivo, container, state, stats_container=Non
                                 fpath = os.path.join(save_dir, safe_fname)
                                 with open(fpath, 'wb') as f:
                                     f.write(fcontent)
-                                current_pics.append(f"/evidencia/{folder_name}/{safe_fname}")
+                                current_pics.append({'path': f"/evidencia/{folder_name}/{safe_fname}", 'fase': 'DIAGNÓSTICO'})
                             
                             o.fotos_evidencia = current_pics
                             flag_modified(o, "fotos_evidencia")
@@ -2283,7 +2283,7 @@ def open_advanced_repair_module(consecutivo, container, state, stats_container=N
                                                     db_u = get_db()
                                                     from sqlalchemy import text as sa_text
                                                     row = db_u.execute(
-                                                        sa_text("SELECT checklist_reparacion FROM ordenes WHERE consecutivo = :c"),
+                                                        sa_text("SELECT checklist_reparacion, fotos_evidencia FROM ordenes WHERE consecutivo = :c"),
                                                         {"c": consecutivo}
                                                     ).fetchone()
                                                     raw_val = row[0] if row else None
@@ -2299,9 +2299,18 @@ def open_advanced_repair_module(consecutivo, container, state, stats_container=N
                                                     if ck not in d['evidence_cats']:
                                                         d['evidence_cats'][ck] = []
                                                     d['evidence_cats'][ck].append(path)
+                                                    
+                                                    # Sincronizar con fotos_evidencia
+                                                    try:
+                                                        raw_f = row[1] if row and len(row) > 1 else None
+                                                        if isinstance(raw_f, str): f_list = json.loads(raw_f)
+                                                        else: f_list = list(raw_f or [])
+                                                    except: f_list = []
+                                                    f_list.append({'path': path, 'fase': 'REPARACIÓN'})
+
                                                     db_u.execute(
-                                                        sa_text("UPDATE ordenes SET checklist_reparacion = :v WHERE consecutivo = :c"),
-                                                        {"v": json.dumps(d), "c": consecutivo}
+                                                        sa_text("UPDATE ordenes SET checklist_reparacion = :v, fotos_evidencia = :f WHERE consecutivo = :c"),
+                                                        {"v": json.dumps(d), "f": json.dumps(f_list), "c": consecutivo}
                                                     )
                                                     db_u.commit()
                                                     db_u.close()
@@ -3477,7 +3486,7 @@ def open_edit_reception_dialog(consecutivo, container, state):
                                 f_path = os.path.join(s_dir, sfname)
                                 with open(f_path, 'wb') as f:
                                     f.write(fc)
-                                curr_p.append(f"/evidencia/{folder_name}/{sfname}")
+                                curr_p.append({'path': f"/evidencia/{folder_name}/{sfname}", 'fase': 'RECEPCIÓN'})
                             o.fotos_evidencia = curr_p
                             from sqlalchemy.orm.attributes import flag_modified
                             flag_modified(o, "fotos_evidencia")

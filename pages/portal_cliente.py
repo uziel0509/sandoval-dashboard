@@ -99,13 +99,16 @@ def show_portal(container):
             .cal-day.selected .cal-dow {{ opacity: 0.8; }}
             .cal-num {{ font-size: 20px; font-weight: 800; }}
             
-            .label-premium {{ font-size: 11px; font-weight: 700; color: var(--gris-texto); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }}
-            .form-input-premium {{ 
-                background: var(--gris-bg); border: 1.5px solid var(--gris-borde); 
-                border-radius: 12px; padding: 12px 16px; font-size: 14px; color: var(--texto);
-                transition: all 0.2s;
+            /* Ajustes para Móvil */
+            @media (max-width: 600px) {{
+                .card-premium {{ padding: 16px; }}
+                .phase-circle {{ width: 32px; height: 32px; font-size: 14px; }}
+                .phase-item label {{ font-size: 8px; width: 50px; }}
+                .tracker-line {{ top: 16px !important; }}
+                .hide-on-mobile {{ display: none !important; }}
             }}
-            .form-input-premium:focus-within {{ border-color: var(--azul-claro); background: white; box-shadow: 0 0 0 4px rgba(58,123,213,0.1); }}
+            .tracker-line {{ position: absolute; height: 3px; background: var(--gris-borde); top: 24px; left: 0; right: 0; z-index: 1; }}
+            .tracker-progress {{ position: absolute; height: 3px; background: var(--azul); top: 24px; left: 0; z-index: 1; transition: width 1s; }}
         </style>
         ''')
 
@@ -129,9 +132,14 @@ def show_portal(container):
                     
                     _render_tracker(active_order.estado)
                     
-                    with ui.element('div').classes('mt-8 p-4 bg-gray-50 rounded-xl border border-gray-100 flex items-center gap-4'):
+                    # Evidencia de la fase actual (NUEVO: Se ve directo en el dashboard)
+                    with ui.column().classes('w-full mt-6 gap-2'):
+                        ui.label(f'EVIDENCIA DE {active_order.estado}').classes('text-[9px] font-black text-blue-900 tracking-widest opacity-60')
+                        _render_fase_media(active_order, active_order.estado)
+
+                    with ui.element('div').classes('mt-4 p-4 bg-gray-50 rounded-xl border border-gray-100 flex items-center gap-4'):
                         ui.icon('info', color='blue-900', size='sm')
-                        ui.label(f'Estado actual: {active_order.estado} — {active_order.motivo or "Procesando vehículo..."}').classes('text-sm text-gray-600')
+                        ui.label(f'Estado: {active_order.estado} — {active_order.motivo or "Procesando vehiculo..."}').classes('text-sm text-gray-600')
 
             # 4. GRID CENTRAL: DATOS VEHÍCULO + COTIZACIÓN (Vertical Stack)
             with ui.column().classes('w-full gap-6 mt-4'):
@@ -359,10 +367,10 @@ def _render_tracker(current_state):
     for i, (name, _) in enumerate(phases):
         if name == current_state: current_idx = i
     
-    with ui.row().classes('w-full justify-between relative mt-4'):
+    with ui.row().classes('w-full justify-between relative mt-4 no-wrap'):
         # Línea de progreso
-        ui.element('div').classes('absolute top-[24px] left-0 right-0 h-1 bg-gray-100 shadow-inner')
-        ui.element('div').classes('absolute top-[24px] left-0 h-1 bg-blue-900 transition-all duration-1000 shadow-lg').style(f'width: {(current_idx / (len(phases)-1)) * 100}%')
+        ui.element('div').classes('tracker-line shadow-inner')
+        ui.element('div').classes('tracker-progress shadow-lg').style(f'width: {(current_idx / (len(phases)-1)) * 100}%')
         
         for i, (name, icon) in enumerate(phases):
             status_cls = 'done' if i < current_idx else 'active' if i == current_idx else 'pending'

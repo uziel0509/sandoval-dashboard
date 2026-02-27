@@ -237,6 +237,84 @@
       padding-bottom: env(safe-area-inset-bottom)
     }
 
+    /* ── TRACKER 7 FASES ── */
+    .phase-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      flex: 1;
+      z-index: 10;
+    }
+
+    .phase-line {
+      position: absolute;
+      top: 15px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: #e2e8f0;
+      z-index: 1;
+    }
+
+    .phase-progress {
+      position: absolute;
+      top: 15px;
+      left: 0;
+      height: 2px;
+      background: #274495;
+      z-index: 2;
+      transition: width 0.5s;
+    }
+
+    .step-circle {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: white;
+      border: 2px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #94a3b8;
+      transition: all 0.3s;
+      position: relative;
+      z-index: 3;
+    }
+
+    .phase-step.active .step-circle {
+      background: #274495;
+      border-color: #274495;
+      color: white;
+      box-shadow: 0 0 10px rgba(39, 68, 149, 0.4);
+    }
+
+    .phase-step.done .step-circle {
+      background: #10b981;
+      border-color: #10b981;
+      color: white;
+    }
+
+    .step-label {
+      font-size: 8px;
+      font-weight: 800;
+      text-transform: uppercase;
+      margin-top: 6px;
+      text-align: center;
+      color: #64748b;
+      line-height: 1;
+    }
+
+    .phase-step.active .step-label {
+      color: #274495;
+    }
+
+    .phase-step.done .step-label {
+      color: #10b981;
+    }
+
     /* ── SPLASH 3D (idéntico al desktop) ── */
     #loading {
       position: fixed;
@@ -1336,29 +1414,142 @@
   </div>`;
     }
 
+    function renderTracker(currentEstado) {
+      const phases = ['RECEPCIÓN', 'DIAGNÓSTICO', 'REPUESTOS', 'APROBACIÓN', 'REPARACIÓN', 'CONTROL', 'ENTREGA'];
+      let currentIdx = phases.indexOf(currentEstado);
+      if (currentIdx === -1) currentIdx = 0;
+      const progressWidth = (currentIdx / (phases.length - 1)) * 100;
+
+      return `
+        <div class="relative flex justify-between items-start mb-10 px-1">
+          <div class="phase-line"></div>
+          <div class="phase-progress" style="width: ${progressWidth}%"></div>
+          ${phases.map((f, i) => {
+        const isDone = i < currentIdx;
+        const isActive = i === currentIdx;
+        const statusCls = isDone ? 'done' : (isActive ? 'active' : 'pending');
+        const icon = isDone ? 'check' : (i + 1);
+        return `
+              <div class="phase-step ${statusCls}">
+                <div class="step-circle">${icon}</div>
+                <span class="step-label">${f.replace('Ó', 'O')}</span>
+              </div>
+            `;
+      }).join('')}
+        </div>
+      `;
+    }
+
+    function renderFaseMedia(o, faseNombre) {
+      let medios = [];
+      try {
+        const raw = (typeof o.fotos_evidencia === 'string') ? JSON.parse(o.fotos_evidencia) : (o.fotos_evidencia || []);
+        medios = raw.filter(m => {
+          if (typeof m === 'object') return m.fase === faseNombre;
+          if (typeof m === 'string' && faseNombre === 'RECEPCIÓN') return true;
+          return false;
+        }).map(m => typeof m === 'object' ? m.path : m);
+      } catch (e) { console.error(e); }
+
+      if (!medios || !medios.length) return '';
+
+      return `
+        <div class="flex gap-2 overflow-x-auto pb-2 mt-2">
+          ${medios.map(path => `<img src="${path}" class="w-24 h-24 object-cover rounded-xl shadow-sm border border-gray-100 flex-shrink-0">`).join('')}
+        </div>
+      `;
+    }
+
     function showClienteOrden(o) {
       const total = (o.items || []).reduce((s, it) => s + (it.total || it.subtotal || 0), 0);
+      const phases = ['RECEPCIÓN', 'DIAGNÓSTICO', 'REPUESTOS', 'APROBACIÓN', 'REPARACIÓN', 'CONTROL', 'ENTREGA'];
+      const currentIdx = phases.indexOf(o.estado);
+
       openSheet(`
     <div class="p-5">
-      <div class="flex justify-between items-center mb-4">
-        <div><p class="text-lg font-black text-[#274495]">${o.consecutivo}</p><p class="text-xs text-gray-400">${fmtDate(o.fecha)}</p></div>
+      <!-- HEADER DETALLE -->
+      <div class="flex justify-between items-center mb-6">
+        <div>
+          <p class="text-[10px] font-black text-gray-400 tracking-widest uppercase">ORDEN DE SERVICIO</p>
+          <p class="text-xl font-black text-[#274495]">${o.consecutivo}</p>
+        </div>
         ${chip(o.estado)}
       </div>
-      <div class="bg-gray-50 rounded-xl p-3 mb-4">
-        <p class="text-[10px] font-black text-gray-400">DESCRIPCIÓN</p>
-        <p class="text-sm text-gray-700 mt-1">${o.descripcion || '—'}</p>
+
+      <!-- TRACKER 7 FASES -->
+      <p class="text-[10px] font-black text-gray-400 tracking-widest mb-4">ESTADO DEL PROGRESO</p>
+      ${renderTracker(o.estado)}
+
+      <div class="space-y-6">
+        <!-- FASE 1: RECEPCION -->
+        <div class="border-l-2 border-blue-100 pl-4 py-1">
+          <p class="text-[10px] font-black text-blue-900 tracking-widest">1. RECEPCIÓN</p>
+          <p class="text-sm text-gray-700 font-bold mt-1">${o.descripcion || o.motivo || 'Ingreso vehicular'}</p>
+          <div class="flex gap-4 mt-2">
+            <div><p class="text-[9px] text-gray-400 font-bold">KM</p><p class="text-xs font-black text-gray-700">${o.km || '—'}</p></div>
+            <div><p class="text-[9px] text-gray-400 font-bold">FECHA</p><p class="text-xs font-black text-gray-700">${fmtDate(o.fecha)}</p></div>
+          </div>
+          ${renderFaseMedia(o, 'RECEPCIÓN')}
+        </div>
+
+        <!-- FASE 2: DIAGNÓSTICO -->
+        ${currentIdx >= 1 ? `
+        <div class="border-l-2 border-blue-900 pl-4 py-1">
+          <p class="text-[10px] font-black text-blue-900 tracking-widest">2. DIAGNÓSTICO TÉCNICO</p>
+          <p class="text-sm text-gray-700 mt-1">${o.diagnostico || 'Diagnóstico en proceso...'}</p>
+          ${renderFaseMedia(o, 'DIAGNÓSTICO')}
+        </div>
+        ` : ''}
+
+        <!-- FASE 3: REPUESTOS / COTIZACION -->
+        ${currentIdx >= 2 ? `
+        <div class="border-l-2 border-purple-100 pl-4 py-1">
+          <p class="text-[10px] font-black text-blue-900 tracking-widest">3. REPUESTOS Y COSTOS</p>
+          ${o.items && o.items.length ? `
+            <div class="mt-2 space-y-2">
+              ${o.items.map(it => `
+                <div class="flex justify-between items-center bg-gray-50 p-2 rounded-lg text-xs">
+                  <span class="font-medium">${it.nombre || it.descripcion}</span>
+                  <span class="font-black">${fmtMoney(it.total || it.subtotal)}</span>
+                </div>
+              `).join('')}
+              <div class="flex justify-between items-center p-2 border-t border-gray-100">
+                <span class="text-xs font-black text-gray-400 text-uppercase">TOTAL ESTIMADO</span>
+                <span class="text-lg font-black text-[#274495]">${fmtMoney(total)}</span>
+              </div>
+            </div>
+          ` : '<p class="text-xs text-gray-400 italic mt-1">Preparando presupuesto...</p>'}
+        </div>
+        ` : ''}
+
+        <!-- ACCIONES DE APROBACION -->
+        ${o.estado === 'APROBACIÓN' ? `
+        <div class="bg-amber-50 border border-amber-100 p-4 rounded-2xl">
+          <p class="text-sm text-center text-amber-900 font-bold mb-4">¿Desea autorizar el presupuesto anterior?</p>
+          <div class="flex gap-3">
+            <button onclick="aprobarOrden(${o.id},false)" class="flex-1 bg-white border border-red-200 text-red-600 rounded-xl py-3 text-sm font-bold">Rechazar</button>
+            <button onclick="aprobarOrden(${o.id},true)" class="flex-1 bg-[#274495] text-white rounded-xl py-3 text-sm font-bold">✓ Aprobar Todo</button>
+          </div>
+        </div>
+        ` : ''}
+
+        <!-- FASE 5: REPARACION -->
+        ${currentIdx >= 4 ? `
+        <div class="border-l-2 border-orange-100 pl-4 py-1">
+          <p class="text-[10px] font-black text-blue-900 tracking-widest">5. PROCESO DE REPARACIÓN</p>
+          <p class="text-xs text-gray-500 mt-1">El vehículo se encuentra en manos de nuestros técnicos especializados.</p>
+          ${renderFaseMedia(o, 'REPARACIÓN')}
+        </div>
+        ` : ''}
       </div>
-      ${o.items && o.items.length ? `
-      <div class="mb-4">
-        <p class="text-[10px] font-black text-gray-400 mb-2">COTIZACIÓN — ${fmtMoney(total)}</p>
-        ${o.items.map(it => `<div class="flex justify-between py-2 border-b border-gray-100 text-sm"><span>${it.nombre || it.descripcion || 'Ítem'}</span><span class="font-bold">${fmtMoney(it.total || it.subtotal || 0)}</span></div>`).join('')}
-      </div>` : ''}
-      ${o.estado === 'APROBACIÓN' ? `
-      <p class="text-sm text-center text-gray-500 mb-4">¿Apruebas la cotización de ${fmtMoney(total)}?</p>
-      <div class="flex gap-3">
-        <button onclick="aprobarOrden(${o.id},false)" class="flex-1 btn-secondary text-red-600 text-center">✗ Rechazar</button>
-        <button onclick="aprobarOrden(${o.id},true)" class="flex-1 btn-primary text-center">✓ Aprobar</button>
-      </div>` : ''}
+
+      <div class="mt-10 p-4 bg-gray-50 rounded-2xl flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-[#274495] rounded-full flex items-center justify-center text-white"><span class="material-icons-round">contact_support</span></div>
+          <div><p class="text-[10px] font-black text-gray-400 leading-none">¿DUDAS?</p><p class="text-xs font-bold text-gray-700">Contactar taller</p></div>
+        </div>
+        <button onclick="window.open('https://wa.me/51936495143')" class="bg-[#25D366] text-white p-2 rounded-xl"><span class="material-icons-round">chat</span></button>
+      </div>
     </div>`);
     }
 
