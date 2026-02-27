@@ -1097,73 +1097,296 @@ def show_portal(container):
                         ''')
 
                 # ════════════════════════════════════════════════
-                # 6. MIS EVIDENCIAS Y VIDEOS DE DIAGNÓSTICO
+                # 6. MI HISTORIAL COMPLETO (Diagnóstico + Escáner + Evidencias + Cotización)
                 # ════════════════════════════════════════════════
                 _VIDEO_EXTS_P = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.ogg'}
                 def _p_is_video(p):
-                    import os
                     return os.path.splitext((p or '').lower())[1] in _VIDEO_EXTS_P
 
-                # Recopilar todas las órdenes que tengan evidencias
-                ordenes_con_ev = [(o, list(o.fotos_evidencia or [])) for o in ordenes_all if o.fotos_evidencia]
-                if ordenes_con_ev:
+                if ordenes_all:
                     with ui.element('div').classes('p-card'):
-                        _section_title('\ud83d\udcc2', 'Mis Evidencias y Videos de Diagnóstico')
-                        ui.html('<div style="font-size:12px;color:var(--gris-texto);margin-bottom:16px;">Aquí puedes ver todas las fotos y videos adjuntados por el técnico en tus visitas al taller.</div>')
+                        _section_title('📋', 'Mi Historial Completo de Servicios')
+                        ui.html('<div style="font-size:12px;color:var(--gris-texto);margin-bottom:20px;">'
+                                'Aquí puedes ver el detalle completo de cada visita: diagnóstico técnico, '
+                                'reporte de escáner, evidencias fotográficas, videos y cotización.</div>')
 
-                        for ord_ev, medios_ev in ordenes_con_ev:
-                            fotos_p = [m for m in medios_ev if not _p_is_video(m)]
-                            videos_p = [m for m in medios_ev if _p_is_video(m)]
-                            if not (fotos_p or videos_p):
-                                continue
+                        for ord_ev in ordenes_all:
+                            # ── Parsear datos del checklist ────────────────
+                            chk_ev = ord_ev.checklist_reparacion or {}
+                            if isinstance(chk_ev, str):
+                                try:    chk_ev = json.loads(chk_ev)
+                                except: chk_ev = {}
+                            diag_ev   = (chk_ev or {}).get('diagnostic_details', {})
+                            qchk_ev   = (chk_ev or {}).get('quick_check', {})
+                            items_ev  = _safe_json(ord_ev.items_cotizacion)
+                            medios_ev = [m for m in (ord_ev.fotos_evidencia or []) if isinstance(m, str)]
+                            fotos_ev  = [m for m in medios_ev if not _p_is_video(m)]
+                            videos_ev = [m for m in medios_ev if _p_is_video(m)]
+                            sc_ev     = (diag_ev or {}).get('scanner_path', '')
+
+                            # ── Calcular totales ───────────────────────────
+                            total_ev = sum(float(it.get('total', 0) or 0) for it in items_ev)
 
                             try:
                                 fd_ev = datetime.strptime(ord_ev.fecha[:10], '%Y-%m-%d')
                                 fecha_ev = f'{fd_ev.day} {_mes(fd_ev.month)} {fd_ev.year}'
                             except Exception:
-                                fecha_ev = ord_ev.fecha[:10] if ord_ev.fecha else ''
+                                fecha_ev = ord_ev.fecha[:10] if ord_ev.fecha else '—'
 
-                            with ui.element('div').style('margin-bottom:24px;'):
+                            estado_cls_ev = ('completado' if ord_ev.estado in ('ARCHIVADO', 'ENTREGA') else 'proceso')
+                            badge_ev_col  = '#1db97a' if estado_cls_ev == 'completado' else '#f59e0b'
+                            badge_ev_bg   = 'rgba(29,185,122,.1)' if estado_cls_ev == 'completado' else 'rgba(245,158,11,.1)'
+                            badge_ev_lbl  = '✔ Completado' if estado_cls_ev == 'completado' else '⏳ En Proceso'
+
+                            motivo_ev = (ord_ev.motivo or 'Revisión general')
+
+                            # ── Verificar si hay algo útil para mostrar ────
+                            tiene_contenido = bool(diag_ev or ord_ev.diagnostico or medios_ev or items_ev or sc_ev)
+                            if not tiene_contenido:
+                                continue
+
+                            # ── Card por orden ─────────────────────────────
+                            with ui.element('div').style(
+                                'background:#f8fafc;border:1.5px solid #dde4f0;'
+                                'border-radius:16px;padding:20px;margin-bottom:20px;'
+                            ):
+                                # Header de la orden
                                 ui.html(f'''
-                                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-                                        <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#1a3a6b;">
-                                            Orden #{ord_ev.consecutivo}
-                                        </span>
-                                        <span style="font-size:11px;color:var(--gris-texto);">— {fecha_ev}</span>
-                                        <span style="font-size:10px;color:var(--gris-texto);">{ord_ev.motivo or ''}</span>
+                                <div style="display:flex;align-items:flex-start;justify-content:space-between;
+                                            flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+                                    <div>
+                                        <div style="font-size:13px;font-weight:800;color:#1a3a6b;margin-bottom:4px;">
+                                            {motivo_ev}
+                                        </div>
+                                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                            <span style="font-size:11px;color:var(--gris-texto);">📅 {fecha_ev}</span>
+                                            <span style="font-size:11px;font-family:monospace;background:#e8f0fb;
+                                                         color:#1a3a6b;padding:2px 8px;border-radius:5px;">
+                                                #{ord_ev.consecutivo}
+                                            </span>
+                                            {f'<span style="font-size:11px;color:var(--gris-texto);">🔧 {ord_ev.tecnico}</span>' if ord_ev.tecnico else ''}
+                                        </div>
                                     </div>
+                                    <span style="background:{badge_ev_bg};color:{badge_ev_col};
+                                                 font-size:10px;font-weight:700;padding:4px 12px;
+                                                 border-radius:100px;white-space:nowrap;">
+                                        {badge_ev_lbl}
+                                    </span>
+                                </div>
                                 ''')
 
-                                if fotos_p:
-                                    with ui.row().classes('gap-2 flex-wrap mb-3'):
-                                        for fp in fotos_p:
-                                            ui.html(f'''
-                                                <a href="{fp}" target="_blank" style="display:block;width:90px;height:90px;
-                                                    border-radius:10px;overflow:hidden;border:2px solid var(--gris-borde);
-                                                    background:#f3f4f6;flex-shrink:0;">
-                                                    <img src="{fp}" style="width:100%;height:100%;object-fit:cover;"
-                                                        onerror="this.style.display='none'"/>
-                                                </a>
-                                            ''')
+                                # ── DIAGNÓSTICO ────────────────────────────
+                                if diag_ev or ord_ev.diagnostico:
+                                    ui.html('<div style="font-size:10px;font-weight:900;color:#2356a8;'
+                                            'text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;'
+                                            'display:flex;align-items:center;gap:6px;">'
+                                            '🔬 Diagnóstico Técnico</div>')
 
-                                if videos_p:
-                                    with ui.column().classes('gap-3 w-full'):
-                                        for vp in videos_p:
-                                            fn_v = vp.split('/')[-1]
-                                            ui.html(f'''
-                                                <div style="background:#0f172a;border-radius:12px;overflow:hidden;
-                                                    border:1.5px solid #3b82f6;">
-                                                    <video src="{vp}" controls preload="metadata" playsinline
-                                                        style="width:100%;max-height:280px;display:block;">
-                                                        Tu navegador no soporta video.
-                                                    </video>
-                                                    <div style="padding:8px 12px;display:flex;align-items:center;gap:8px;">
-                                                        <span style="font-size:18px;">\ud83c\udfa5</span>
-                                                        <span style="font-size:12px;color:#94a3b8;flex:1;">{fn_v}</span>
-                                                        <a href="{vp}" target="_blank" style="font-size:11px;color:#60a5fa;font-weight:700;text-decoration:none;">Abrir →</a>
-                                                    </div>
-                                                </div>
-                                            ''')
+                                    if diag_ev:
+                                        rows_diag = ''
+                                        fields = [
+                                            ('🧪', 'Pruebas', diag_ev.get('tests')),
+                                            ('🔍', 'Códigos OBD', diag_ev.get('codes')),
+                                            ('🧠', 'Análisis',   diag_ev.get('analysis')),
+                                            ('✅', 'Solución',   diag_ev.get('solution')),
+                                        ]
+                                        for icon_d, lbl_d, val_d in fields:
+                                            if val_d:
+                                                rows_diag += (
+                                                    f'<div style="padding:8px 12px;background:white;border-radius:10px;'
+                                                    f'border:1px solid #e2e8f0;margin-bottom:6px;">'
+                                                    f'<div style="font-size:9px;font-weight:900;color:#94a3b8;'
+                                                    f'text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">'
+                                                    f'{icon_d} {lbl_d}</div>'
+                                                    f'<div style="font-size:12px;color:#1e293b;font-weight:600;'
+                                                    f'line-height:1.4;">{val_d}</div>'
+                                                    f'</div>'
+                                                )
+                                        if rows_diag:
+                                            ui.html(f'<div style="margin-bottom:12px;">{rows_diag}</div>')
+                                    elif ord_ev.diagnostico:
+                                        ui.html(f'<div style="padding:10px 12px;background:white;border-radius:10px;'
+                                                f'border:1px solid #e2e8f0;font-size:12px;color:#1e293b;'
+                                                f'white-space:pre-wrap;line-height:1.5;margin-bottom:12px;">'
+                                                f'{ord_ev.diagnostico}</div>')
+
+                                # ── REPORTE ESCÁNER ────────────────────────
+                                if sc_ev:
+                                    ui.html(f'''
+                                    <div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);
+                                                border:1.5px solid #86efac;border-radius:12px;
+                                                padding:14px;margin-bottom:12px;">
+                                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                                            <span style="background:#16a34a;color:white;font-size:9px;
+                                                         font-weight:900;padding:3px 10px;border-radius:100px;
+                                                         letter-spacing:1px;text-transform:uppercase;">
+                                                🔬 Escáner OBD
+                                            </span>
+                                            <span style="font-size:11px;color:#166534;font-weight:600;">
+                                                Reporte Digital Certificado
+                                            </span>
+                                        </div>
+                                        <div style="background:white;border-radius:8px;overflow:hidden;
+                                                    border:1px solid #bbf7d0;margin-bottom:10px;">
+                                            <div style="background:#14532d;color:white;padding:6px 12px;
+                                                        font-size:10px;font-weight:700;">
+                                                📄 Reporte de Escáner — Vista previa
+                                            </div>
+                                            <iframe src="/{sc_ev}" style="width:100%;height:380px;
+                                                border:none;display:block;background:#f9f9f9;"
+                                                title="Reporte de Escáner">
+                                            </iframe>
+                                        </div>
+                                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                            <a href="/{sc_ev}" target="_blank"
+                                               style="flex:1;min-width:120px;text-align:center;
+                                                      padding:8px 14px;border-radius:8px;
+                                                      background:#f0fdf4;color:#14532d;text-decoration:none;
+                                                      font-size:12px;font-weight:700;border:1.5px solid #16a34a;">
+                                                🔍 Ver completo
+                                            </a>
+                                            <a href="/{sc_ev}" download
+                                               style="flex:1;min-width:120px;text-align:center;
+                                                      padding:8px 14px;border-radius:8px;
+                                                      background:#16a34a;color:white;text-decoration:none;
+                                                      font-size:12px;font-weight:700;">
+                                                ⬇️ Descargar PDF
+                                            </a>
+                                        </div>
+                                    </div>
+                                    ''')
+
+                                # ── INSPECCIÓN ─────────────────────────────
+                                if qchk_ev:
+                                    ok_count  = sum(1 for v in qchk_ev.values()
+                                                    if (v.get('status') if isinstance(v, dict) else v) == 'OK')
+                                    tot_count = len(qchk_ev)
+                                    ui.html(f'<div style="font-size:10px;font-weight:900;color:#2356a8;'
+                                            f'text-transform:uppercase;letter-spacing:1.5px;'
+                                            f'margin-bottom:8px;">✅ Inspección: {ok_count}/{tot_count} conforme</div>')
+                                    chk_items_html = ''
+                                    for chk_k, chk_v in qchk_ev.items():
+                                        st_v   = chk_v.get('status') if isinstance(chk_v, dict) else chk_v
+                                        note_v = (chk_v.get('note', '') if isinstance(chk_v, dict) else '') or ''
+                                        ok_v   = st_v == 'OK'
+                                        chk_items_html += (
+                                            f'<div style="display:flex;align-items:center;justify-content:space-between;'
+                                            f'padding:5px 10px;border-radius:8px;margin-bottom:4px;'
+                                            f'background:{"white" if ok_v else "#fef2f2"};'
+                                            f'border:1px solid {"#e2e8f0" if ok_v else "#fecaca"};">'
+                                            f'<span style="font-size:11px;font-weight:600;color:#1e293b;">'
+                                            f'{"✅" if ok_v else "⚠️"} {chk_k}'
+                                            f'{" — " + note_v if note_v else ""}</span>'
+                                            f'<span style="font-size:9px;font-weight:800;padding:2px 8px;border-radius:100px;'
+                                            f'background:{"#dcfce7" if ok_v else "#fee2e2"};'
+                                            f'color:{"#15803d" if ok_v else "#dc2626"};">'
+                                            f'{"OK" if ok_v else "REVISAR"}</span></div>'
+                                        )
+                                    ui.html(f'<div style="margin-bottom:12px;">{chk_items_html}</div>')
+
+                                # ── EVIDENCIA FOTOS ────────────────────────
+                                if fotos_ev:
+                                    ui.html(f'<div style="font-size:10px;font-weight:900;color:#2356a8;'
+                                            f'text-transform:uppercase;letter-spacing:1.5px;'
+                                            f'margin-bottom:8px;">📷 Fotografías ({len(fotos_ev)})</div>')
+                                    fotos_html = ''
+                                    for fp in fotos_ev:
+                                        fotos_html += (
+                                            f'<a href="{fp}" target="_blank" style="display:block;'
+                                            f'width:80px;height:80px;border-radius:10px;overflow:hidden;'
+                                            f'border:2px solid #dde4f0;background:#f3f4f6;flex-shrink:0;">'
+                                            f'<img src="{fp}" style="width:100%;height:100%;object-fit:cover;" '
+                                            f'onerror="this.style.display=\'none\'"/>'
+                                            f'</a>'
+                                        )
+                                    ui.html(f'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
+                                            f'{fotos_html}</div>')
+
+                                # ── EVIDENCIA VIDEOS ───────────────────────
+                                if videos_ev:
+                                    ui.html(f'<div style="font-size:10px;font-weight:900;color:#2356a8;'
+                                            f'text-transform:uppercase;letter-spacing:1.5px;'
+                                            f'margin-bottom:8px;">📹 Videos ({len(videos_ev)})</div>')
+                                    for vp in videos_ev:
+                                        vfname = vp.split('/')[-1]
+                                        ui.html(f'''
+                                        <div style="background:#0f172a;border-radius:10px;overflow:hidden;
+                                                    border:1.5px solid #3b82f6;margin-bottom:8px;">
+                                            <video src="{vp}" controls preload="metadata" playsinline
+                                                style="width:100%;max-height:260px;display:block;">
+                                                Tu navegador no soporta video.
+                                            </video>
+                                            <div style="padding:8px 12px;display:flex;align-items:center;gap:8px;">
+                                                <span style="font-size:14px;">🎥</span>
+                                                <span style="font-size:11px;color:#94a3b8;flex:1;
+                                                             font-family:monospace;overflow:hidden;
+                                                             white-space:nowrap;text-overflow:ellipsis;">{vfname}</span>
+                                                <a href="{vp}" target="_blank"
+                                                   style="color:#60a5fa;font-size:11px;font-weight:700;
+                                                          text-decoration:none;white-space:nowrap;">Abrir →</a>
+                                            </div>
+                                        </div>
+                                        ''')
+
+                                # ── COTIZACIÓN ─────────────────────────────
+                                if items_ev:
+                                    ui.html(f'<div style="font-size:10px;font-weight:900;color:#2356a8;'
+                                            f'text-transform:uppercase;letter-spacing:1.5px;'
+                                            f'margin-bottom:8px;">🔩 Cotización de Repuestos</div>')
+                                    items_html = ''
+                                    for it_ev in items_ev:
+                                        it_name = it_ev.get('nombre', it_ev.get('item', 'Ítem'))
+                                        it_cant = it_ev.get('cantidad', 1)
+                                        it_pu   = float(it_ev.get('precio_unitario', 0))
+                                        it_tot  = float(it_ev.get('total', 0))
+                                        items_html += (
+                                            f'<div style="display:flex;justify-content:space-between;'
+                                            f'align-items:center;padding:6px 10px;border-bottom:1px solid #f1f5f9;">'
+                                            f'<div>'
+                                            f'<div style="font-size:12px;font-weight:700;color:#1e293b;">{it_name}</div>'
+                                            f'<div style="font-size:10px;color:#94a3b8;">Cant: {it_cant} × S/ {it_pu:.2f}</div>'
+                                            f'</div>'
+                                            f'<div style="font-size:13px;font-weight:800;color:#1a3a6b;">S/ {it_tot:.2f}</div>'
+                                            f'</div>'
+                                        )
+                                    base_v = total_ev / 1.18
+                                    igv_v  = total_ev - base_v
+                                    ui.html(f'''
+                                    <div style="background:white;border:1px solid #e2e8f0;
+                                                border-radius:10px;overflow:hidden;margin-bottom:4px;">
+                                        {items_html}
+                                        <div style="padding:10px 12px;background:#f8fafc;
+                                                    border-top:2px solid #e2e8f0;text-align:right;">
+                                            <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">
+                                                Base: S/ {base_v:.2f} | IGV: S/ {igv_v:.2f}
+                                            </div>
+                                            <div style="font-size:18px;font-weight:900;color:#1a3a6b;">
+                                                TOTAL S/ {total_ev:,.2f}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    ''')
+
+                                # ── Links de documentos ────────────────────
+                                pdf_ev = getattr(ord_ev, 'pdf_cotizacion', '') or ''
+                                fac_ev = getattr(ord_ev, 'factura_sunat', '') or ''
+                                if (pdf_ev and os.path.exists(pdf_ev)) or (fac_ev and os.path.exists(fac_ev)):
+                                    doc_links = ''
+                                    if pdf_ev and os.path.exists(pdf_ev):
+                                        doc_links += (f'<a href="/{pdf_ev}" target="_blank" '
+                                                      f'style="display:inline-flex;align-items:center;gap:4px;'
+                                                      f'background:#274495;color:white;padding:6px 12px;'
+                                                      f'border-radius:8px;font-size:11px;font-weight:700;'
+                                                      f'text-decoration:none;margin-right:6px;">📄 Presupuesto PDF</a>')
+                                    if fac_ev and os.path.exists(fac_ev):
+                                        doc_links += (f'<a href="/{fac_ev}" target="_blank" '
+                                                      f'style="display:inline-flex;align-items:center;gap:4px;'
+                                                      f'background:#059669;color:white;padding:6px 12px;'
+                                                      f'border-radius:8px;font-size:11px;font-weight:700;'
+                                                      f'text-decoration:none;">🧾 Factura SUNAT</a>')
+                                    ui.html(f'<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">'
+                                            f'{doc_links}</div>')
+
 
                 # ════════════════════════════════════════════════
                 # 7. MI CUENTA — Cambiar Contraseña
