@@ -350,12 +350,18 @@ def open_new_diagnostic_modal(consecutivo, container, state, stats_container=Non
                             def refresh_evidence():
                                 ev_container.clear()
                                 with ev_container:
-                                    # Existing
-                                    existing = order.fotos_evidencia or []
-                                    for path in existing:
-                                        with ui.card().classes('w-20 h-20 p-0 relative border border-gray-200 group'):
-                                            ui.image(path).classes('w-full h-full object-cover')
-                                            ui.button(icon='close', on_click=lambda p=path: remove_evidence(p)).props('flat dense color=red round size=xs').classes('absolute -top-2 -right-2 bg-white shadow-md z-10')
+                                    # Filtrar solo evidencias de DIAGNÓSTICO
+                                    existing = [p for p in (order.fotos_evidencia or []) 
+                                               if isinstance(p, dict) and p.get('fase') == 'DIAGNÓSTICO']
+                                    
+                                    if not existing and not new_evidence_files:
+                                        ui.label('Sin fotos de diagnóstico').classes('text-gray-400 italic text-xs py-4 mx-auto')
+
+                                    for p in existing:
+                                        path = p.get('path') if isinstance(p, dict) else p
+                                        with ui.card().classes('w-20 h-20 p-0 relative border border-gray-200 group overflow-hidden shadow-sm hover:shadow-md transition-shadow'):
+                                            ui.image(path).classes('w-full h-full object-cover cursor-pointer').on('click', lambda p=path: ui.open(p, '_blank'))
+                                            ui.button(icon='close', on_click=lambda p=path: remove_evidence(p)).props('flat dense color=red round size=xs').classes('absolute -top-1 -right-1 bg-white shadow-sm z-10')
                                     
                                     # New uploads placeholders (with preview!)
                                     import base64

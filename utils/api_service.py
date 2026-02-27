@@ -385,7 +385,8 @@ async def api_orden_evidencia(request: Request) -> JSONResponse:
             o = db.query(Orden).filter_by(consecutivo=cons).first()
             if o:
                 fotos = list(o.fotos_evidencia or [])
-                fotos.append(f"/evidencia/{filename}")
+                # Guardar como objeto estructurado para separar fases
+                fotos.append({'path': f"/evidencia/{filename}", 'fase': 'RECEPCIÓN'})
                 o.fotos_evidencia = fotos
                 db.commit()
         finally:

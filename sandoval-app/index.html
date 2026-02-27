@@ -1583,11 +1583,13 @@
 
         medios = raw.filter(m => {
           if (!m) return false;
+          // Si es un objeto estructurado, comparar fase exacta
           if (typeof m === 'object' && m.path) {
             return m.fase === faseNombre;
           }
-          if (typeof m === 'string' && (faseNombre === 'RECEPCIÓN' || !faseNombre)) {
-            return true;
+          // Si es un string (formato antiguo o carga inicial app), va solo a RECEPCIÓN
+          if (typeof m === 'string') {
+            return faseNombre === 'RECEPCIÓN';
           }
           return false;
         }).map(m => (typeof m === 'object') ? m.path : m);
