@@ -15,6 +15,30 @@ import theme
 ESTADOS = list(theme.ESTADOS_CONFIG.keys())
 TECNICOS_DEFAULT = ['Milton Sandoval', 'Hector Damian']
 
+# Extensiones de video reconocidas
+_VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.ogg'}
+
+def _is_video(path: str) -> bool:
+    """Retorna True si la ruta corresponde a un archivo de video"""
+    import os
+    return os.path.splitext((path or '').lower())[1] in _VIDEO_EXTS
+
+def _render_media_thumbnail(path, size='w-48 h-48'):
+    """Renderiza foto o video como miniatura clickeable"""
+    if _is_video(path):
+        with ui.card().classes(f'{size} p-0 relative border border-blue-200 rounded-xl overflow-hidden shadow-sm group'):
+            ui.html(f'''<video src="{path}" preload="metadata" muted playsinline
+                style="width:100%;height:100%;object-fit:cover;cursor:pointer;"
+                onclick="window.open('{path}','_blank')"></video>''').classes('w-full h-full')
+            with ui.row().classes('absolute inset-0 items-center justify-center pointer-events-none'):
+                ui.icon('play_circle_filled', size='40px').classes('text-white/80 drop-shadow')
+    else:
+        with ui.card().classes(f'{size} p-0 relative border border-slate-200 group rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow'):
+            ui.image(path).classes('w-full h-full object-cover')
+            with ui.row().classes('absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity items-center justify-center'):
+                ui.button(icon='zoom_in', on_click=lambda p=path: ui.run_javascript(f'window.open("{p}", "_blank")')).props('flat round color=white size=sm')
+
+
 def _get_tecnicos():
     try:
         from utils.models import ConfigSistema
@@ -440,7 +464,7 @@ def open_new_diagnostic_modal(consecutivo, container, state, stats_container=Non
                                 except Exception as err:
                                     theme.notify_error(f"Error crítico al subir: {str(err)}")
                                 
-                            ui.upload(on_upload=handle_upload, auto_upload=True, multiple=True, max_file_size=10_000_000).props('flat dense color=blue-7 accept="image/*" label="Seleccionar fotos (varias)"').classes('w-full border-2 border-dashed border-gray-300 rounded-lg p-2 hover:border-blue-400 transition-colors')
+                            ui.upload(on_upload=handle_upload, auto_upload=True, multiple=True, max_file_size=50_000_000).props('flat dense color=blue-7 accept="image/*,video/*" label="Fotos/Videos (seleccionar varios)"').classes('w-full border-2 border-dashed border-gray-300 rounded-lg p-2 hover:border-blue-400 transition-colors')
 
 
             # ─── FOOTER ───
@@ -3312,17 +3336,36 @@ def open_customer_preview(consecutivo):
                     else:
                         ui.label('El diagnóstico aún no ha sido finalizado por el técnico.').classes('text-slate-400 italic text-sm')
 
-                # SECTION 4: EVIDENCIA FOTOGRÁFICA
-                if order.fotos_evidencia and isinstance(order.fotos_evidencia, list):
-                    ui.label('EVIDENCIA FOTOGRÁFICA').classes('text-xs font-bold text-slate-400 tracking-[0.2em] mb-4 ml-2')
-                    with ui.row().classes('w-full gap-4 mb-4 flex-wrap'):
-                        for path in order.fotos_evidencia:
-                            with ui.card().classes('w-48 h-48 p-0 relative border border-slate-200 group rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow'):
-                                # Ensure correct path serving
-                                # If path stored is "/evidencia/...", main.py handles it
-                                ui.image(path).classes('w-full h-full object-cover')
-                                with ui.row().classes('absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity items-center justify-center'):
-                                    ui.button(icon='zoom_in', on_click=lambda p=path: ui.run_javascript(f'window.open("{p}", "_blank")')).props('flat round color=white size=sm')
+                # SECTION 4: EVIDENCIA (FOTOS Y VIDEOS)
+                medios = [m for m in (order.fotos_evidencia or []) if isinstance(m, str)]
+                if medios:
+                    fotos = [m for m in medios if not _is_video(m)]
+                    videos = [m for m in medios if _is_video(m)]
+                    
+                    if fotos:
+                        ui.label('EVIDENCIA FOTOGRÁFICA').classes('text-xs font-bold text-slate-400 tracking-[0.2em] mb-4 ml-2')
+                        with ui.row().classes('w-full gap-4 mb-4 flex-wrap'):
+                            for path in fotos:
+                                _render_media_thumbnail(path, 'w-48 h-48')
+                    
+                    if videos:
+                        ui.label('📹 EVIDENCIA EN VIDEO').classes('text-xs font-bold text-blue-500 tracking-[0.2em] mb-4 ml-2 mt-6')
+                        ui.label('El técnico ha subido un video mostrando la condición del vehículo:').classes('text-sm text-slate-500 mb-4 ml-2')
+                        with ui.column().classes('w-full gap-4 mb-8'):
+                            for path in videos:
+                                with ui.card().classes('w-full bg-slate-900 rounded-2xl overflow-hidden border border-blue-200 shadow-lg'):
+                                    ui.html(f'''
+                                        <video src="{path}" controls preload="metadata" playsinline
+                                            style="width:100%;max-height:400px;display:block;"
+                                            poster="" onloadedmetadata="this.style.display='block'">
+                                            Tu navegador no soporta reproducción de video.
+                                        </video>
+                                    ''')
+                                    with ui.row().classes('p-3 items-center gap-2'):
+                                        ui.icon('videocam', size='xs').classes('text-blue-400')
+                                        ui.label('Video diagnóstico — haz clic en ▶ para reproducir').classes('text-slate-400 text-xs')
+                                        ui.button('🔗 Ver en nueva pestaña', on_click=lambda p=path: ui.run_javascript(f'window.open("{p}","_blank")')).props('flat dense size=xs color=blue-3').classes('ml-auto text-xs')
+
 
                 # SECTION 5: PRESUPUESTO Y SERVICIOS (ULTRA PROFESSIONAL)
                 items = order.items_cotizacion or []

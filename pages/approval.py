@@ -217,15 +217,42 @@ def _render_approval(order, client, vehicle, token):
                     _info_field('Color', vehicle.color)
                     _info_field('VIN', vehicle.vin or '-')
         
-        # Evidencia de Ingreso
+        # Evidencia de Ingreso (Fotos + Videos)
         if order.fotos_evidencia and isinstance(order.fotos_evidencia, list):
+            _VIDEO_EXT = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.ogg'}
+            def _ev_is_video(p):
+                import os
+                return os.path.splitext((p or '').lower())[1] in _VIDEO_EXT
+
+            fotos_ev = [p for p in order.fotos_evidencia if not _ev_is_video(p)]
+            videos_ev = [p for p in order.fotos_evidencia if _ev_is_video(p)]
+
             with ui.card().classes('w-full max-w-2xl bg-white border border-gray-200 p-6 mb-4 shadow-sm'):
                 ui.label('EVIDENCIA DE INGRESO').classes('text-lg font-bold text-lime-700 mb-4')
-                with ui.row().classes('w-full gap-2 flex-wrap'):
-                    for path in order.fotos_evidencia:
-                        with ui.card().classes('w-40 h-40 p-0 relative border border-gray-300 group shadow-sm rounded-lg overflow-hidden'):
-                            ui.image(path).classes('w-full h-full object-cover rounded')
-                            ui.link('', path, new_tab=True).classes('absolute inset-0')
+
+                if fotos_ev:
+                    with ui.row().classes('w-full gap-2 flex-wrap mb-4'):
+                        for path in fotos_ev:
+                            with ui.card().classes('w-40 h-40 p-0 relative border border-gray-300 group shadow-sm rounded-lg overflow-hidden'):
+                                ui.image(path).classes('w-full h-full object-cover rounded')
+                                ui.link('', path, new_tab=True).classes('absolute inset-0')
+
+                if videos_ev:
+                    ui.label('📹 Videos adjuntos por el técnico:').classes('text-sm font-bold text-blue-600 mb-3')
+                    for path in videos_ev:
+                        with ui.card().classes('w-full bg-slate-900 rounded-xl overflow-hidden border border-blue-200 shadow-md mb-3'):
+                            ui.html(f'''
+                                <video src="{path}" controls preload="metadata" playsinline
+                                    style="width:100%;max-height:360px;display:block;">
+                                    Tu navegador no soporta reproducción de video.
+                                    <a href="{path}" target="_blank">Descargar video</a>
+                                </video>
+                            ''')
+                            with ui.row().classes('p-3 items-center gap-2'):
+                                ui.icon('videocam', size='xs').classes('text-blue-300')
+                                ui.label('Video adjunto por el técnico — haz clic ▶ para reproducir').classes('text-slate-300 text-xs flex-1')
+                                ui.html(f'<a href="{path}" target="_blank" style="color:#60a5fa;font-size:11px;font-weight:700;">Abrir →</a>')
+
         
         # ── Determinar flujo: RECEPCIÓN vs PRESUPUESTO ──────────────────────────
         items = order.items_cotizacion or []

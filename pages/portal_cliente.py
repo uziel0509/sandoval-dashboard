@@ -1004,13 +1004,14 @@ def show_portal(container):
                             <tr data-estado="{estado_cls}">
                                 <td class="td-fecha">{fecha_fmt}</td>
                                 <td class="td-servicio">{motivo_corto}</td>
-                                <td style="color:var(--gris-texto);font-size:12px;">{o.vehiculo_placa or '—'}</td>
+                                <td style="color:var(--gris-texto);font-size:12px;">{o.vehiculo_placa or chr(8212)}</td>
                                 <td><span class="p-folio">#{o.consecutivo}</span></td>
                                 <td class="td-costo">S/ {total_o:,.2f}</td>
                                 <td><span class="p-badge {estado_cls}">{badge_lbl}</span></td>
                                 <td style="white-space:nowrap;">{docs_btns}</td>
                             </tr>
                             '''
+
 
                         # ── Separar filas por estado para filtrado Python-side ──
                         filas_por_estado = {
@@ -1096,7 +1097,76 @@ def show_portal(container):
                         ''')
 
                 # ════════════════════════════════════════════════
-                # 6. MI CUENTA — Cambiar Contraseña
+                # 6. MIS EVIDENCIAS Y VIDEOS DE DIAGNÓSTICO
+                # ════════════════════════════════════════════════
+                _VIDEO_EXTS_P = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.ogg'}
+                def _p_is_video(p):
+                    import os
+                    return os.path.splitext((p or '').lower())[1] in _VIDEO_EXTS_P
+
+                # Recopilar todas las órdenes que tengan evidencias
+                ordenes_con_ev = [(o, list(o.fotos_evidencia or [])) for o in ordenes_all if o.fotos_evidencia]
+                if ordenes_con_ev:
+                    with ui.element('div').classes('p-card'):
+                        _section_title('\ud83d\udcc2', 'Mis Evidencias y Videos de Diagnóstico')
+                        ui.html('<div style="font-size:12px;color:var(--gris-texto);margin-bottom:16px;">Aquí puedes ver todas las fotos y videos adjuntados por el técnico en tus visitas al taller.</div>')
+
+                        for ord_ev, medios_ev in ordenes_con_ev:
+                            fotos_p = [m for m in medios_ev if not _p_is_video(m)]
+                            videos_p = [m for m in medios_ev if _p_is_video(m)]
+                            if not (fotos_p or videos_p):
+                                continue
+
+                            try:
+                                fd_ev = datetime.strptime(ord_ev.fecha[:10], '%Y-%m-%d')
+                                fecha_ev = f'{fd_ev.day} {_mes(fd_ev.month)} {fd_ev.year}'
+                            except Exception:
+                                fecha_ev = ord_ev.fecha[:10] if ord_ev.fecha else ''
+
+                            with ui.element('div').style('margin-bottom:24px;'):
+                                ui.html(f'''
+                                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                                        <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#1a3a6b;">
+                                            Orden #{ord_ev.consecutivo}
+                                        </span>
+                                        <span style="font-size:11px;color:var(--gris-texto);">— {fecha_ev}</span>
+                                        <span style="font-size:10px;color:var(--gris-texto);">{ord_ev.motivo or ''}</span>
+                                    </div>
+                                ''')
+
+                                if fotos_p:
+                                    with ui.row().classes('gap-2 flex-wrap mb-3'):
+                                        for fp in fotos_p:
+                                            ui.html(f'''
+                                                <a href="{fp}" target="_blank" style="display:block;width:90px;height:90px;
+                                                    border-radius:10px;overflow:hidden;border:2px solid var(--gris-borde);
+                                                    background:#f3f4f6;flex-shrink:0;">
+                                                    <img src="{fp}" style="width:100%;height:100%;object-fit:cover;"
+                                                        onerror="this.style.display='none'"/>
+                                                </a>
+                                            ''')
+
+                                if videos_p:
+                                    with ui.column().classes('gap-3 w-full'):
+                                        for vp in videos_p:
+                                            fn_v = vp.split('/')[-1]
+                                            ui.html(f'''
+                                                <div style="background:#0f172a;border-radius:12px;overflow:hidden;
+                                                    border:1.5px solid #3b82f6;">
+                                                    <video src="{vp}" controls preload="metadata" playsinline
+                                                        style="width:100%;max-height:280px;display:block;">
+                                                        Tu navegador no soporta video.
+                                                    </video>
+                                                    <div style="padding:8px 12px;display:flex;align-items:center;gap:8px;">
+                                                        <span style="font-size:18px;">\ud83c\udfa5</span>
+                                                        <span style="font-size:12px;color:#94a3b8;flex:1;">{fn_v}</span>
+                                                        <a href="{vp}" target="_blank" style="font-size:11px;color:#60a5fa;font-weight:700;text-decoration:none;">Abrir →</a>
+                                                    </div>
+                                                </div>
+                                            ''')
+
+                # ════════════════════════════════════════════════
+                # 7. MI CUENTA — Cambiar Contraseña
                 # ════════════════════════════════════════════════
                 with ui.element('div').classes('p-card'):
                     _section_title('🔐', 'Mi Cuenta')
