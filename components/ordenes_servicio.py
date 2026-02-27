@@ -13,31 +13,7 @@ import json
 import theme
 
 ESTADOS = list(theme.ESTADOS_CONFIG.keys())
-TECNICOS_DEFAULT = ['Milton Sandoval', 'Hector Damian']
-
-# Extensiones de video reconocidas
-_VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.ogg'}
-
-def _is_video(path: str) -> bool:
-    """Retorna True si la ruta corresponde a un archivo de video"""
-    import os
-    return os.path.splitext((path or '').lower())[1] in _VIDEO_EXTS
-
-def _render_media_thumbnail(path, size='w-48 h-48'):
-    """Renderiza foto o video como miniatura clickeable"""
-    if _is_video(path):
-        with ui.card().classes(f'{size} p-0 relative border border-blue-200 rounded-xl overflow-hidden shadow-sm group'):
-            ui.html(f'''<video src="{path}" preload="metadata" muted playsinline
-                style="width:100%;height:100%;object-fit:cover;cursor:pointer;"
-                onclick="window.open('{path}','_blank')"></video>''').classes('w-full h-full')
-            with ui.row().classes('absolute inset-0 items-center justify-center pointer-events-none'):
-                ui.icon('play_circle_filled', size='40px').classes('text-white/80 drop-shadow')
-    else:
-        with ui.card().classes(f'{size} p-0 relative border border-slate-200 group rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow'):
-            ui.image(path).classes('w-full h-full object-cover')
-            with ui.row().classes('absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity items-center justify-center'):
-                ui.button(icon='zoom_in', on_click=lambda p=path: ui.run_javascript(f'window.open("{p}", "_blank")')).props('flat round color=white size=sm')
-
+TECNICOS_DEFAULT = ['Técnico 1', 'Técnico 2', 'Técnico 3']
 
 def _get_tecnicos():
     try:
@@ -464,7 +440,7 @@ def open_new_diagnostic_modal(consecutivo, container, state, stats_container=Non
                                 except Exception as err:
                                     theme.notify_error(f"Error crítico al subir: {str(err)}")
                                 
-                            ui.upload(on_upload=handle_upload, auto_upload=True, multiple=True, max_file_size=50_000_000).props('flat dense color=blue-7 accept="image/*,video/*" label="Fotos/Videos (seleccionar varios)"').classes('w-full border-2 border-dashed border-gray-300 rounded-lg p-2 hover:border-blue-400 transition-colors')
+                            ui.upload(on_upload=handle_upload, auto_upload=True).props('flat dense color=blue-7 accept="image/*" label="Agregar fotos"').classes('w-full border-2 border-dashed border-gray-300 rounded-lg p-2 hover:border-blue-400 transition-colors')
 
 
             # ─── FOOTER ───
@@ -1202,7 +1178,7 @@ def _render_order_card(order, clients, vehicles, container, state, stats_contain
                 elif order.estado == 'REPARACIÓN':
                     ui.button(icon='edit', on_click=lambda o=order: open_advanced_repair_module(o.consecutivo, container, state, stats_container)).props('flat dense color=amber-8 size=sm').tooltip('Editar Reparación')
                 else:
-                    ui.button(icon='edit', on_click=lambda o=order: open_edit_reception_dialog(o.consecutivo, container, state, stats_container)).props('flat dense color=amber-8 size=sm').tooltip('Editar Recepción')
+                    ui.button(icon='edit', on_click=lambda o=order: open_edit_reception_dialog(o.consecutivo, container, state)).props('flat dense color=amber-8 size=sm').tooltip('Editar Recepción')
                 
                 # Gestión Interna (Llave/Settings)
                 ui.button(icon='settings', on_click=lambda o=order: open_order_detail(o.consecutivo, container, state)).props('flat dense color=grey-7 size=sm').tooltip('Detalles')
@@ -2689,59 +2665,14 @@ def open_order_detail(consecutivo, container, state):
                             ui.label(f"Token aprobación: ...{o['approval_token'][-8:]}").classes('text-cyan-600 text-xs')
         
         # Acciones
-        with ui.column().classes('w-full mt-4 border-t border-gray-200 pt-4 gap-3'):
-            # Fila 1: PDFs y envío
-            with ui.row().classes('w-full justify-between'):
-                with ui.row().classes('gap-2 flex-wrap'):
-                    ui.button('PDF Ingreso', icon='picture_as_pdf', on_click=lambda: generate_pdf(o, c, v, 'ingreso')).props('color=orange-6 size=sm')
-                    if items:
-                        ui.button('PDF Cotización', icon='request_quote', on_click=lambda: generate_pdf(o, c, v, 'cotizacion')).props('color=blue-6 size=sm')
-                    if estado in ('CONTROL', 'ENTREGA', 'ARCHIVADO') and items:
-                        ui.button('Factura/Boleta', icon='receipt', on_click=lambda: generate_pdf(o, c, v, 'factura')).props('color=green-6 size=sm')
-                    ui.button('Enviar al Cliente', icon='send', on_click=lambda: send_approval_link(consecutivo)).props('color=cyan-6 size=sm')
-
-            # Fila 2: Factura SUNAT (subida por admin)
-            factura_path = o.get('factura_sunat', '') or ''
-            with ui.card().classes('w-full bg-gray-50 border border-gray-200 p-3'):
-                with ui.row().classes('w-full items-center justify-between gap-3'):
-                    with ui.row().classes('items-center gap-2'):
-                        ui.icon('receipt_long', size='20px').classes('text-green-700')
-                        ui.label('Factura / Comprobante SUNAT').classes('text-sm font-bold text-gray-700')
-                    if factura_path and os.path.exists(factura_path):
-                        ui.label('✅ Factura cargada').classes('text-xs text-green-600 font-bold')
-                        ui.button('Ver / Descargar', icon='download', on_click=lambda fp=factura_path: ui.download(fp)).props('flat color=green-7 size=sm dense')
-                    else:
-                        ui.label('Sin factura cargada').classes('text-xs text-gray-400')
-
-                    def _subir_factura(e, cons=consecutivo):
-                        """Sube la factura SUNAT y la vincula a la orden"""
-                        try:
-                            content = e.content.read()
-                            ext = os.path.splitext(e.name)[1] or '.pdf'
-                            safe_cons = cons.replace('#', '').replace('/', '-')
-                            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-                            dest_path = f"pdfs/Factura_{safe_cons}_{ts}{ext}"
-                            os.makedirs('pdfs', exist_ok=True)
-                            with open(dest_path, 'wb') as f:
-                                f.write(content)
-                            db2 = get_db()
-                            try:
-                                ord2 = db2.query(Orden).filter_by(consecutivo=cons).first()
-                                if ord2:
-                                    ord2.factura_sunat = dest_path
-                                    db2.commit()
-                                    log_actividad(f'Factura SUNAT subida para {cons}', 'ordenes')
-                            finally:
-                                db2.close()
-                            ui.notify(f'✅ Factura guardada: {dest_path}', type='positive')
-                        except Exception as ex:
-                            ui.notify(f'Error al subir: {ex}', type='negative')
-
-                    ui.upload(
-                        label='Subir Factura PDF',
-                        on_upload=_subir_factura,
-                        max_file_size=10_000_000,
-                    ).props('accept=".pdf,.xml,.jpg,.png" flat dense color=green-7').classes('text-xs')
+        with ui.row().classes('w-full justify-between mt-4 border-t border-gray-200 pt-4'):
+            with ui.row().classes('gap-2'):
+                ui.button('PDF Ingreso', icon='picture_as_pdf', on_click=lambda: generate_pdf(o, c, v, 'ingreso')).props('color=orange-6 size=sm')
+                if items:
+                    ui.button('PDF Cotización', icon='request_quote', on_click=lambda: generate_pdf(o, c, v, 'cotizacion')).props('color=blue-6 size=sm')
+                if estado in ('CONTROL', 'ENTREGA', 'ARCHIVADO') and items:
+                    ui.button('Factura/Boleta', icon='receipt', on_click=lambda: generate_pdf(o, c, v, 'factura')).props('color=green-6 size=sm')
+                ui.button('Enviar al Cliente', icon='send', on_click=lambda: send_approval_link(consecutivo)).props('color=cyan-6 size=sm')
             
             if estado != 'ARCHIVADO':
                 next_idx = min(ESTADOS.index(estado) + 1, len(ESTADOS) - 1)
@@ -2760,20 +2691,10 @@ def open_create_order_dialog(container, state, stats_container=None):
     
     db = get_db()
     try:
-        clients  = db.query(Cliente).all()
+        clients = db.query(Cliente).all()
         client_opts = {c.id: f"{c.nombre} {c.apellidos}".strip() for c in clients}
         vehicles = db.query(Vehiculo).all()
-        # Todas las opciones y agrupadas por cliente_id
-        all_vehicle_opts = {
-            v.placa: f"{v.marca} {v.modelo} — {v.placa}"
-            for v in vehicles
-        }
-        vehicles_by_client = {}
-        for v in vehicles:
-            cid = v.cliente_id
-            if cid:
-                vehicles_by_client.setdefault(cid, {})
-                vehicles_by_client[cid][v.placa] = f"{v.marca} {v.modelo} — {v.placa}"
+        vehicle_opts = {v.placa: f"{v.marca} {v.modelo} - {v.placa}" for v in vehicles}
     finally:
         db.close()
     
@@ -2802,104 +2723,51 @@ def open_create_order_dialog(container, state, stats_container=None):
                 # Cliente
                 ui.label('Cliente *').classes('text-gray-600 text-xs mb-[-5px]')
                 with ui.row().classes('w-full gap-2 items-center'):
-                    cliente_sel = ui.select(
-                        client_opts,
-                        with_input=True,
-                        label='SELECCIONA CLIENTE'
-                    ).props('outlined dense use-input bg-color=white').classes('flex-1')
-
-                    def on_client_created(new_cid):
-                        db2 = get_db()
+                    cliente_sel = ui.select(client_opts, with_input=True, label='SELECCIONA CLIENTE').props('outlined dense use-input bg-color=white').classes('flex-1')
+                    
+                    def on_client_created(new_id):
+                        db = get_db()
                         try:
-                            c = db2.query(Cliente).filter_by(id=new_cid).first()
+                            c = db.query(Cliente).filter_by(id=new_id).first()
                             if c:
-                                client_opts[c.id] = f"{c.nombre} {c.apellidos}".strip()
-                                cliente_sel.options = dict(client_opts)
-                                cliente_sel.value   = c.id
+                                new_opts = client_opts.copy()
+                                new_opts[c.id] = f"{c.nombre} {c.apellidos}".strip()
+                                cliente_sel.options = new_opts
+                                cliente_sel.value = c.id
                                 cliente_sel.update()
                         finally:
-                            db2.close()
+                            db.close()
 
                     def open_new_client():
                         open_client_dialog(None, None, on_success=on_client_created)
 
-                    ui.button(icon='add', on_click=open_new_client).props(
-                        'unelevated color=lime-13 text-color=black round dense')
+                    ui.button(icon='add', on_click=open_new_client).props('unelevated color=lime-13 text-color=black round dense')
 
-                # ── Vehículo — filtrado automático por cliente ──────────
+                # Vehículo
                 ui.label('Vehículo *').classes('text-gray-600 text-xs mb-[-5px]')
-
-                # Indicador de autoselección
-                vehiculo_hint = ui.label('').classes(
-                    'text-[10px] text-lime-700 font-bold -mt-1 mb-1 h-4'
-                )
-
                 with ui.row().classes('w-full gap-2 items-center'):
-                    vehiculo_sel = ui.select(
-                        {},                         # Empieza vacío — se llena al elegir cliente
-                        with_input=True,
-                        label='PRIMERO SELECCIONA UN CLIENTE'
-                    ).props('outlined dense use-input bg-color=white').classes('flex-1')
-
-                    def _refresh_vehicle_opts(cid):
-                        """Actualiza el selector de vehículo según el cliente elegido."""
-                        client_vehicles = vehicles_by_client.get(cid, {})
-                        if not client_vehicles:
-                            vehiculo_sel.options = {}
-                            vehiculo_sel.label   = 'SIN VEHÍCULOS REGISTRADOS — Agrégalo con +'
-                            vehiculo_sel.value   = None
-                            vehiculo_hint.text   = ''
-                        elif len(client_vehicles) == 1:
-                            placa_unica = list(client_vehicles.keys())[0]
-                            vehiculo_sel.options = client_vehicles
-                            vehiculo_sel.label   = 'VEHÍCULO'
-                            vehiculo_sel.value   = placa_unica
-                            vehiculo_hint.text   = f'✔ Vehículo autoseleccionado: {client_vehicles[placa_unica]}'
-                        else:
-                            vehiculo_sel.options = client_vehicles
-                            vehiculo_sel.label   = 'SELECCIONA VEHÍCULO'
-                            vehiculo_sel.value   = None
-                            vehiculo_hint.text   = f'{len(client_vehicles)} vehículos registrados para este cliente'
-                        vehiculo_sel.update()
-
-                    def _on_cliente_change():
-                        cid = cliente_sel.value
-                        if cid:
-                            _refresh_vehicle_opts(cid)
-                        else:
-                            vehiculo_sel.options = {}
-                            vehiculo_sel.value   = None
-                            vehiculo_sel.label   = 'PRIMERO SELECCIONA UN CLIENTE'
-                            vehiculo_hint.text   = ''
-                            vehiculo_sel.update()
-
-                    cliente_sel.on('update:model-value', lambda _: _on_cliente_change())
-
+                    vehiculo_sel = ui.select(vehicle_opts, with_input=True, label='SELECCIONA VEHÍCULO').props('outlined dense use-input bg-color=white').classes('flex-1')
+                    
                     def on_vehicle_created(new_placa):
-                        db2 = get_db()
+                        db = get_db()
                         try:
-                            v = db2.query(Vehiculo).filter_by(placa=new_placa).first()
+                            v = db.query(Vehiculo).filter_by(placa=new_placa).first()
                             if v:
-                                all_vehicle_opts[v.placa] = f"{v.marca} {v.modelo} — {v.placa}"
-                                if v.cliente_id:
-                                    vehicles_by_client.setdefault(v.cliente_id, {})
-                                    vehicles_by_client[v.cliente_id][v.placa] = all_vehicle_opts[v.placa]
-                                    if not cliente_sel.value and v.cliente_id in client_opts:
-                                        cliente_sel.value = v.cliente_id
-                                        cliente_sel.update()
-                                    _refresh_vehicle_opts(v.cliente_id or cliente_sel.value)
-                                else:
-                                    vehiculo_sel.options = all_vehicle_opts
-                                    vehiculo_sel.value   = v.placa
-                                    vehiculo_sel.update()
+                                new_opts = vehicle_opts.copy()
+                                new_opts[v.placa] = f"{v.marca} {v.modelo} - {v.placa}"
+                                vehiculo_sel.options = new_opts
+                                vehiculo_sel.value = v.placa
+                                vehiculo_sel.update()
+                                # Si el vehículo tiene dueño y no hay cliente seleccionado, seleccionarlo
+                                if v.cliente_id and not cliente_sel.value:
+                                    cliente_sel.value = v.cliente_id
                         finally:
-                            db2.close()
-
+                            db.close()
+                            
                     def open_new_vehicle():
                         open_vehicle_dialog(None, None, on_success=on_vehicle_created)
 
-                    ui.button(icon='add', on_click=open_new_vehicle).props(
-                        'unelevated color=lime-13 text-color=black round dense')
+                    ui.button(icon='add', on_click=open_new_vehicle).props('unelevated color=lime-13 text-color=black round dense')
 
                 # Técnico
                 ui.label('Técnico responsable').classes('text-gray-600 text-xs mb-[-5px]')
@@ -2908,7 +2776,7 @@ def open_create_order_dialog(container, state, stats_container=None):
                 # Datos extra vehículo
                 with ui.row().classes('w-full gap-4'):
                     km_input = ui.input('Kilometraje').props('outlined dense type=number bg-color=white').classes('flex-1')
-                    combustible_input = ui.select(['Reserva', '1/8', '1/4', '1/2', '3/4', 'Full'], value='1/4', label='Nivel Combustible').props('outlined dense bg-color=white').classes('flex-1')
+                    combustible_input = ui.select(['Reserva', '1/4', '1/2', '3/4', 'Full'],  label='Nivel Combustible').props('outlined dense bg-color=white').classes('flex-1')
 
             # Columna Derecha: Detalles
             with ui.column().classes('flex-1 gap-4'):
@@ -3058,9 +2926,9 @@ def open_create_order_dialog(container, state, stats_container=None):
                             file_path = os.path.join(order_dir, name)
                             with open(file_path, 'wb') as f:
                                 f.write(content)
-                            # Guardar ruta relativa para acceso web
+                            # Guardar ruta relativa para acceso web e incluir la fase para separación
                             rel_path = f"/evidencia/{new_id.replace('#', '').replace('/', '_')}/{name}"
-                            evidencia_paths.append(rel_path)
+                            evidencia_paths.append({'path': rel_path, 'fase': 'RECEPCIÓN'})
 
                     new_order = Orden(
                         consecutivo=new_id,
@@ -3399,36 +3267,17 @@ def open_customer_preview(consecutivo):
                     else:
                         ui.label('El diagnóstico aún no ha sido finalizado por el técnico.').classes('text-slate-400 italic text-sm')
 
-                # SECTION 4: EVIDENCIA (FOTOS Y VIDEOS)
-                medios = [m for m in (order.fotos_evidencia or []) if isinstance(m, str)]
-                if medios:
-                    fotos = [m for m in medios if not _is_video(m)]
-                    videos = [m for m in medios if _is_video(m)]
-                    
-                    if fotos:
-                        ui.label('EVIDENCIA FOTOGRÁFICA').classes('text-xs font-bold text-slate-400 tracking-[0.2em] mb-4 ml-2')
-                        with ui.row().classes('w-full gap-4 mb-4 flex-wrap'):
-                            for path in fotos:
-                                _render_media_thumbnail(path, 'w-48 h-48')
-                    
-                    if videos:
-                        ui.label('📹 EVIDENCIA EN VIDEO').classes('text-xs font-bold text-blue-500 tracking-[0.2em] mb-4 ml-2 mt-6')
-                        ui.label('El técnico ha subido un video mostrando la condición del vehículo:').classes('text-sm text-slate-500 mb-4 ml-2')
-                        with ui.column().classes('w-full gap-4 mb-8'):
-                            for path in videos:
-                                with ui.card().classes('w-full bg-slate-900 rounded-2xl overflow-hidden border border-blue-200 shadow-lg'):
-                                    ui.html(f'''
-                                        <video src="{path}" controls preload="metadata" playsinline
-                                            style="width:100%;max-height:400px;display:block;"
-                                            poster="" onloadedmetadata="this.style.display='block'">
-                                            Tu navegador no soporta reproducción de video.
-                                        </video>
-                                    ''')
-                                    with ui.row().classes('p-3 items-center gap-2'):
-                                        ui.icon('videocam', size='xs').classes('text-blue-400')
-                                        ui.label('Video diagnóstico — haz clic en ▶ para reproducir').classes('text-slate-400 text-xs')
-                                        ui.button('🔗 Ver en nueva pestaña', on_click=lambda p=path: ui.run_javascript(f'window.open("{p}","_blank")')).props('flat dense size=xs color=blue-3').classes('ml-auto text-xs')
-
+                # SECTION 4: EVIDENCIA FOTOGRÁFICA
+                if order.fotos_evidencia and isinstance(order.fotos_evidencia, list):
+                    ui.label('EVIDENCIA FOTOGRÁFICA').classes('text-xs font-bold text-slate-400 tracking-[0.2em] mb-4 ml-2')
+                    with ui.row().classes('w-full gap-4 mb-4 flex-wrap'):
+                        for path in order.fotos_evidencia:
+                            with ui.card().classes('w-48 h-48 p-0 relative border border-slate-200 group rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow'):
+                                # Ensure correct path serving
+                                # If path stored is "/evidencia/...", main.py handles it
+                                ui.image(path).classes('w-full h-full object-cover')
+                                with ui.row().classes('absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity items-center justify-center'):
+                                    ui.button(icon='zoom_in', on_click=lambda p=path: ui.run_javascript(f'window.open("{p}", "_blank")')).props('flat round color=white size=sm')
 
                 # SECTION 5: PRESUPUESTO Y SERVICIOS (ULTRA PROFESSIONAL)
                 items = order.items_cotizacion or []
@@ -3484,35 +3333,31 @@ def open_customer_preview(consecutivo):
         db.close()
 
 
-def open_edit_reception_dialog(consecutivo, container, state, stats_container=None):
+def open_edit_reception_dialog(consecutivo, container, state):
     """Edita datos iniciales de recepción"""
     db = get_db()
     try:
         order = db.query(Orden).filter_by(consecutivo=consecutivo).first()
-        if not order:
-            theme.notify_error('Orden no encontrada')
+        if not order: 
             return
-
-        new_reception_files = []  # Para nuevas fotos durante edición
-
-        # Datos actuales con getattr para evitar AttributeError
-        curr_motivo  = getattr(order, 'motivo', '') or ''
-        curr_km      = getattr(order, 'km', '') or ''
-        curr_tecnico = getattr(order, 'tecnico', '') or ''
-        curr_diag_req = getattr(order, 'diagnostico_requerido', True)
-        curr_tipo    = getattr(order, 'tipo', 'Express') or 'Express'
-        curr_obs     = getattr(order, 'observaciones', '') or ''
-
+        
+        new_reception_files = [] # Para nuevas fotos durante edición
+        
+        # Datos actuales para prellenar
+        curr_motivo = order.motivo
+        curr_km = order.km
+        curr_tecnico = order.tecnico
+        curr_diag_req = order.diagnostico_requerido
+        curr_tipo = order.tipo
+        curr_obs = order.observaciones # A veces guardamos combustible aqui
+        
         # Intentar extraer combustible de obs si está formateado "Combustible: X"
-        combustible_val = '1/4'
-        if 'Combustible: ' in curr_obs:
+        combustible_val = 'Reserva'
+        if 'Combustible: ' in (curr_obs or ''):
             parts = curr_obs.split('Combustible: ')
             if len(parts) > 1:
                 combustible_val = parts[1].split('\n')[0].strip()
 
-    except Exception as ex:
-        theme.notify_error(f'Error al cargar orden: {ex}')
-        return
     finally:
         db.close()
 
@@ -3532,7 +3377,7 @@ def open_edit_reception_dialog(consecutivo, container, state, stats_container=No
                  
                  with ui.row().classes('w-full gap-4'):
                      km_input = ui.input('Kilometraje', value=curr_km).props('outlined dense bg-color=white').classes('flex-1')
-                     comb_input = ui.select(['Reserva', '1/8', '1/4', '1/2', '3/4', 'Full'], value=combustible_val if combustible_val in ['Reserva','1/8','1/4','1/2','3/4','Full'] else '1/4', label='Nivel Combustible').props('outlined dense bg-color=white').classes('flex-1')
+                     comb_input = ui.select(['Reserva', '1/4', '1/2', '3/4', 'Full'], value=combustible_val, label='Nivel Combustible').props('outlined dense bg-color=white').classes('flex-1')
              
                 with ui.column().classes('flex-1 gap-4'):
                     ui.label('GESTIÓN DE FOTOS').classes('text-xs font-bold text-blue-600 border-b w-full pb-1')
@@ -3597,7 +3442,7 @@ def open_edit_reception_dialog(consecutivo, container, state, stats_container=No
                         except Exception as err:
                             theme.notify_error(f"Error: {str(err)}")
 
-                    ui.upload(on_upload=handle_edit_up, auto_upload=True, multiple=True, max_file_size=10_000_000).props('flat dense color=blue-7 accept="image/*" label="Añadir fotos (varias)"').classes('w-full border border-dashed border-gray-300 rounded p-1')
+                    ui.upload(on_upload=handle_edit_up, auto_upload=True).props('flat dense color=blue-7 accept="image/*" label="Añadir fotos extra"').classes('w-full border border-dashed border-gray-300 rounded p-1')
                     refresh_edit_photos()
 
                     with ui.row().classes('w-full justify-between items-center mt-2'):
@@ -3640,7 +3485,7 @@ def open_edit_reception_dialog(consecutivo, container, state, stats_container=No
                         ddb.commit()
                         theme.notify_success('Recepción actualizada')
                         dialog.close()
-                        refresh_orders(container, state, stats_container)
+                        refresh_orders(container, state)
                 except Exception as e:
                     ddb.rollback()
                     theme.notify_error(f'Error: {e}')

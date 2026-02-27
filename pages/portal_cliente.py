@@ -1,2288 +1,476 @@
 """
-SANDOVAL Dashboard - Portal del Cliente v5.0
-Diseño premium basado en el HTML corporativo solicitado.
-Vinculado 100% a la base de datos SQLite real.
+SANDOVAL Dashboard - Portal del Cliente v4.0 (Premium Design)
+Seguimiento en vivo, historial y agendamiento con diseño corporativo avanzado.
 """
 
-import os
 import json
 from datetime import datetime, timedelta
 from nicegui import ui
-from utils.models import get_db, Cliente, Vehiculo, Orden, Cita, Actividad, verify_password, hash_password
+from utils.models import get_db, Cliente, Vehiculo, Orden, Cita
 from utils.auth import get_current_user
-from utils.notifications import get_client_notifications, marcar_notifs_leidas_cliente
-
-
-# ─── CSS GLOBAL DEL PORTAL ───────────────────────────────────────────────────
-
-PORTAL_CSS = '''
-<style>
-:root {
-    --azul: #1a3a6b;
-    --azul-med: #2356a8;
-    --azul-claro: #3a7bd5;
-    --azul-super-claro: #e8f0fb;
-    --azul-borde: #c5d8f5;
-    --blanco: #ffffff;
-    --gris-bg: #f4f7fc;
-    --gris-texto: #6b7a99;
-    --gris-borde: #dde4f0;
-    --verde: #1db97a;
-    --naranja: #f59e0b;
-    --rojo: #ef4444;
-    --texto: #1a2340;
-    --sombra: 0 2px 16px rgba(26,58,107,.10);
-    --sombra-hover: 0 6px 28px rgba(26,58,107,.18);
-}
-
-/* Reset NiceGUI para el portal */
-.portal-wrap * { box-sizing: border-box; }
-.portal-wrap { font-family: 'Inter', 'Outfit', sans-serif !important; }
-
-/* Cards */
-.p-card {
-    background: var(--blanco);
-    border-radius: 16px;
-    border: 1.5px solid var(--gris-borde);
-    box-shadow: var(--sombra);
-    padding: 28px;
-    width: 100%;
-}
-
-/* Stats */
-.p-stat {
-    background: var(--blanco);
-    border-radius: 14px;
-    border: 1.5px solid var(--gris-borde);
-    box-shadow: var(--sombra);
-    padding: 20px 22px;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    flex: 1;
-    min-width: 180px;
-}
-.p-stat-icon {
-    width: 46px; height: 46px;
-    border-radius: 12px;
-    background: var(--azul-super-claro);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px;
-    flex-shrink: 0;
-}
-.p-stat-num {
-    font-size: 28px; font-weight: 800;
-    color: var(--azul); line-height: 1;
-    margin-bottom: 3px;
-}
-.p-stat-label {
-    font-size: 12px; color: var(--gris-texto); font-weight: 500;
-}
-
-/* Tracker */
-.p-tracker {
-    background: var(--blanco);
-    border-radius: 16px;
-    border: 1.5px solid var(--gris-borde);
-    box-shadow: var(--sombra);
-    padding: 28px 32px;
-}
-.phases-wrapper {
-    position: relative;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin: 12px 0;
-}
-.phases-line {
-    position: absolute;
-    top: 26px; left: 4%; right: 4%;
-    height: 3px;
-    background: var(--gris-borde);
-    border-radius: 4px;
-    z-index: 0;
-}
-.phases-progress {
-    position: absolute;
-    top: 26px; left: 4%;
-    height: 3px;
-    background: linear-gradient(90deg, var(--azul), var(--azul-claro));
-    border-radius: 4px;
-    z-index: 1;
-    transition: width .8s ease;
-}
-.phase-item {
-    display: flex; flex-direction: column;
-    align-items: center; gap: 8px;
-    position: relative; z-index: 2;
-    flex: 1;
-}
-.phase-circle {
-    width: 52px; height: 52px;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 20px;
-    transition: all .25s;
-    position: relative;
-}
-.phase-item.done .phase-circle {
-    background: var(--azul); color: var(--blanco);
-    box-shadow: 0 4px 14px rgba(26,58,107,.3);
-}
-.phase-item.active .phase-circle {
-    background: var(--azul-med); color: var(--blanco);
-    box-shadow: 0 4px 20px rgba(35,86,168,.45);
-    animation: pulseRing 2s infinite;
-}
-@keyframes pulseRing {
-    0%, 100% { box-shadow: 0 4px 20px rgba(35,86,168,.45); }
-    50% { box-shadow: 0 4px 28px rgba(35,86,168,.8), 0 0 0 6px rgba(35,86,168,.1); }
-}
-.phase-item.pending .phase-circle {
-    background: var(--blanco);
-    border: 2.5px solid var(--gris-borde);
-    color: var(--gris-texto);
-}
-.phase-name {
-    font-size: 11px; font-weight: 600;
-    text-align: center; line-height: 1.3;
-    color: var(--gris-texto);
-}
-.phase-item.done .phase-name { color: var(--azul); }
-.phase-item.active .phase-name { color: var(--azul-med); font-weight: 700; }
-.phase-sub {
-    font-size: 10px; text-align: center;
-    color: var(--gris-texto);
-}
-.phase-item.done .phase-sub { color: var(--verde); font-weight: 500; }
-.phase-item.active .phase-sub { color: var(--naranja); font-weight: 500; }
-
-.tracker-status {
-    margin-top: 20px;
-    text-align: center;
-    font-size: 13px;
-    color: var(--gris-texto);
-    background: var(--gris-bg);
-    padding: 10px 20px;
-    border-radius: 8px;
-    border: 1px solid var(--gris-borde);
-}
-
-/* Section title */
-.p-section-title {
-    font-size: 18px; font-weight: 700;
-    color: var(--azul);
-    display: flex; align-items: center; gap: 8px;
-    margin-bottom: 18px;
-}
-.p-icon-circle {
-    width: 32px; height: 32px;
-    border-radius: 8px;
-    background: var(--azul-super-claro);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 15px;
-}
-
-/* Vehicle data rows */
-.p-data-row {
-    display: flex; justify-content: space-between;
-    align-items: center; font-size: 13.5px;
-    padding: 5px 0;
-}
-.p-data-label { color: var(--gris-texto); font-weight: 500; }
-.p-data-val { font-weight: 700; color: var(--texto); text-align: right; }
-.p-divider { height: 1px; background: var(--gris-borde); margin: 12px 0; }
-.p-obs {
-    font-size: 13px; color: var(--gris-texto);
-    line-height: 1.6;
-    background: var(--gris-bg); border-radius: 8px;
-    padding: 10px 14px;
-    border-left: 3px solid var(--azul-claro);
-}
-.p-mecanico {
-    display: inline-flex; align-items: center; gap: 8px;
-    background: var(--azul-super-claro);
-    border: 1px solid var(--azul-borde);
-    border-radius: 100px;
-    padding: 5px 12px;
-    font-size: 12px; color: var(--azul); font-weight: 500;
-    margin-top: 10px;
-}
-.p-vehicle-placeholder {
-    width: 100%; height: 160px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, var(--azul-super-claro), #dae8f9);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 52px; margin-bottom: 18px;
-    border: 2px dashed var(--azul-borde);
-}
-
-/* Services list */
-.p-service-row {
-    display: flex; align-items: center; gap: 12px;
-    padding: 11px 14px;
-    background: var(--gris-bg);
-    border-radius: 10px;
-    border: 1px solid var(--gris-borde);
-    transition: all .18s;
-    margin-bottom: 10px;
-}
-.p-service-row:hover {
-    border-color: var(--azul-borde);
-    background: var(--azul-super-claro);
-}
-.p-sr-icon {
-    width: 36px; height: 36px;
-    border-radius: 8px;
-    background: var(--blanco);
-    border: 1px solid var(--azul-borde);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px; flex-shrink: 0;
-}
-.p-sr-name { font-size: 13px; font-weight: 600; color: var(--texto); }
-.p-sr-qty { font-size: 11px; color: var(--gris-texto); }
-.p-sr-price { font-size: 14px; font-weight: 700; color: var(--azul); margin-left: auto; }
-
-/* Totals */
-.p-totals {
-    background: var(--gris-bg);
-    border-radius: 10px; padding: 14px 16px;
-    border: 1px solid var(--gris-borde); margin-top: 8px;
-}
-.p-total-row {
-    display: flex; justify-content: space-between;
-    font-size: 13px; color: var(--gris-texto); margin-bottom: 6px;
-}
-.p-total-final {
-    display: flex; justify-content: space-between;
-    font-size: 16px; font-weight: 800; color: var(--azul);
-    padding-top: 8px;
-    border-top: 2px solid var(--azul-borde); margin-top: 6px;
-}
-.p-btn-factura {
-    display: block; width: 100%; margin-top: 12px;
-    padding: 10px; border-radius: 10px;
-    border: 1.5px solid var(--azul-claro);
-    background: var(--blanco); color: var(--azul-med);
-    font-size: 13px; font-weight: 600;
-    cursor: pointer; text-align: center; transition: all .18s;
-    font-family: inherit;
-}
-.p-btn-factura:hover { background: var(--azul-super-claro); border-color: var(--azul); }
-
-/* Calendar strip */
-.p-cal-strip {
-    display: flex; gap: 8px;
-    overflow-x: auto; scrollbar-width: none;
-    padding-bottom: 4px; margin-bottom: 18px;
-}
-.p-cal-strip::-webkit-scrollbar { display: none; }
-.p-cal-day {
-    flex-shrink: 0; width: 58px; padding: 10px 6px;
-    border-radius: 12px; text-align: center;
-    border: 1.5px solid var(--gris-borde);
-    background: var(--blanco); cursor: pointer;
-    transition: all .18s;
-}
-.p-cal-day:hover { border-color: var(--azul-claro); background: var(--azul-super-claro); }
-.p-cal-day.selected { background: var(--azul); border-color: var(--azul); }
-.p-cal-day.selected .p-cal-dow,
-.p-cal-day.selected .p-cal-num { color: #fff !important; }
-.p-cal-dow {
-    font-size: 10px; text-transform: uppercase;
-    letter-spacing: 1px; color: var(--gris-texto);
-    margin-bottom: 4px; font-weight: 500;
-}
-.p-cal-num { font-size: 20px; font-weight: 800; color: var(--texto); line-height: 1; }
-
-/* Form labels */
-.p-form-label {
-    font-size: 11px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 1px;
-    color: var(--gris-texto); display: block; margin-bottom: 6px;
-}
-.p-btn-agendar {
-    display: flex; align-items: center; justify-content: center; gap: 10px;
-    width: 100%; padding: 15px;
-    background: var(--azul); border: none; border-radius: 12px;
-    color: var(--blanco); font-family: 'Inter', sans-serif;
-    font-size: 15px; font-weight: 700; cursor: pointer;
-    transition: all .2s; letter-spacing: .3px; margin-top: 16px;
-}
-.p-btn-agendar:hover {
-    background: var(--azul-med);
-    transform: translateY(-1px);
-    box-shadow: 0 6px 22px rgba(26,58,107,.3);
-}
-
-/* Notifications */
-.p-notif-item {
-    display: flex; gap: 12px; align-items: flex-start;
-    padding: 12px 14px; border-radius: 10px;
-    border: 1.5px solid var(--gris-borde);
-    background: var(--gris-bg); transition: all .18s;
-    margin-bottom: 10px;
-}
-.p-notif-item.nueva {
-    border-color: var(--azul-borde);
-    background: var(--azul-super-claro);
-}
-.p-notif-item:hover { border-color: var(--azul-borde); background: var(--azul-super-claro); }
-.p-ni-dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--azul-claro); margin-top: 5px; flex-shrink: 0;
-}
-.p-ni-dot.read { background: var(--gris-borde); }
-.p-ni-icon {
-    width: 36px; height: 36px; border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px; flex-shrink: 0;
-}
-.p-ni-icon.azul { background: var(--azul-super-claro); }
-.p-ni-icon.verde { background: rgba(29,185,122,.1); }
-.p-ni-icon.naranja { background: rgba(245,158,11,.1); }
-.p-ni-title { font-size: 13px; font-weight: 600; color: var(--texto); margin-bottom: 2px; }
-.p-ni-desc { font-size: 12px; color: var(--gris-texto); line-height: 1.4; }
-.p-ni-time { font-size: 11px; color: var(--gris-texto); margin-top: 3px; }
-
-/* Historial table */
-.p-hist-table { width: 100%; border-collapse: collapse; }
-.p-hist-table thead th {
-    font-size: 11px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 1px;
-    color: var(--gris-texto); padding: 8px 14px;
-    text-align: left; border-bottom: 2px solid var(--gris-borde);
-    background: var(--gris-bg);
-}
-.p-hist-table tbody tr {
-    border-bottom: 1px solid var(--gris-borde);
-    transition: background .15s; cursor: pointer;
-}
-.p-hist-table tbody tr:hover { background: var(--azul-super-claro); }
-.p-hist-table tbody td { padding: 12px 14px; font-size: 13.5px; }
-.td-fecha { color: var(--gris-texto); font-size: 12px; }
-.td-servicio { font-weight: 600; color: var(--texto); }
-.td-costo { font-weight: 700; color: var(--azul); }
-.p-folio {
-    font-size: 11px; color: var(--azul);
-    background: var(--azul-super-claro);
-    padding: 2px 7px; border-radius: 5px;
-    font-family: monospace;
-}
-.p-badge {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 4px 10px; border-radius: 100px;
-    font-size: 11px; font-weight: 600;
-}
-.p-badge.completado {
-    background: rgba(29,185,122,.1); color: var(--verde);
-    border: 1px solid rgba(29,185,122,.25);
-}
-.p-badge.proceso {
-    background: rgba(245,158,11,.1); color: var(--naranja);
-    border: 1px solid rgba(245,158,11,.25);
-}
-.p-badge.pendiente {
-    background: var(--gris-bg); color: var(--gris-texto);
-    border: 1px solid var(--gris-borde);
-}
-.p-ver-mas {
-    display: block; text-align: center;
-    padding: 10px; margin-top: 8px;
-    font-size: 13px; font-weight: 600;
-    color: var(--azul-med); cursor: pointer;
-    border-radius: 8px; transition: background .15s;
-}
-.p-ver-mas:hover { background: var(--azul-super-claro); }
-
-/* Tabs */
-.p-tabs {
-    display: flex; gap: 4px;
-    background: var(--gris-bg);
-    border-radius: 10px; padding: 4px;
-    border: 1px solid var(--gris-borde);
-}
-.p-tab {
-    padding: 8px 16px; border-radius: 8px;
-    font-size: 13px; font-weight: 500;
-    color: var(--gris-texto); cursor: pointer; transition: all .18s;
-}
-.p-tab.active {
-    background: var(--blanco); color: var(--azul);
-    font-weight: 700; box-shadow: 0 1px 6px rgba(26,58,107,.1);
-}
-
-/* Grid 2 col */
-.p-grid-2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-}
-@media (max-width: 900px) {
-    .p-grid-2 { grid-template-columns: 1fr; }
-    .p-stat { min-width: 140px; }
-}
-
-/* Toast animado */
-.p-toast {
-    background: var(--blanco);
-    border: 1.5px solid var(--azul-borde);
-    border-left: 4px solid var(--azul);
-    border-radius: 12px; padding: 14px 18px;
-    min-width: 280px;
-    display: flex; align-items: flex-start; gap: 12px;
-    box-shadow: 0 8px 32px rgba(26,58,107,.18);
-    animation: toastIn .35s ease forwards;
-    margin-bottom: 8px;
-}
-@keyframes toastIn {
-    from { opacity: 0; transform: translateX(40px); }
-    to { opacity: 1; transform: translateX(0); }
-}
-</style>
-<script>
-// Filtro de historial — disponible desde que carga el portal
-window._histFiltroActivo = 'todos';
-window.filterHist = function(tipo, el) {
-    window._histFiltroActivo = tipo;
-    document.querySelectorAll(".p-tab").forEach(function(t) { t.classList.remove("active"); });
-    if (el) el.classList.add("active");
-    var rows = document.querySelectorAll("#histTable tbody tr");
-    rows.forEach(function(r) {
-        if (tipo === "todos") { r.style.display = ""; }
-        else { r.style.display = (r.dataset.estado === tipo) ? "" : "none"; }
-    });
-};
-// Re-aplica el filtro activo cuando la tabla cambia (ver más / ver menos)
-window.reaplicarFiltroHist = function() {
-    var tipo = window._histFiltroActivo || 'todos';
-    var rows = document.querySelectorAll("#histTable tbody tr");
-    rows.forEach(function(r) {
-        if (tipo === "todos") { r.style.display = ""; }
-        else { r.style.display = (r.dataset.estado === tipo) ? "" : "none"; }
-    });
-};
-</script>
-'''
-
-
-# ─── FUNCIÓN PRINCIPAL ────────────────────────────────────────────────────────
+import theme
 
 def show_portal(container):
+    """
+    Portal de Cliente Premium basado en el diseño HTML/CSS solicitado.
+    Mantiene la vinculación con la base de datos Sandoval.
+    """
     user = get_current_user()
     if not user or user.get('rol') != 'cliente':
-        with container:
-            ui.label('Acceso no autorizado').classes('text-red-500 p-8')
+        ui.label('Acceso no autorizado').classes('text-red-500')
         return
-
-    ui.add_head_html(PORTAL_CSS)
-    
-    # Agregar estilos 3D mejorados
-    try:
-        from components.portal_cliente_3d import PORTAL_3D_ENHANCEMENTS
-        ui.add_head_html(PORTAL_3D_ENHANCEMENTS)
-    except ImportError:
-        pass
-    
-    # Agregar estilos premium v3.0
-    try:
-        from components.portal_cliente_premium import PORTAL_CLIENTE_PREMIUM_CSS
-        ui.add_head_html(PORTAL_CLIENTE_PREMIUM_CSS)
-    except ImportError:
-        pass
-
 
     db = get_db()
     try:
-        user_id   = user.get('id')
+        # 1. RECUPERACIÓN DE DATOS REALES
+        user_id = user.get('id')
         user_plate = user.get('placa')
-
-        cliente   = db.query(Cliente).filter_by(id=user_id).first()
-        vehiculo  = db.query(Vehiculo).filter_by(placa=user_plate).first()
-        todos_vehiculos = db.query(Vehiculo).filter_by(cliente_id=user_id).all()
-        ordenes_all = (
-            db.query(Orden)
-            .filter(Orden.vehiculo_placa.in_([v.placa for v in todos_vehiculos]))
-            .order_by(Orden.fecha.desc())
-            .all()
-        )
+        
+        cliente = db.query(Cliente).filter_by(id=user_id).first()
+        vehiculo = db.query(Vehiculo).filter_by(placa=user_plate).first()
+        ordenes_all = db.query(Orden).filter_by(vehiculo_placa=user_plate).order_by(Orden.fecha.desc()).all()
         citas_all = db.query(Cita).filter_by(cliente_id=user_id).all()
-
+        
         if not cliente:
-            with container:
-                ui.label('Error: Cliente no encontrado').classes('text-red-500 p-10')
+            ui.label('Error: Cliente no encontrado en DB').classes('text-red-500 p-10')
             return
 
-        # ── Cargar datos en memoria antes de cerrar sesión BD ─────
-        # Evita DetachedInstanceError si NiceGUI accede a atributos ORM
-        # después de que db.close() se ejecute en el finally
-        def _o2d(o):
-            """Convierte Orden ORM a dict plano seguro"""
-            return {c.name: getattr(o, c.name) for c in o.__table__.columns}
-
-        ordenes_dicts = [_o2d(o) for o in ordenes_all]
-        active_dict   = next(
-            (d for d in ordenes_dicts if d.get('estado') not in ('ARCHIVADO', 'ENTREGA')), None
-        )
-        # Mantener objetos ORM solo durante la sesión
-        active_order = next(
-            (o for o in ordenes_all if o.estado not in ('ARCHIVADO', 'ENTREGA')), None
-        )
+        # Órdenes activas y métricas
+        active_order = next((o for o in ordenes_all if o.estado not in ('ARCHIVADO', 'ENTREGA')), None)
         servicios_activos = 1 if active_order else 0
-        visitas_totales   = len(ordenes_all)
-        vehiculos_total   = len(todos_vehiculos)
+        visitas_totales = len(ordenes_all)
+        vehiculos_totales = db.query(Vehiculo).filter_by(cliente_id=user_id).count()
+        
+        proxima_cita = "—"
+        citas_futuras = [c for c in citas_all if c.fecha_cita >= datetime.now().strftime('%Y-%m-%d')]
+        if citas_futuras:
+            proxima_cita = sorted(citas_futuras, key=lambda x: x.fecha_cita)[0].fecha_cita
 
-        proxima_cita_label = '—'
-        hoy_str = datetime.now().strftime('%Y-%m-%d')
-        futuras = sorted(
-            [c for c in citas_all if c.fecha_cita >= hoy_str and c.estado != 'cancelada'],
-            key=lambda x: x.fecha_cita
-        )
-        if futuras:
-            fc = futuras[0]
-            try:
-                d = datetime.strptime(fc.fecha_cita, '%Y-%m-%d')
-                proxima_cita_label = f'{d.day} {_mes(d.month)}'
-            except Exception:
-                proxima_cita_label = fc.fecha_cita
+        # --- ESTILOS CSS INYECTADOS (Extraídos del diseño HTML) ---
+        ui.add_head_html(f'''
+        <style>
+            :root {{
+                --azul: #1a3a6b;
+                --azul-med: #2356a8;
+                --azul-claro: #3a7bd5;
+                --azul-super-claro: #e8f0fb;
+                --azul-borde: #c5d8f5;
+                --gris-bg: #f4f7fc;
+                --gris-texto: #6b7a99;
+                --gris-borde: #dde4f0;
+                --verde: #1db97a;
+                --naranja: #f59e0b;
+                --rojo: #ef4444;
+                --texto: #1a2340;
+                --sombra: 0 2px 16px rgba(26,58,107,.10);
+            }}
+            .card-premium {{
+                background: white; border-radius: 16px; 
+                border: 1.5px solid var(--gris-borde);
+                box-shadow: var(--sombra); padding: 24px;
+            }}
+            .stat-icon-wrap {{
+                width: 46px; height: 46px; border-radius: 12px;
+                background: var(--azul-super-claro);
+                display: flex; align-items: center; justify-content: center;
+                font-size: 22px;
+            }}
+            .phase-item {{ display: flex; flex-direction: column; align-items: center; gap: 8px; position: relative; z-index: 2; flex: 1; }}
+            .phase-circle {{
+                width: 48px; height: 48px; border-radius: 50%;
+                display: flex; align-items: center; justify-content: center;
+                font-size: 18px; transition: all .25s;
+            }}
+            .phase-item.done .phase-circle {{ background: var(--azul); color: white; }}
+            .phase-item.active .phase-circle {{ background: var(--azul-med); color: white; border: 4px solid var(--azul-super-claro); }}
+            .phase-item.pending .phase-circle {{ background: white; border: 2.5px solid var(--gris-borde); color: var(--gris-texto); }}
+            
+            /* Calendar Strip Styles */
+            .cal-strip {{ display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 20px; }}
+            .cal-day {{
+                min-width: 58px; padding: 12px 0; border-radius: 12px;
+                border: 1.5px solid var(--gris-borde); background: white;
+                display: flex; flex-direction: column; align-items: center; cursor: pointer;
+                transition: all 0.2s;
+            }}
+            .cal-day:hover {{ border-color: var(--azul-claro); background: var(--azul-super-claro); }}
+            .cal-day.selected {{ background: var(--azul); border-color: var(--azul); color: white; box-shadow: 0 4px 12px rgba(26,58,107,0.3); }}
+            .cal-dow {{ font-size: 10px; font-weight: 700; opacity: 0.6; text-transform: uppercase; margin-bottom: 2px; }}
+            .cal-day.selected .cal-dow {{ opacity: 0.8; }}
+            .cal-num {{ font-size: 20px; font-weight: 800; }}
+            
+            .label-premium {{ font-size: 11px; font-weight: 700; color: var(--gris-texto); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }}
+            .form-input-premium {{ 
+                background: var(--gris-bg); border: 1.5px solid var(--gris-borde); 
+                border-radius: 12px; padding: 12px 16px; font-size: 14px; color: var(--texto);
+                transition: all 0.2s;
+            }}
+            .form-input-premium:focus-within {{ border-color: var(--azul-claro); background: white; box-shadow: 0 0 0 4px rgba(58,123,213,0.1); }}
+        </style>
+        ''')
 
-        # ── Notificaciones del cliente ────────────────────────────
-        notifs_cliente = get_client_notifications(user_id, user_plate)
+        with container.classes('w-full max-w-[1200px] mx-auto p-4 gap-6'):
+            
+            # 2. STATS ROW
+            with ui.row().classes('w-full gap-4'):
+                _quick_stat('🚗', str(vehiculos_totales), 'Mis vehículos')
+                _quick_stat('🔧', str(servicios_activos), 'Servicio activo')
+                _quick_stat('📋', str(visitas_totales), 'Visitas totales')
+                _quick_stat('📅', str(proxima_cita), 'Próx. cita')
 
-        # ── Historial de actividad del historial de la orden ──────
-        actividades_orden = []
-        if active_order and active_order.historial:
-            hist = active_order.historial
-            if isinstance(hist, str):
-                try: hist = json.loads(hist)
-                except: hist = []
-            actividades_orden = hist if isinstance(hist, list) else []
-
-        # ─────────────────────────────────────────────────────────
-        # RENDER DEL PORTAL
-        # ─────────────────────────────────────────────────────────
-        with container:
-            with ui.element('div').classes('portal-wrap w-full flex flex-col gap-6'):
-
-                # ════════════════════════════════════════════════
-                # 1. STATS ROW - Cards Clickeables
-                # ════════════════════════════════════════════════
-                
-                # Crear funciones de callback con variables capturadas
-                def click_vehiculos():
-                    _mostrar_vehiculos_dialog(get_db(), cliente_id)
-                
-                def click_servicio():
-                    if active_order:
-                        _mostrar_servicio_dialog(active_order, vehiculo)
-                
-                def click_historial():
-                    _mostrar_historial_dialog(get_db(), cliente_id)
-                
-                def click_cita():
-                    _mostrar_cita_dialog(get_db(), cliente_id)
-                
-                with ui.element('div').style('display:flex;gap:16px;flex-wrap:wrap;'):
-                    # Card: Mis vehículos
-                    with ui.element('div').classes('portal-stat-card cursor-pointer').style(
-                        '--color-start: #3b82f6; --color-end: #60a5fa; flex: 1; min-width: 200px;'
-                    ).on('click', click_vehiculos):
-                        ui.html(f'''
-                        <div class="portal-stat-icon" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">
-                            🚗
-                        </div>
-                        <div class="p-stat-num" style="font-size: 2rem; font-weight: 900; color: #1e293b; margin-bottom: 0.25rem;">
-                            {vehiculos_total}
-                        </div>
-                        <div class="p-stat-label" style="font-size: 0.875rem; color: #64748b; font-weight: 600;">
-                            Mis vehículos
-                        </div>
-                        ''')
+            # 3. TRACKER DE SEGUIMIENTO (Si hay orden activa)
+            if active_order:
+                with ui.element('div').classes('card-premium w-full mt-4'):
+                    with ui.row().classes('w-full justify-between items-center mb-8'):
+                        with ui.column().classes('gap-0'):
+                            ui.label('SEGUIMIENTO EN VIVO').classes('text-[10px] font-black text-blue-800 tracking-widest uppercase opacity-50')
+                            ui.label(f'Orden de Trabajo #{active_order.consecutivo}').classes('text-xl font-bold text-gray-900')
+                        ui.label(f'📅 Entrega estimada: {getattr(active_order, "proximo_mantenimiento", "Pendiente") or "Pendiente"}').classes('text-xs font-bold text-blue-900 bg-blue-50 px-4 py-2 rounded-full border border-blue-100')
                     
-                    # Card: Servicio activo
-                    with ui.element('div').classes('portal-stat-card cursor-pointer').style(
-                        '--color-start: #10b981; --color-end: #34d399; flex: 1; min-width: 200px;'
-                    ).on('click', click_servicio):
-                        ui.html(f'''
-                        <div class="portal-stat-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">
-                            🔧
-                        </div>
-                        <div class="p-stat-num" style="font-size: 2rem; font-weight: 900; color: #1e293b; margin-bottom: 0.25rem;">
-                            {servicios_activos}
-                        </div>
-                        <div class="p-stat-label" style="font-size: 0.875rem; color: #64748b; font-weight: 600;">
-                            Servicio activo
-                        </div>
-                        ''')
+                    _render_tracker(active_order.estado)
                     
-                    # Card: Visitas totales
-                    with ui.element('div').classes('portal-stat-card cursor-pointer').style(
-                        '--color-start: #8b5cf6; --color-end: #a78bfa; flex: 1; min-width: 200px;'
-                    ).on('click', click_historial):
-                        ui.html(f'''
-                        <div class="portal-stat-icon" style="background: rgba(139, 92, 246, 0.15); color: #8b5cf6;">
-                            📋
-                        </div>
-                        <div class="p-stat-num" style="font-size: 2rem; font-weight: 900; color: #1e293b; margin-bottom: 0.25rem;">
-                            {visitas_totales}
-                        </div>
-                        <div class="p-stat-label" style="font-size: 0.875rem; color: #64748b; font-weight: 600;">
-                            Visitas totales
-                        </div>
-                        ''')
+                    with ui.element('div').classes('mt-8 p-4 bg-gray-50 rounded-xl border border-gray-100 flex items-center gap-4'):
+                        ui.icon('info', color='blue-900', size='sm')
+                        ui.label(f'Estado actual: {active_order.estado} — {active_order.motivo or "Procesando vehículo..."}').classes('text-sm text-gray-600')
+
+            # 4. GRID CENTRAL: DATOS VEHÍCULO + COTIZACIÓN (Vertical Stack)
+            with ui.column().classes('w-full gap-6 mt-4'):
+                # Ficha Vehículo
+                with ui.element('div').classes('card-premium w-full'):
+                    ui.label('🚙 Estado de su Vehículo').classes('text-lg font-bold text-blue-900 mb-6 block')
                     
-                    # Card: Próxima cita
-                    with ui.element('div').classes('portal-stat-card cursor-pointer').style(
-                        '--color-start: #f59e0b; --color-end: #fbbf24; flex: 1; min-width: 200px;'
-                    ).on('click', click_cita):
-                        ui.html(f'''
-                        <div class="portal-stat-icon" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">
-                            📅
-                        </div>
-                        <div class="p-stat-num" style="font-size: 2rem; font-weight: 900; color: #1e293b; margin-bottom: 0.25rem;">
-                            {proxima_cita_label}
-                        </div>
-                        <div class="p-stat-label" style="font-size: 0.875rem; color: #64748b; font-weight: 600;">
-                            Próx. cita
-                        </div>
-                        ''')
+                    with ui.element('div').classes('w-full h-40 bg-blue-50 rounded-2xl mb-6 flex items-center justify-center border-2 border-dashed border-blue-100'):
+                        ui.image('/assets/logo_sandoval.jpg').classes('w-20 opacity-20')
+                    
+                    with ui.column().classes('w-full gap-2.5'):
+                        _data_row('Vehículo', f'{vehiculo.marca} {vehiculo.modelo} {vehiculo.año}')
+                        _data_row('Placa', vehiculo.placa)
+                        _data_row('KM actual', str(active_order.km if active_order else '—'))
+                        _data_row('Técnico', str(active_order.tecnico if active_order else '—'))
+                    
+                    if active_order and active_order.observaciones:
+                        ui.element('div').classes('h-[1px] bg-gray-100 my-4')
+                        ui.label(active_order.observaciones).classes('text-xs text-gray-500 italic bg-gray-50 p-4 rounded-xl border-l-4 border-blue-300')
 
-                # ════════════════════════════════════════════════
-                # 2. TRACKER DE SEGUIMIENTO
-                # ════════════════════════════════════════════════
-                if active_order:
-                    _render_tracker_card(active_order, vehiculo)
-                else:
-                    with ui.element('div').classes('p-card'):
-                        ui.html('''
-                        <div style="text-align:center;padding:40px 0;color:var(--gris-texto);">
-                            <div style="font-size:48px;margin-bottom:12px;">✅</div>
-                            <div style="font-size:16px;font-weight:700;color:var(--azul);margin-bottom:6px;">
-                                No hay servicios activos
-                            </div>
-                            <div style="font-size:13px;">Su vehículo no está en taller en este momento.</div>
-                        </div>
-                        ''')
-
-                # ════════════════════════════════════════════════
-                # 2b. RECEPCIÓN DEL VEHÍCULO — Solo Lectura para el cliente
-                # ════════════════════════════════════════════════
-                if active_order and active_dict:
-                    # Extraer nivel de combustible de observaciones
-                    obs_recv = active_dict.get('observaciones', '') or ''
-                    comb_val = '—'
-                    if 'Combustible: ' in obs_recv:
-                        try:
-                            comb_val = obs_recv.split('Combustible: ')[1].split('\n')[0].strip()
-                        except Exception:
-                            comb_val = '—'
-
-                    recv_km        = active_dict.get('km', '') or '—'
-                    recv_tec       = active_dict.get('tecnico', '') or '—'
-                    recv_motivo    = active_dict.get('motivo', '') or '—'
-                    recv_tipo      = active_dict.get('tipo', '') or '—'
-                    recv_fecha     = active_dict.get('fecha', '') or ''
-                    recv_consec    = active_dict.get('consecutivo', '') or ''
-                    recv_fotos_raw = active_dict.get('fotos_evidencia') or []
-                    recv_fotos_raw = recv_fotos_raw if isinstance(recv_fotos_raw, list) else []
-
-                    # Clasificar medios
-                    _VID_R = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.ogg'}
-                    def _is_vid_r(p): return os.path.splitext((p or '').lower())[1] in _VID_R
-                    recv_fotos  = [p for p in recv_fotos_raw if isinstance(p, str) and not _is_vid_r(p)]
-                    recv_videos = [p for p in recv_fotos_raw if isinstance(p, str) and _is_vid_r(p)]
-
-                    try:
-                        fd_r = datetime.strptime(recv_fecha[:10], '%Y-%m-%d')
-                        recv_fecha_fmt = f'{fd_r.day} {_mes(fd_r.month)} {fd_r.year}'
-                    except Exception:
-                        recv_fecha_fmt = recv_fecha[:10] if recv_fecha else '—'
-
-                    with ui.element('div').classes('p-card').style('border-left:4px solid #1a3a6b;'):
-                        # Encabezado
-                        ui.html(f'''
-                        <div style="display:flex;align-items:flex-start;justify-content:space-between;
-                                    flex-wrap:wrap;gap:12px;margin-bottom:20px;">
-                            <div>
-                                <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-                                    <div style="width:36px;height:36px;background:#e8f0fb;border-radius:10px;
-                                                display:flex;align-items:center;justify-content:center;font-size:18px;">
-                                        📥
-                                    </div>
-                                    <div>
-                                        <div style="font-size:11px;font-weight:900;color:#1a3a6b;
-                                                    text-transform:uppercase;letter-spacing:1.5px;">
-                                            Recepción de mi Vehículo
-                                        </div>
-                                        <div style="font-size:11px;color:var(--gris-texto);margin-top:1px;">
-                                            Solo lectura — información registrada al ingreso al taller
-                                        </div>
-                                    </div>
-                                </div>
-                                <div style="font-size:15px;font-weight:800;color:var(--texto);margin-top:4px;">
-                                    {recv_motivo}
-                                </div>
-                            </div>
-                            <div style="text-align:right;">
-                                <div style="font-size:11px;font-family:monospace;background:#e8f0fb;
-                                            color:#1a3a6b;padding:4px 10px;border-radius:6px;
-                                            font-weight:700;margin-bottom:4px;">
-                                    #{recv_consec}
-                                </div>
-                                <div style="font-size:11px;color:var(--gris-texto);">
-                                    📅 {recv_fecha_fmt}
-                                </div>
-                                <div style="font-size:10px;color:var(--gris-texto);margin-top:2px;">
-                                    Tipo: {recv_tipo}
-                                </div>
-                            </div>
-                        </div>
-                        ''')
-
-                        # Grid de datos de recepción
-                        ui.html(f'''
-                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
-                                    gap:10px;margin-bottom:20px;">
-                            <div style="background:#f8fafc;border:1.5px solid #dde4f0;border-radius:12px;
-                                        padding:12px;text-align:center;">
-                                <div style="font-size:20px;margin-bottom:4px;">🛣️</div>
-                                <div style="font-size:10px;font-weight:800;color:#6b7a99;
-                                            text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">
-                                    Kilometraje
-                                </div>
-                                <div style="font-size:16px;font-weight:800;color:var(--azul);">
-                                    {recv_km} km
-                                </div>
-                            </div>
-                            <div style="background:#f8fafc;border:1.5px solid #dde4f0;border-radius:12px;
-                                        padding:12px;text-align:center;">
-                                <div style="font-size:20px;margin-bottom:4px;">⛽</div>
-                                <div style="font-size:10px;font-weight:800;color:#6b7a99;
-                                            text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">
-                                    Combustible
-                                </div>
-                                <div style="font-size:16px;font-weight:800;color:var(--azul);">
-                                    {comb_val}
-                                </div>
-                            </div>
-                            <div style="background:#f8fafc;border:1.5px solid #dde4f0;border-radius:12px;
-                                        padding:12px;text-align:center;">
-                                <div style="font-size:20px;margin-bottom:4px;">🧑‍🔧</div>
-                                <div style="font-size:10px;font-weight:800;color:#6b7a99;
-                                            text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">
-                                    Técnico
-                                </div>
-                                <div style="font-size:14px;font-weight:800;color:var(--azul);">
-                                    {recv_tec}
-                                </div>
-                            </div>
-                            <div style="background:#f4f7fc;border:1.5px solid #dde4f0;border-radius:12px;
-                                        padding:12px;text-align:center;
-                                        border-style:dashed;">
-                                <div style="font-size:20px;margin-bottom:4px;">🔒</div>
-                                <div style="font-size:10px;font-weight:800;color:#6b7a99;
-                                            text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">
-                                    Modo
-                                </div>
-                                <div style="font-size:12px;font-weight:700;color:#94a3b8;">
-                                    Solo lectura
-                                </div>
-                            </div>
-                        </div>
-                        ''')
-
-                        # Evidencia fotográfica de recepción
-                        if recv_fotos or recv_videos:
-                            ui.html(f'''
-                            <div style="font-size:10px;font-weight:900;color:#1a3a6b;
-                                        text-transform:uppercase;letter-spacing:1.5px;
-                                        margin-bottom:12px;display:flex;align-items:center;gap:8px;">
-                                📸 Evidencia de Ingreso al Taller
-                                <span style="background:#e8f0fb;color:#1a3a6b;font-size:9px;
-                                             font-weight:700;padding:2px 8px;border-radius:100px;">
-                                    {len(recv_fotos_raw)} archivo{"s" if len(recv_fotos_raw)!=1 else ""}
-                                </span>
-                            </div>
-                            ''')
-
-                            # Galería de fotos
-                            if recv_fotos:
-                                gallery_html = ''
-                                for fp in recv_fotos:
-                                    gallery_html += f'''
-                                    <a href="{fp}" target="_blank"
-                                       style="display:block;width:110px;height:110px;
-                                              border-radius:12px;overflow:hidden;flex-shrink:0;
-                                              border:2px solid var(--gris-borde);background:#f3f4f6;
-                                              transition:transform .18s;cursor:pointer;"
-                                       onmouseover="this.style.transform='scale(1.05)'"
-                                       onmouseout="this.style.transform='scale(1)'">
-                                        <img src="{fp}" style="width:100%;height:100%;object-fit:cover;"
-                                             onerror="this.style.display='none'"/>
-                                    </a>'''
-                                ui.html(f'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">'
-                                        f'{gallery_html}</div>')
-
-                            # Videos de recepción
-                            if recv_videos:
-                                ui.html(f'<div style="font-size:11px;font-weight:700;color:#2356a8;'
-                                        f'margin-bottom:8px;margin-top:4px;">'
-                                        f'📹 Videos de ingreso ({len(recv_videos)})</div>')
-                                for vp in recv_videos:
-                                    vfn = vp.split('/')[-1]
-                                    ui.html(f'''
-                                    <div style="background:#0f172a;border-radius:12px;overflow:hidden;
-                                                border:1.5px solid #3b82f6;margin-bottom:10px;">
-                                        <video src="{vp}" controls preload="metadata" playsinline
-                                            style="width:100%;max-height:300px;display:block;">
-                                            Tu navegador no soporta reproducción de video.
-                                        </video>
-                                        <div style="padding:8px 14px;display:flex;align-items:center;gap:8px;">
-                                            <span style="font-size:16px;">🎥</span>
-                                            <span style="font-size:11px;color:#94a3b8;flex:1;
-                                                         font-family:monospace;overflow:hidden;
-                                                         white-space:nowrap;text-overflow:ellipsis;">{vfn}</span>
-                                            <a href="{vp}" target="_blank"
-                                               style="color:#60a5fa;font-size:11px;font-weight:700;
-                                                      text-decoration:none;white-space:nowrap;">
-                                                Abrir →
-                                            </a>
-                                        </div>
-                                    </div>
-                                    ''')
-                        else:
-                            ui.html('''
-                            <div style="text-align:center;padding:20px;background:#f8fafc;
-                                        border-radius:12px;border:1.5px dashed #dde4f0;color:#94a3b8;">
-                                <div style="font-size:28px;margin-bottom:6px;">📷</div>
-                                <div style="font-size:12px;font-weight:600;">
-                                    El técnico aún no ha subido evidencia fotográfica de ingreso.
-                                </div>
-                            </div>
-                            ''')
-
-                # ════════════════════════════════════════════════
-                # 2c. SEGUIMIENTO DE ETAPAS 2-7 (Solo Lectura)
-                # ════════════════════════════════════════════════
-                if active_order and active_dict:
-                    _NORM7 = {
-                        'RECEPCION': 'RECEPCIÓN', 'DIAGNOSTICO': 'DIAGNÓSTICO',
-                        'APROBACION': 'APROBACIÓN', 'REPARACION': 'REPARACIÓN',
-                    }
-                    _PH7 = ['RECEPCIÓN','DIAGNÓSTICO','REPUESTOS','APROBACIÓN','REPARACIÓN','CONTROL','ENTREGA']
-                    _es7  = (active_dict.get('estado', '') or '').upper().strip()
-                    _esn7 = _NORM7.get(_es7, _es7)
-                    _ci7  = _PH7.index(_esn7) if _esn7 in _PH7 else 0
-
-                    def _phst7(i):
-                        return 'done' if i < _ci7 else ('active' if i == _ci7 else 'pending')
-
-                    def _phdr7(num, icon, name, st):
-                        if st == 'done':
-                            c, bg, bd, inner, lbl = '#1db97a', '#f0fdf4', '#bbf7d0', '✓', 'COMPLETADO'
-                        elif st == 'active':
-                            c, bg, bd, inner, lbl = '#1a3a6b', '#e8f0fb', '#c5d8f5', icon, 'EN CURSO'
-                        else:
-                            c, bg, bd, inner, lbl = '#94a3b8', '#f8fafc', '#e2e8f0', str(num), 'PENDIENTE'
-                        return (
-                            '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">'
-                            + '<div style="width:36px;height:36px;background:' + bg + ';border:2px solid ' + bd + ';'
-                            + 'border-radius:50%;display:flex;align-items:center;justify-content:center;'
-                            + 'font-size:15px;font-weight:900;color:' + c + ';flex-shrink:0;">' + inner + '</div>'
-                            + '<div><span style="font-size:12px;font-weight:900;color:#1a3a6b;'
-                            + 'text-transform:uppercase;letter-spacing:1px;">' + name + '</span>'
-                            + '<span style="background:' + bg + ';color:' + c + ';font-size:9px;font-weight:800;'
-                            + 'padding:2px 8px;border-radius:100px;margin-left:8px;">' + lbl + '</span>'
-                            + '</div></div>'
-                        )
-
-                    _chk7  = active_dict.get('checklist_reparacion') or {}
-                    if isinstance(_chk7, str):
-                        try: _chk7 = json.loads(_chk7)
-                        except Exception: _chk7 = {}
-                    _dd7   = (_chk7 or {}).get('diagnostic_details', {}) or {}
-                    _qchk7 = (_chk7 or {}).get('quick_check', {}) or {}
-                    _sc7   = _dd7.get('scanner_path', '')
-                    _pdx7  = active_dict.get('diagnostico', '') or ''
-                    _its7  = _safe_json(active_dict.get('items_cotizacion'))
-                    _sub7  = sum(float(it.get('total', 0) or 0) for it in _its7)
-                    _apst7 = active_dict.get('approval_status', 'pendiente') or 'pendiente'
-                    _apdt7 = active_dict.get('approval_date', '') or ''
-                    _nt7   = active_dict.get('notas_entrega', '') or ''
-                    _pm7   = active_dict.get('proximo_mantenimiento', '') or ''
-
-                    with ui.element('div').classes('p-card').style('padding:0;'):
-                        # Cabecera
-                        ui.html(
-                            '<div style="padding:16px 20px 12px;border-bottom:1px solid #f1f5f9;">'
-                            '<div style="display:flex;align-items:center;gap:10px;">'
-                            '<div style="width:36px;height:36px;background:#e8f0fb;border-radius:10px;'
-                            'display:flex;align-items:center;justify-content:center;font-size:18px;">📊</div>'
-                            '<div>'
-                            '<div style="font-size:13px;font-weight:900;color:#1a3a6b;">'
-                            'Seguimiento Completo de Mi Servicio</div>'
-                            '<div style="font-size:11px;color:#6b7a99;">Solo lectura — actualizado por el taller 🔒</div>'
-                            '</div></div>'
-                            + '<div style="margin-top:8px;padding:5px 10px;background:#f8fafc;'
-                            + 'border-radius:8px;font-size:11px;color:#1a3a6b;font-weight:700;">'
-                            + 'Etapa actual: ' + _esn7 + ' (' + str(_ci7 + 1) + '/7)</div>'
-                            + '</div>'
-                        )
-
-                        # FASE 2: DIAGNÓSTICO
-                        with ui.element('div').style('padding:16px 20px;border-bottom:1px solid #f8fafc;'):
-                            ui.html(_phdr7(2, '🔍', '2. Diagnóstico', _phst7(1)))
-                            if _phst7(1) in ('done', 'active'):
-                                if _dd7:
-                                    _dr7 = ''
-                                    for _fk, _fl in [('tests','Pruebas'),('codes','Códigos OBD'),
-                                                      ('analysis','Análisis'),('solution','Solución')]:
-                                        _fv = _dd7.get(_fk, '')
-                                        if _fv:
-                                            _dr7 += (
-                                                '<div style="padding:7px 10px;background:white;border:1px solid #e2e8f0;'
-                                                'border-radius:8px;margin-bottom:5px;">'
-                                                '<div style="font-size:9px;font-weight:800;color:#94a3b8;'
-                                                'text-transform:uppercase;margin-bottom:2px;">' + _fl + '</div>'
-                                                + '<div style="font-size:12px;color:#1e293b;font-weight:600;">' + str(_fv) + '</div></div>'
-                                            )
-                                    if _dr7:
-                                        ui.html('<div style="margin-bottom:8px;">' + _dr7 + '</div>')
-                                elif _pdx7:
-                                    ui.html(
-                                        '<div style="padding:10px;background:white;border:1px solid #e2e8f0;'
-                                        'border-radius:8px;font-size:12px;color:#1e293b;white-space:pre-wrap;'
-                                        'line-height:1.5;margin-bottom:8px;">' + _pdx7 + '</div>'
-                                    )
-                                else:
-                                    ui.html('<div style="font-size:12px;color:#94a3b8;padding:8px;">El técnico está preparando el diagnóstico.</div>')
-                                if _sc7:
-                                    ui.html(
-                                        '<div style="background:#f0fdf4;border:1.5px solid #86efac;'
-                                        'border-radius:10px;padding:12px;">'
-                                        '<div style="font-size:10px;font-weight:800;color:#15803d;margin-bottom:8px;">'
-                                        '🔬 REPORTE DE ESCÁNER OBD</div>'
-                                        + '<iframe src="/' + _sc7 + '" style="width:100%;height:280px;border:none;'
-                                        + 'border-radius:6px;background:#fff;" title="Escaner"></iframe>'
-                                        + '<div style="display:flex;gap:8px;margin-top:8px;">'
-                                        + '<a href="/' + _sc7 + '" target="_blank" style="flex:1;text-align:center;padding:7px;'
-                                        + 'border-radius:7px;background:white;color:#15803d;text-decoration:none;'
-                                        + 'font-size:11px;font-weight:700;border:1.5px solid #16a34a;">🔍 Ver</a>'
-                                        + '<a href="/' + _sc7 + '" download style="flex:1;text-align:center;padding:7px;'
-                                        + 'border-radius:7px;background:#16a34a;color:white;text-decoration:none;'
-                                        + 'font-size:11px;font-weight:700;">⬇️ Descargar</a>'
-                                        + '</div></div>'
-                                    )
-
-                        # FASE 3: REPUESTOS
-                        with ui.element('div').style('padding:16px 20px;border-bottom:1px solid #f8fafc;'):
-                            ui.html(_phdr7(3, '📦', '3. Repuestos', _phst7(2)))
-                            if _phst7(2) in ('done', 'active'):
-                                if _its7:
-                                    _r7 = ''
-                                    for _it7 in _its7:
-                                        _nm7  = _it7.get('nombre', _it7.get('item', 'Ítem'))
-                                        _ct7  = _it7.get('cantidad', 1)
-                                        _tot7 = float(_it7.get('total', 0))
-                                        _ts7  = '{:,.2f}'.format(_tot7)
-                                        _r7 += (
-                                            '<div style="display:flex;justify-content:space-between;'
-                                            'align-items:center;padding:5px 8px;border-bottom:1px solid #f1f5f9;">'
-                                            + '<div><div style="font-size:12px;font-weight:700;color:#1e293b;">'
-                                            + str(_nm7) + '</div>'
-                                            + '<div style="font-size:10px;color:#94a3b8;">Cant: '
-                                            + str(_ct7) + '</div></div>'
-                                            + '<div style="font-size:13px;font-weight:800;color:#1a3a6b;">S/ '
-                                            + _ts7 + '</div></div>'
-                                        )
-                                    _ss7 = '{:,.2f}'.format(_sub7)
-                                    _bs7 = '{:,.2f}'.format(_sub7 / 1.18)
-                                    ui.html(
-                                        '<div style="background:white;border:1px solid #e2e8f0;'
-                                        'border-radius:10px;overflow:hidden;margin-bottom:4px;">'
-                                        + _r7
-                                        + '<div style="padding:8px 12px;background:#f8fafc;'
-                                        'border-top:2px solid #e2e8f0;text-align:right;">'
-                                        + '<div style="font-size:10px;color:#94a3b8;margin-bottom:2px;">'
-                                        + 'Inc. IGV | Base: S/ ' + _bs7 + '</div>'
-                                        + '<div style="font-size:18px;font-weight:900;color:#1a3a6b;">'
-                                        + 'TOTAL S/ ' + _ss7 + '</div></div></div>'
-                                    )
-                                else:
-                                    ui.html('<div style="font-size:12px;color:#94a3b8;padding:8px;">La cotización está siendo preparada.</div>')
-
-                        # FASE 4: APROBACIÓN
-                        with ui.element('div').style('padding:16px 20px;border-bottom:1px solid #f8fafc;'):
-                            ui.html(_phdr7(4, '✅', '4. Aprobación', _phst7(3)))
-                            if _phst7(3) in ('done', 'active'):
-                                if _apst7 == 'aprobado':
-                                    ui.html(
-                                        '<div style="background:#f0fdf4;border:1.5px solid #86efac;'
-                                        'border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;">'
-                                        '<span style="font-size:24px;">✅</span>'
-                                        '<div><div style="font-size:13px;font-weight:800;color:#15803d;">PRESUPUESTO APROBADO</div>'
-                                        + '<div style="font-size:11px;color:#166534;">Confirmado: ' + _apdt7 + '</div></div></div>'
-                                    )
-                                elif _apst7 == 'rechazado':
-                                    ui.html(
-                                        '<div style="background:#fef2f2;border:1.5px solid #fecaca;'
-                                        'border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;">'
-                                        '<span style="font-size:24px;">❌</span>'
-                                        '<div><div style="font-size:13px;font-weight:800;color:#dc2626;">NO APROBADO</div>'
-                                        '<div style="font-size:11px;color:#b91c1c;">El taller se comunicará.</div></div></div>'
-                                    )
-                                else:
-                                    ui.html(
-                                        '<div style="background:#fffbeb;border:1.5px solid #fde68a;'
-                                        'border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;">'
-                                        '<span style="font-size:22px;">⏳</span>'
-                                        '<div><div style="font-size:13px;font-weight:700;color:#92400e;">Esperando su respuesta</div>'
-                                        '<div style="font-size:11px;color:#a16207;">Revise el enlace enviado por WhatsApp o Email.</div></div></div>'
-                                    )
-
-                        # FASE 5: REPARACIÓN
-                        with ui.element('div').style('padding:16px 20px;border-bottom:1px solid #f8fafc;'):
-                            ui.html(_phdr7(5, '🔧', '5. Reparación', _phst7(4)))
-                            _s5 = _phst7(4)
-                            if _s5 == 'active':
-                                ui.html(
-                                    '<div style="background:#e8f0fb;border:1.5px solid #c5d8f5;'
-                                    'border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;">'
-                                    '<span style="font-size:22px;">🔧</span>'
-                                    '<div><div style="font-size:13px;font-weight:700;color:#1a3a6b;">'
-                                    'Su vehículo está siendo reparado ahora.</div>'
-                                    '<div style="font-size:11px;color:#2356a8;">'
-                                    'El técnico trabaja en los sistemas aprobados.</div></div></div>'
-                                )
-                            elif _s5 == 'done':
-                                ui.html(
-                                    '<div style="font-size:12px;color:#15803d;padding:8px;'
-                                    'background:#f0fdf4;border-radius:8px;font-weight:700;">✓ Reparación completada.</div>'
-                                )
-
-                        # FASE 6: CONTROL DE CALIDAD
-                        with ui.element('div').style('padding:16px 20px;border-bottom:1px solid #f8fafc;'):
-                            ui.html(_phdr7(6, '🛡️', '6. Control de Calidad', _phst7(5)))
-                            _s6 = _phst7(5)
-                            if _s6 in ('done', 'active') and _qchk7:
-                                _ok6  = sum(1 for v in _qchk7.values()
-                                            if (v.get('status') if isinstance(v, dict) else v) == 'OK')
-                                _tot6 = len(_qchk7)
-                                _ch6  = '<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin-bottom:8px;">Inspección: ' + str(_ok6) + '/' + str(_tot6) + ' puntos OK</div>'
-                                for _k6, _v6 in _qchk7.items():
-                                    _sv6 = _v6.get('status') if isinstance(_v6, dict) else _v6
-                                    _ok6b = _sv6 == 'OK'
-                                    _ch6 += (
-                                        '<div style="display:flex;justify-content:space-between;align-items:center;'
-                                        'padding:4px 8px;border-radius:6px;margin-bottom:3px;background:'
-                                        + ('white;border:1px solid #e2e8f0;">' if _ok6b else '#fef2f2;border:1px solid #fecaca;">')
-                                        + '<span style="font-size:11px;color:#1e293b;">'
-                                        + ('✅ ' if _ok6b else '⚠️ ') + str(_k6) + '</span>'
-                                        + ('<span style="font-size:9px;background:#dcfce7;color:#15803d;'
-                                           'padding:2px 7px;border-radius:100px;font-weight:800;">OK</span>'
-                                           if _ok6b else
-                                           '<span style="font-size:9px;background:#fee2e2;color:#dc2626;'
-                                           'padding:2px 7px;border-radius:100px;font-weight:800;">REVISAR</span>')
-                                        + '</div>'
-                                    )
-                                ui.html(_ch6)
-                            elif _s6 in ('done', 'active'):
-                                ui.html('<div style="font-size:12px;color:#94a3b8;padding:8px;">Inspección de calidad en proceso.</div>')
-
-                        # FASE 7: ENTREGA
-                        with ui.element('div').style('padding:16px 20px;'):
-                            ui.html(_phdr7(7, '🚘', '7. Entrega', _phst7(6)))
-                            _s7 = _phst7(6)
-                            if _s7 in ('done', 'active'):
-                                if _nt7:
-                                    ui.html(
-                                        '<div style="padding:8px 10px;background:white;border:1px solid #e2e8f0;'
-                                        'border-radius:8px;font-size:12px;color:#1e293b;margin-bottom:6px;">'
-                                        '<b>Notas de entrega:</b><br>' + _nt7 + '</div>'
-                                    )
-                                if _pm7:
-                                    ui.html(
-                                        '<div style="background:#f0fdf4;border:1px solid #bbf7d0;'
-                                        'border-radius:8px;padding:8px 10px;font-size:12px;color:#15803d;font-weight:700;">'
-                                        '📅 Próximo mantenimiento: ' + _pm7 + '</div>'
-                                    )
-                                if not _nt7 and not _pm7:
-                                    ui.html('<div style="font-size:12px;color:#94a3b8;padding:8px;">Entrega en proceso.</div>')
-
-                # ════════════════════════════════════════════════
-                # 3. GRID: Estado vehículo + Repuestos/Cotización
-                # ════════════════════════════════════════════════
-                with ui.element('div').classes('p-grid-2'):
-                    # — Estado del Vehículo —
-                    with ui.element('div').classes('p-card'):
-                        _section_title('🚙', 'Estado de su Vehículo')
-                        # Mostrar foto de ingreso si existe, sino placeholder
-                        foto_ingreso = None
-                        if active_order:
-                            fotos = _safe_json(active_order.fotos_evidencia) if hasattr(active_order, 'fotos_evidencia') else []
-                            foto_ingreso = fotos[0] if fotos else None
-                        if foto_ingreso:
-                            _foto_html = (
-                                '<div style="width:100%;height:160px;border-radius:10px;overflow:hidden;'
-                                'margin-bottom:18px;border:2px solid var(--azul-borde);">'
-                                '<img src="' + foto_ingreso + '" style="width:100%;height:100%;object-fit:cover;" '
-                                'onerror="this.style.display=&apos;none&apos;"/>'
-                                '</div>'
-                            )
-                            ui.html(_foto_html)
-                        else:
-                            ui.html('<div class="p-vehicle-placeholder">&#128663;</div>')
-
-                        if vehiculo:
-                            veh_nombre = f'{vehiculo.marca} {vehiculo.modelo} {vehiculo.año}'.strip()
-                            km_val     = active_order.km if active_order else '—'
-                            tecnico_val= active_order.tecnico if active_order else '—'
-                            _data_row('Vehículo', veh_nombre or '—')
-                            _data_row('Placa', vehiculo.placa)
-                            if active_order:
-                                _data_row('Orden de Trabajo', f'#{active_order.consecutivo}')
-                                _data_row('Kilometraje', f'{km_val} km' if km_val and km_val != '—' else '—')
-                            ui.html('<div class="p-divider"></div>')
-                            obs = (active_order.diagnostico or active_order.motivo or '—') if active_order else '—'
-                            ui.html(f'<div class="p-obs">{obs}</div>')
-                            if tecnico_val and tecnico_val != '—':
-                                ui.html(f'<div class="p-mecanico">🧑‍🔧 Mecánico asignado: {tecnico_val}</div>')
-                        else:
-                            ui.label('Sin datos de vehículo').classes('text-gray-400 text-sm')
-
-                    # — Repuestos y Servicios —
-                    with ui.element('div').classes('p-card'):
-                        _section_title('🔩', 'Repuestos y Servicios Aprobados')
-                        if active_order:
-                            items = _safe_json(active_order.items_cotizacion)
-                            if items:
-                                subtotal = 0.0
-                                for it in items:
-                                    val = float(it.get('total', 0) or 0)
-                                    subtotal += val
-                                    nombre = it.get('item', it.get('nombre', 'Ítem'))
-                                    cant   = it.get('cantidad', 1)
-                                    icon   = _item_icon(nombre)
-                                    ui.html(f'''
-                                    <div class="p-service-row">
-                                        <div class="p-sr-icon">{icon}</div>
-                                        <div style="flex:1;">
-                                            <div class="p-sr-name">{nombre}</div>
-                                            <div class="p-sr-qty">Cant: {cant}</div>
-                                        </div>
-                                        <div class="p-sr-price">S/ {val:,.2f}</div>
-                                    </div>
-                                    ''')
-                                # Los precios ya incluyen IGV — desglose informativo
-                                base_sin_igv = subtotal / 1.18
-                                igv_incluido = subtotal - base_sin_igv
-                                pdf_path_active = getattr(active_order, 'pdf_cotizacion', '') or ''
-                                pdf_exists = bool(pdf_path_active and os.path.exists(pdf_path_active))
-                                ui.html(f'''
-                                <div class="p-totals">
-                                    <div class="p-total-row" style="font-size:11px;color:var(--gris-texto);">
-                                        <span>Base imponible (incluida)</span><span>S/ {base_sin_igv:,.2f}</span>
-                                    </div>
-                                    <div class="p-total-row" style="font-size:11px;color:var(--gris-texto);">
-                                        <span>IGV 18% (incluido)</span><span>S/ {igv_incluido:,.2f}</span>
-                                    </div>
-                                    <div class="p-total-final">
-                                        <span>Total (Inc. IGV)</span><span>S/ {subtotal:,.2f}</span>
-                                    </div>
-                                </div>
-                                ''')
-                                # Botón Ver PDF (funcional si existe el archivo)
-                                if pdf_exists:
-                                    ui.html(f'<a href="/{pdf_path_active}" target="_blank" class="p-btn-factura" style="display:block;text-decoration:none;text-align:center;">🧾 Ver Presupuesto PDF</a>')
-                                else:
-                                    ui.html('<div class="p-btn-factura" style="opacity:.45;cursor:default;">🧾 PDF disponible al aprobar presupuesto</div>')
-                            else:
-                                ui.html('''
-                                <div style="text-align:center;padding:40px 0;color:var(--gris-texto);font-size:13px;">
-                                    <div style="font-size:36px;margin-bottom:10px;">🔩</div>
-                                    Aún no hay ítems en la cotización.
-                                </div>
-                                ''')
-                        else:
-                            ui.html('''
-                            <div style="text-align:center;padding:40px 0;color:var(--gris-texto);font-size:13px;">
-                                <div style="font-size:36px;margin-bottom:10px;">📋</div>
-                                Sin servicio activo en este momento.
-                            </div>
-                            ''')
-
-                # ════════════════════════════════════════════════
-                # 4. GRID: Agendar Cita + Notificaciones
-                # ════════════════════════════════════════════════
-                with ui.element('div').classes('p-grid-2'):
-
-                    # — Agendar Cita —
-                    with ui.element('div').classes('p-card'):
-                        _section_title('📅', 'Agendar Nueva Cita')
-
-                        # Calendar strip dinámico
-                        selected = {'fecha': None, 'btn_ref': None}
-                        ui.label('SELECCIONAR FECHA').classes('p-form-label')
-
-                        with ui.element('div').classes('p-cal-strip') as strip_el:
-                            btn_refs = []
-                            current = datetime.now()
-                            day_count = 0
-                            i = 0
-                            while day_count < 10:
-                                day = current + timedelta(days=i)
-                                i += 1
-                                if day.weekday() == 6:  # omitir domingo
-                                    continue
-                                dow = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'][day.weekday()]
-                                day_str = day.strftime('%Y-%m-%d')
-
-                                btn = ui.element('div').classes('p-cal-day')
-                                with btn:
-                                    ui.html(f'<div class="p-cal-dow">{dow}</div>'
-                                            f'<div class="p-cal-num">{day.day}</div>')
-                                btn_refs.append((btn, day_str))
-
-                                def _on_click(b=btn, ds=day_str):
-                                    for rb, _ in btn_refs:
-                                        rb.classes(remove='selected')
-                                    b.classes(add='selected')
-                                    selected['fecha'] = ds
-
-                                btn.on('click', _on_click)
-                                day_count += 1
-
-                        # Seleccionar opciones de vehículos del cliente
-                        veh_opts = {v.placa: f'{v.marca} {v.modelo} — {v.placa}'.strip()
-                                    for v in todos_vehiculos}
-                        if not veh_opts:
-                            veh_opts = {user_plate: user_plate}
-
-                        with ui.element('div').style('display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;'):
-                            with ui.column().classes('gap-1'):
-                                ui.html('<span class="p-form-label">Vehículo</span>')
-                                veh_sel = ui.select(veh_opts, value=list(veh_opts.keys())[0] if veh_opts else None).props('outlined dense').classes('w-full')
-                            with ui.column().classes('gap-1'):
-                                ui.html('<span class="p-form-label">Hora disponible</span>')
-                                hora_sel = ui.select(
-                                    ['08:00', '09:00', '10:00', '11:00',
-                                     '12:00', '14:00', '15:00', '16:00', '17:00'],
-                                    value='09:00'
-                                ).props('outlined dense').classes('w-full')
-                            with ui.column().classes('gap-1'):
-                                ui.html('<span class="p-form-label">Tipo de Servicio</span>')
-                                serv_sel = ui.select(
-                                    ['Mantenimiento General', 'Cambio de Aceite y Filtros',
-                                     'Revisión de Frenos', 'Diagnóstico Eléctrico',
-                                     'Aire Acondicionado', 'Otro / Consulta'],
-                                    value='Mantenimiento General'
-                                ).props('outlined dense').classes('w-full')
-                            with ui.column().classes('gap-1'):
-                                ui.html('<span class="p-form-label">Prioridad</span>')
-                                prio_sel = ui.select(
-                                    ['Normal', 'Urgente'], value='Normal'
-                                ).props('outlined dense').classes('w-full')
-
-                        with ui.column().classes('gap-1 w-full'):
-                            ui.html('<span class="p-form-label">Descripción del Problema (opcional)</span>')
-                            desc_inp = ui.textarea(
-                                placeholder='Ej: El carro hace un ruido al frenar en la parte delantera derecha...'
-                            ).props('outlined dense rows=3').classes('w-full')
-
-                        # Label de mensaje de horario ocupado (oculto por defecto)
-                        msg_hora = ui.html('').style('display:none;')
-
-                        async def _guardar_cita():
-                            if not selected['fecha']:
-                                ui.notify('Por favor seleccione una fecha', type='warning', position='top')
-                                return
-                            db2 = get_db()
-                            try:
-                                # ── Validar que el horario no esté ocupado ──
-                                hora_elegida = hora_sel.value
-                                fecha_elegida = selected['fecha']
-                                cita_existente = db2.query(Cita).filter(
-                                    Cita.fecha_cita == fecha_elegida,
-                                    Cita.hora == hora_elegida,
-                                    Cita.estado.in_(['programada', 'confirmada'])
-                                ).first()
-                                if cita_existente:
-                                    msg_hora.content = f'''
-                                    <div style="background:#fff3cd;border:1.5px solid #f59e0b;border-radius:10px;
-                                                padding:12px 16px;margin-bottom:12px;font-size:13px;color:#92400e;">
-                                        <strong>⚠️ Hora ocupada:</strong> El horario de las <strong>{hora_elegida}</strong>
-                                        del <strong>{fecha_elegida}</strong> ya está reservado.<br>
-                                        Por favor elige otra hora o
-                                        <a onclick="fetch('/open-whatsapp?phone=51999999999&msg=Hola%2C%20quiero%20agendar%20una%20cita%20para%20el%20{fecha_elegida}')"
-                                           style="color:#1a3a6b;font-weight:700;cursor:pointer;text-decoration:underline;">
-                                           contacta al taller por WhatsApp
-                                        </a> para coordinar.
-                                    </div>'''
-                                    msg_hora.style('display:block;')
-                                    return
-                                msg_hora.style('display:none;')
-
-                                motivo = f'[{serv_sel.value}] {desc_inp.value}'.strip()
-                                db2.add(Cita(
-                                    cliente_id=user_id,
-                                    vehiculo_placa=veh_sel.value or user_plate,
-                                    fecha_cita=fecha_elegida,
-                                    hora=hora_elegida,
-                                    motivo=motivo,
-                                    estado='programada',
-                                ))
-                                db2.commit()
-                                msg_hora.style('display:none;')
-                                ui.notify('¡Cita solicitada con éxito! El taller la confirmará pronto.',
-                                          type='positive', position='top', icon='event_available')
-                                desc_inp.value = ''
-                                for rb, _ in btn_refs:
-                                    rb.classes(remove='selected')
-                                selected['fecha'] = None
-                            except Exception as exc:
-                                ui.notify(f'Error al guardar: {exc}', type='negative')
-                            finally:
-                                db2.close()
-
-                        ui.button('📅  Confirmar Cita', on_click=_guardar_cita).props(
-                            'unelevated'
-                        ).classes('w-full h-14 text-base font-bold rounded-xl shadow-md').style(
-                            'background:var(--azul);color:white;margin-top:16px;'
-                            'letter-spacing:.3px;transition:all .2s;'
-                        )
-
-                    # — Notificaciones —
-                    notif_container_ref = {'el': None}
-                    with ui.element('div').classes('p-card'):
-                        with ui.element('div').style('display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;'):
-                            ui.html('<div class="p-section-title"><div class="p-icon-circle">🔔</div> Notificaciones</div>')
-                            def _marcar_leidas():
-                                # Guardar IDs leídas en DB para persistencia entre sesiones
-                                ids_leidas = [n['id'] for n in notifs_cliente if 'id' in n]
-                                marcar_notifs_leidas_cliente(user_id, ids_leidas)
-                                # Marcar también en la lista local (para que no reaparezcan al navegar en esta sesión)
-                                for n in notifs_cliente:
-                                    n['nueva'] = False
-                                # Actualizar visualmente
-                                ui.run_javascript("""
-                                    document.querySelectorAll('.p-ni-dot').forEach(d => {
-                                        d.style.background = 'var(--gris-borde)';
-                                    });
-                                    document.querySelectorAll('.p-notif-item.nueva').forEach(n => {
-                                        n.classList.remove('nueva');
-                                    });
-                                """)
-                                ui.notify('Notificaciones marcadas como leídas', type='positive', position='top')
-                            ui.button('✓ Marcar leídas', on_click=_marcar_leidas).props(
-                                'flat dense'
-                            ).style('font-size:12px;color:var(--azul-med);font-weight:600;')
-
-                        notifs_cliente_ref = notifs_cliente  # captura local
-                        if notifs_cliente_ref:
-                            for n in notifs_cliente_ref:
-                                _notif_item_html(n['nueva'], n['icon_cls'], n['icon'], n['titulo'], n['desc'], n['tiempo'])
-                        else:
-                            ui.html('''
-                            <div style="text-align:center;padding:32px 0;color:var(--gris-texto);">
-                                <div style="font-size:36px;margin-bottom:8px;">🔔</div>
-                                <div style="font-size:13px;">Sin notificaciones nuevas</div>
-                            </div>
-                            ''')
-                        # Botón WhatsApp — usa endpoint /open-whatsapp del servidor Python (único que funciona en pywebview)
-                        with ui.element('div').style('margin-top:16px;border-top:1px solid var(--gris-borde);padding-top:14px;'):
-                            ui.button(
-                                'Contactar al Taller por WhatsApp',
-                                icon='chat',
-                                on_click=lambda: ui.run_javascript("fetch('/open-whatsapp?phone=51999999999&msg=Hola%2C%20necesito%20informaci%C3%B3n%20sobre%20mi%20veh%C3%ADculo')")
-                            ).style(
-                                'width:100%;background:#25d366;color:white;'
-                                'font-weight:700;font-size:13px;border-radius:10px;padding:12px 0;'
-                            ).props('no-caps')
-
-                # ════════════════════════════════════════════════
-                # 5. HISTORIAL DE SERVICIOS
-                # ════════════════════════════════════════════════
-                with ui.element('div').classes('p-card'):
-                    with ui.element('div').style('display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:12px;'):
-                        _section_title('📂', 'Historial de Servicios')
-                        # Filtro activo guardado en dict mutable para closures
-                        filtro_estado = {'valor': 'todos'}
-                        tab_refs = {}
-                        with ui.element('div').style('display:flex;gap:6px;'):
-                            tab_refs['todos']      = ui.button('Todos',      on_click=lambda: _aplicar_filtro('todos')).style('font-size:12px;font-weight:700;padding:5px 14px;border-radius:20px;background:#1a3a6b;color:white;border:none;cursor:pointer;')
-                            tab_refs['completado'] = ui.button('Completados', on_click=lambda: _aplicar_filtro('completado')).style('font-size:12px;font-weight:600;padding:5px 14px;border-radius:20px;background:#e8f0fb;color:#1a3a6b;border:none;cursor:pointer;')
-                            tab_refs['proceso']    = ui.button('En Proceso',  on_click=lambda: _aplicar_filtro('proceso')).style('font-size:12px;font-weight:600;padding:5px 14px;border-radius:20px;background:#e8f0fb;color:#1a3a6b;border:none;cursor:pointer;')
-
-                    if ordenes_all:
-                        filas_html = ''
-                        for o in ordenes_all:
-                            total_o = sum(float(it.get('total', 0) or 0)
-                                          for it in _safe_json(o.items_cotizacion))
-                            estado_cls = ('completado' if o.estado in ('ARCHIVADO', 'ENTREGA')
-                                          else 'proceso' if o.estado not in ('ARCHIVADO',)
-                                          else 'pendiente')
-                            badge_lbl  = ('✔ Completado' if estado_cls == 'completado'
-                                          else '⏳ En Proceso')
-                            try:
-                                fd = datetime.strptime(o.fecha[:10], '%Y-%m-%d')
-                                fecha_fmt = f'{fd.day} {_mes(fd.month)} {fd.year}'
-                            except Exception:
-                                fecha_fmt = o.fecha[:10] if o.fecha else '—'
-
-                            motivo_corto = (o.motivo or 'Revisión general')
-                            if len(motivo_corto) > 45:
-                                motivo_corto = motivo_corto[:45] + '…'
-
-                            # Botones de documentos: Presupuesto PDF + Factura SUNAT
-                            pdf_path = getattr(o, 'pdf_cotizacion', '') or ''
-                            factura_path = getattr(o, 'factura_sunat', '') or ''
-
-                            docs_btns = ''
-                            if pdf_path and os.path.exists(pdf_path):
-                                docs_btns += f'<a href="/{pdf_path}" target="_blank" style="display:inline-flex;align-items:center;gap:3px;background:#274495;color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;text-decoration:none;margin-right:4px;">📄 Presupuesto</a>'
-                            if factura_path and os.path.exists(factura_path):
-                                docs_btns += f'<a href="/{factura_path}" target="_blank" style="display:inline-flex;align-items:center;gap:3px;background:#059669;color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;text-decoration:none;">🧾 Factura</a>'
-                            if not docs_btns:
-                                docs_btns = '<span style="color:var(--gris-texto);font-size:11px;">—</span>'
-
-                            filas_html += f'''
-                            <tr data-estado="{estado_cls}">
-                                <td class="td-fecha">{fecha_fmt}</td>
-                                <td class="td-servicio">{motivo_corto}</td>
-                                <td style="color:var(--gris-texto);font-size:12px;">{o.vehiculo_placa or chr(8212)}</td>
-                                <td><span class="p-folio">#{o.consecutivo}</span></td>
-                                <td class="td-costo">S/ {total_o:,.2f}</td>
-                                <td><span class="p-badge {estado_cls}">{badge_lbl}</span></td>
-                                <td style="white-space:nowrap;">{docs_btns}</td>
-                            </tr>
-                            '''
-
-
-                        # ── Separar filas por estado para filtrado Python-side ──
-                        filas_por_estado = {
-                            'todos': filas_html,
-                            'completado': '',
-                            'proceso': '',
-                        }
-                        for o2 in ordenes_all:
-                            total_o2 = sum(float(it.get('total', 0) or 0) for it in _safe_json(o2.items_cotizacion))
-                            e2 = ('completado' if o2.estado in ('ARCHIVADO', 'ENTREGA') else 'proceso')
-                            badge2 = ('✔ Completado' if e2 == 'completado' else '⏳ En Proceso')
-                            try:
-                                fd2 = datetime.strptime(o2.fecha[:10], '%Y-%m-%d')
-                                fecha2 = f'{fd2.day} {_mes(fd2.month)} {fd2.year}'
-                            except Exception:
-                                fecha2 = o2.fecha[:10] if o2.fecha else '—'
-                            mot2 = (o2.motivo or 'Revisión general')[:45]
-                            pdf2  = getattr(o2, 'pdf_cotizacion', '') or ''
-                            fac2  = getattr(o2, 'factura_sunat', '') or ''
-                            docs2 = ''
-                            if pdf2 and os.path.exists(pdf2):
-                                docs2 += f'<a href="/{pdf2}" target="_blank" style="display:inline-flex;align-items:center;gap:3px;background:#274495;color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;text-decoration:none;margin-right:4px;">📄 Presupuesto</a>'
-                            if fac2 and os.path.exists(fac2):
-                                docs2 += f'<a href="/{fac2}" target="_blank" style="display:inline-flex;align-items:center;gap:3px;background:#059669;color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;text-decoration:none;">🧾 Factura</a>'
-                            if not docs2:
-                                docs2 = '<span style="color:var(--gris-texto);font-size:11px;">—</span>'
-                            fila2 = f'<tr><td class="td-fecha">{fecha2}</td><td class="td-servicio">{mot2}</td><td style="color:var(--gris-texto);font-size:12px;">{o2.vehiculo_placa or "—"}</td><td><span class="p-folio">#{o2.consecutivo}</span></td><td class="td-costo">S/ {total_o2:,.2f}</td><td><span class="p-badge {e2}">{badge2}</span></td><td style="white-space:nowrap;">{docs2}</td></tr>'
-                            filas_por_estado[e2] += fila2
-
-                        THEAD = '<table class="p-hist-table" id="histTable"><thead><tr><th>Fecha</th><th>Servicio</th><th>Vehículo</th><th>Orden</th><th>Costo</th><th>Estado</th><th>Presupuesto</th></tr></thead><tbody>'
-                        TFOOTER = '</tbody></table>'
-                        FILAS_PREVIEW = 5
-
-                        # Tabla inicial — todos, primeras 5 filas
-                        filas_lista_todos = [f for f in filas_por_estado['todos'].split('</tr>') if f.strip()]
-                        mostrar_todo = {'activo': False}
-
-                        tabla_el = ui.html(THEAD + ''.join(filas_lista_todos[:FILAS_PREVIEW]) + TFOOTER)
-
-                        ver_mas_btn_ref = {'btn': None}
-
-                        def _aplicar_filtro(nuevo_filtro: str):
-                            filtro_estado['valor'] = nuevo_filtro
-                            # Actualizar estilos de botones
-                            activo_style  = 'font-size:12px;font-weight:700;padding:5px 14px;border-radius:20px;background:#1a3a6b;color:white;border:none;cursor:pointer;'
-                            inactivo_style = 'font-size:12px;font-weight:600;padding:5px 14px;border-radius:20px;background:#e8f0fb;color:#1a3a6b;border:none;cursor:pointer;'
-                            for k, btn in tab_refs.items():
-                                btn.style(activo_style if k == nuevo_filtro else inactivo_style)
-                            # Regenerar tabla con filas del filtro (todas visibles)
-                            filas_filtradas = filas_por_estado.get(nuevo_filtro, filas_por_estado['todos'])
-                            filas_lista_f = [f for f in filas_filtradas.split('</tr>') if f.strip()]
-                            mostrar_todo['activo'] = True  # mostrar todas al filtrar
-                            tabla_el.content = THEAD + ''.join(filas_lista_f) + TFOOTER
-                            # Actualizar o esconder el botón "ver más"
-                            if ver_mas_btn_ref['btn']:
-                                ver_mas_btn_ref['btn'].visible = False
-
-                        def _toggle_historial():
-                            filas_lista_act = [f for f in filas_por_estado.get(filtro_estado['valor'], filas_por_estado['todos']).split('</tr>') if f.strip()]
-                            mostrar_todo['activo'] = not mostrar_todo['activo']
-                            if mostrar_todo['activo']:
-                                tabla_el.content = THEAD + ''.join(filas_lista_act) + TFOOTER
-                                ver_mas_btn_ref['btn'].set_text('← Mostrar menos')
-                            else:
-                                tabla_el.content = THEAD + ''.join(filas_lista_act[:FILAS_PREVIEW]) + TFOOTER
-                                ver_mas_btn_ref['btn'].set_text(f'Ver historial completo ({len(filas_lista_todos)} registros) →')
-
-                        if len(filas_lista_todos) > FILAS_PREVIEW:
-                            btn_ver = ui.button(
-                                f'Ver historial completo ({len(filas_lista_todos)} registros) →',
-                                on_click=_toggle_historial
-                            ).props('flat').style(
-                                'width:100%;margin-top:8px;font-size:13px;font-weight:600;'
-                                'color:var(--azul-med);border-radius:8px;'
-                            )
-                            ver_mas_btn_ref['btn'] = btn_ver
+                # Cotización / Repuestos
+                with ui.element('div').classes('card-premium w-full'):
+                    ui.label('🔩 Repuestos y Servicios').classes('text-lg font-bold text-blue-900 mb-6 block')
+                    
+                    items = _safe_json(active_order.items_cotizacion) if active_order else []
+                    if items:
+                        total = 0
+                        with ui.column().classes('w-full gap-3'):
+                            for i in items:
+                                val = float(i.get('total', 0) or 0)
+                                total += val
+                                with ui.row().classes('w-full justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100'):
+                                    with ui.column().classes('gap-0'):
+                                        ui.label(i.get('item','')).classes('text-xs font-bold text-gray-800')
+                                        ui.label(f'Cant: {i.get("cantidad", 1)}').classes('text-[10px] text-gray-400 font-bold')
+                                    ui.label(f'S/ {val:,.2f}').classes('text-sm font-bold text-blue-900')
+                        
+                        with ui.element('div').classes('mt-6 p-4 bg-gray-50 rounded-xl border border-gray-100 flex flex-column gap-1'):
+                            with ui.row().classes('w-full justify-between text-xs text-gray-400'):
+                                ui.label('Subtotal')
+                                ui.label(f'S/ {total/1.18:,.2f}')
+                            with ui.row().classes('w-full justify-between text-xs text-gray-400'):
+                                ui.label('IGV (18%)')
+                                ui.label(f'S/ {total - (total/1.18):,.2f}')
+                            with ui.row().classes('w-full justify-between items-center mt-2 pt-2 border-t border-gray-200'):
+                                ui.label('TOTAL APROBADO').classes('text-sm font-black text-blue-900')
+                                ui.label(f'S/ {total:,.2f}').classes('text-xl font-black text-blue-900')
+                        
+                        ui.button('VER FACTURA DETALLADA').classes('w-full mt-4 bg-white border-2 border-blue-100 text-blue-900 text-xs font-bold py-3 rounded-xl hover:bg-blue-50')
                     else:
-                        ui.html('''
-                        <div style="text-align:center;padding:40px 0;color:var(--gris-texto);">
-                            <div style="font-size:36px;margin-bottom:8px;">📂</div>
-                            <div style="font-size:13px;">Sin historial de servicios aún.</div>
-                        </div>
-                        ''')
+                        with ui.column().classes('w-full items-center py-10 opacity-20'):
+                            ui.image('/assets/logo_sandoval.jpg').classes('w-12 grayscale mb-2')
+                            ui.label('No hay cargos activos').classes('text-xs font-bold')
 
-                # ════════════════════════════════════════════════
-                # 6. MI HISTORIAL COMPLETO (Diagnóstico + Escáner + Evidencias + Cotización)
-                # ════════════════════════════════════════════════
-                _VIDEO_EXTS_P = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.ogg'}
-                def _p_is_video(p):
-                    return os.path.splitext((p or '').lower())[1] in _VIDEO_EXTS_P
+            # 5. AGENDAR CITA + NOTIFICACIONES (Vertical Stack)
+            with ui.column().classes('w-full gap-6 mt-4'):
+                # Agendar Cita (VINCULADO AL DISEÑO PREMIUM)
+                with ui.element('div').classes('card-premium w-full'):
+                    with ui.row().classes('items-center gap-3 mb-6'):
+                        with ui.element('div').classes('w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-800 text-xl'):
+                            ui.label('📅')
+                        ui.label('Agendar Nueva Cita').classes('text-lg font-bold text-blue-900')
+                    
+                    # Generador de Días (Siguiente 10 días hábiles)
+                    ui.label('SELECCIONAR FECHA').classes('label-premium')
+                    with ui.element('div').classes('cal-strip') as strip:
+                        selected_date = {'value': None}
+                        current = datetime.now()
+                        for i in range(12):
+                            day = current + timedelta(days=i)
+                            if day.weekday() >= 6: continue # Saltar Domingos
+                            
+                            dow = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'][day.weekday()]
+                            day_str = day.strftime('%Y-%m-%d')
+                            day_num = day.strftime('%d')
+                            
+                            with ui.element('div').classes('cal-day') as d_btn:
+                                ui.label(dow).classes('cal-dow')
+                                ui.label(day_num).classes('cal-num')
+                                
+                                # Lógica de selección visual
+                                d_btn.on('click', lambda d=day_str, b=d_btn: _handle_cal_select(strip, b, d, selected_date))
+                    
+                    # Formulario en Grid (2 columnas)
+                    with ui.grid(columns=2).classes('w-full gap-4 mt-6'):
+                        with ui.column().classes('w-full'):
+                            ui.label('VEHÍCULO').classes('label-premium')
+                            veh_select = ui.select({v.placa: f'{v.marca} {v.modelo} — {v.placa}' for v in db.query(Vehiculo).filter_by(cliente_id=user_id).all()}).classes('w-full form-input-premium')
+                        
+                        with ui.column().classes('w-full'):
+                            ui.label('HORA DISPONIBLE').classes('label-premium')
+                            hora_select = ui.select(['08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '02:00 PM', '03:00 PM'], value='08:00 AM').classes('w-full form-input-premium')
 
-                if ordenes_all:
-                    with ui.element('div').classes('p-card'):
-                        _section_title('📋', 'Mi Historial Completo de Servicios')
-                        ui.html('<div style="font-size:12px;color:var(--gris-texto);margin-bottom:20px;">'
-                                'Aquí puedes ver el detalle completo de cada visita: diagnóstico técnico, '
-                                'reporte de escáner, evidencias fotográficas, videos y cotización.</div>')
+                        with ui.column().classes('w-full'):
+                            ui.label('TIPO DE SERVICIO').classes('label-premium')
+                            serv_select = ui.select(['Mantenimiento General', 'Revisión de Frenos', 'Cambio de Aceite', 'Diagnóstico Eléctrico', 'Otro'], value='Mantenimiento General').classes('w-full form-input-premium')
 
-                        for ord_ev in ordenes_all:
-                            # ── Parsear datos del checklist ────────────────
-                            chk_ev = ord_ev.checklist_reparacion or {}
-                            if isinstance(chk_ev, str):
-                                try:    chk_ev = json.loads(chk_ev)
-                                except: chk_ev = {}
-                            diag_ev   = (chk_ev or {}).get('diagnostic_details', {})
-                            qchk_ev   = (chk_ev or {}).get('quick_check', {})
-                            items_ev  = _safe_json(ord_ev.items_cotizacion)
-                            medios_ev = [m for m in (ord_ev.fotos_evidencia or []) if isinstance(m, str)]
-                            fotos_ev  = [m for m in medios_ev if not _p_is_video(m)]
-                            videos_ev = [m for m in medios_ev if _p_is_video(m)]
-                            sc_ev     = (diag_ev or {}).get('scanner_path', '')
+                        with ui.column().classes('w-full'):
+                            ui.label('PRIORIDAD').classes('label-premium')
+                            prio_select = ui.select(['Normal', 'Urgente'], value='Normal').classes('w-full form-input-premium')
 
-                            # ── Calcular totales ───────────────────────────
-                            total_ev = sum(float(it.get('total', 0) or 0) for it in items_ev)
+                    with ui.column().classes('w-full mt-4'):
+                        ui.label('DESCRIPCIÓN DEL PROBLEMA (OPCIONAL)').classes('label-premium')
+                        desc_input = ui.textarea().props('placeholder="Ej: El carro hace un ruido al frenar..."').classes('w-full form-input-premium h-24')
 
-                            try:
-                                fd_ev = datetime.strptime(ord_ev.fecha[:10], '%Y-%m-%d')
-                                fecha_ev = f'{fd_ev.day} {_mes(fd_ev.month)} {fd_ev.year}'
-                            except Exception:
-                                fecha_ev = ord_ev.fecha[:10] if ord_ev.fecha else '—'
-
-                            estado_cls_ev = ('completado' if ord_ev.estado in ('ARCHIVADO', 'ENTREGA') else 'proceso')
-                            badge_ev_col  = '#1db97a' if estado_cls_ev == 'completado' else '#f59e0b'
-                            badge_ev_bg   = 'rgba(29,185,122,.1)' if estado_cls_ev == 'completado' else 'rgba(245,158,11,.1)'
-                            badge_ev_lbl  = '✔ Completado' if estado_cls_ev == 'completado' else '⏳ En Proceso'
-
-                            motivo_ev = (ord_ev.motivo or 'Revisión general')
-
-                            # ── Verificar si hay algo útil para mostrar ────
-                            tiene_contenido = bool(diag_ev or ord_ev.diagnostico or medios_ev or items_ev or sc_ev)
-                            if not tiene_contenido:
-                                continue
-
-                            # ── Card por orden ─────────────────────────────
-                            with ui.element('div').style(
-                                'background:#f8fafc;border:1.5px solid #dde4f0;'
-                                'border-radius:16px;padding:20px;margin-bottom:20px;'
-                            ):
-                                # Header de la orden
-                                ui.html(f'''
-                                <div style="display:flex;align-items:flex-start;justify-content:space-between;
-                                            flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-                                    <div>
-                                        <div style="font-size:13px;font-weight:800;color:#1a3a6b;margin-bottom:4px;">
-                                            {motivo_ev}
-                                        </div>
-                                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                                            <span style="font-size:11px;color:var(--gris-texto);">📅 {fecha_ev}</span>
-                                            <span style="font-size:11px;font-family:monospace;background:#e8f0fb;
-                                                         color:#1a3a6b;padding:2px 8px;border-radius:5px;">
-                                                #{ord_ev.consecutivo}
-                                            </span>
-                                            {f'<span style="font-size:11px;color:var(--gris-texto);">🔧 {ord_ev.tecnico}</span>' if ord_ev.tecnico else ''}
-                                        </div>
-                                    </div>
-                                    <span style="background:{badge_ev_bg};color:{badge_ev_col};
-                                                 font-size:10px;font-weight:700;padding:4px 12px;
-                                                 border-radius:100px;white-space:nowrap;">
-                                        {badge_ev_lbl}
-                                    </span>
-                                </div>
-                                ''')
-
-                                # ── DIAGNÓSTICO ────────────────────────────
-                                if diag_ev or ord_ev.diagnostico:
-                                    ui.html('<div style="font-size:10px;font-weight:900;color:#2356a8;'
-                                            'text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;'
-                                            'display:flex;align-items:center;gap:6px;">'
-                                            '🔬 Diagnóstico Técnico</div>')
-
-                                    if diag_ev:
-                                        rows_diag = ''
-                                        fields = [
-                                            ('🧪', 'Pruebas', diag_ev.get('tests')),
-                                            ('🔍', 'Códigos OBD', diag_ev.get('codes')),
-                                            ('🧠', 'Análisis',   diag_ev.get('analysis')),
-                                            ('✅', 'Solución',   diag_ev.get('solution')),
-                                        ]
-                                        for icon_d, lbl_d, val_d in fields:
-                                            if val_d:
-                                                rows_diag += (
-                                                    f'<div style="padding:8px 12px;background:white;border-radius:10px;'
-                                                    f'border:1px solid #e2e8f0;margin-bottom:6px;">'
-                                                    f'<div style="font-size:9px;font-weight:900;color:#94a3b8;'
-                                                    f'text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">'
-                                                    f'{icon_d} {lbl_d}</div>'
-                                                    f'<div style="font-size:12px;color:#1e293b;font-weight:600;'
-                                                    f'line-height:1.4;">{val_d}</div>'
-                                                    f'</div>'
-                                                )
-                                        if rows_diag:
-                                            ui.html(f'<div style="margin-bottom:12px;">{rows_diag}</div>')
-                                    elif ord_ev.diagnostico:
-                                        ui.html(f'<div style="padding:10px 12px;background:white;border-radius:10px;'
-                                                f'border:1px solid #e2e8f0;font-size:12px;color:#1e293b;'
-                                                f'white-space:pre-wrap;line-height:1.5;margin-bottom:12px;">'
-                                                f'{ord_ev.diagnostico}</div>')
-
-                                # ── REPORTE ESCÁNER ────────────────────────
-                                if sc_ev:
-                                    ui.html(f'''
-                                    <div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);
-                                                border:1.5px solid #86efac;border-radius:12px;
-                                                padding:14px;margin-bottom:12px;">
-                                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                                            <span style="background:#16a34a;color:white;font-size:9px;
-                                                         font-weight:900;padding:3px 10px;border-radius:100px;
-                                                         letter-spacing:1px;text-transform:uppercase;">
-                                                🔬 Escáner OBD
-                                            </span>
-                                            <span style="font-size:11px;color:#166534;font-weight:600;">
-                                                Reporte Digital Certificado
-                                            </span>
-                                        </div>
-                                        <div style="background:white;border-radius:8px;overflow:hidden;
-                                                    border:1px solid #bbf7d0;margin-bottom:10px;">
-                                            <div style="background:#14532d;color:white;padding:6px 12px;
-                                                        font-size:10px;font-weight:700;">
-                                                📄 Reporte de Escáner — Vista previa
-                                            </div>
-                                            <iframe src="/{sc_ev}" style="width:100%;height:380px;
-                                                border:none;display:block;background:#f9f9f9;"
-                                                title="Reporte de Escáner">
-                                            </iframe>
-                                        </div>
-                                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                                            <a href="/{sc_ev}" target="_blank"
-                                               style="flex:1;min-width:120px;text-align:center;
-                                                      padding:8px 14px;border-radius:8px;
-                                                      background:#f0fdf4;color:#14532d;text-decoration:none;
-                                                      font-size:12px;font-weight:700;border:1.5px solid #16a34a;">
-                                                🔍 Ver completo
-                                            </a>
-                                            <a href="/{sc_ev}" download
-                                               style="flex:1;min-width:120px;text-align:center;
-                                                      padding:8px 14px;border-radius:8px;
-                                                      background:#16a34a;color:white;text-decoration:none;
-                                                      font-size:12px;font-weight:700;">
-                                                ⬇️ Descargar PDF
-                                            </a>
-                                        </div>
-                                    </div>
-                                    ''')
-
-                                # ── INSPECCIÓN ─────────────────────────────
-                                if qchk_ev:
-                                    ok_count  = sum(1 for v in qchk_ev.values()
-                                                    if (v.get('status') if isinstance(v, dict) else v) == 'OK')
-                                    tot_count = len(qchk_ev)
-                                    ui.html(f'<div style="font-size:10px;font-weight:900;color:#2356a8;'
-                                            f'text-transform:uppercase;letter-spacing:1.5px;'
-                                            f'margin-bottom:8px;">✅ Inspección: {ok_count}/{tot_count} conforme</div>')
-                                    chk_items_html = ''
-                                    for chk_k, chk_v in qchk_ev.items():
-                                        st_v   = chk_v.get('status') if isinstance(chk_v, dict) else chk_v
-                                        note_v = (chk_v.get('note', '') if isinstance(chk_v, dict) else '') or ''
-                                        ok_v   = st_v == 'OK'
-                                        chk_items_html += (
-                                            f'<div style="display:flex;align-items:center;justify-content:space-between;'
-                                            f'padding:5px 10px;border-radius:8px;margin-bottom:4px;'
-                                            f'background:{"white" if ok_v else "#fef2f2"};'
-                                            f'border:1px solid {"#e2e8f0" if ok_v else "#fecaca"};">'
-                                            f'<span style="font-size:11px;font-weight:600;color:#1e293b;">'
-                                            f'{"✅" if ok_v else "⚠️"} {chk_k}'
-                                            f'{" — " + note_v if note_v else ""}</span>'
-                                            f'<span style="font-size:9px;font-weight:800;padding:2px 8px;border-radius:100px;'
-                                            f'background:{"#dcfce7" if ok_v else "#fee2e2"};'
-                                            f'color:{"#15803d" if ok_v else "#dc2626"};">'
-                                            f'{"OK" if ok_v else "REVISAR"}</span></div>'
-                                        )
-                                    ui.html(f'<div style="margin-bottom:12px;">{chk_items_html}</div>')
-
-                                # ── EVIDENCIA FOTOS ────────────────────────
-                                if fotos_ev:
-                                    ui.html(f'<div style="font-size:10px;font-weight:900;color:#2356a8;'
-                                            f'text-transform:uppercase;letter-spacing:1.5px;'
-                                            f'margin-bottom:8px;">📷 Fotografías ({len(fotos_ev)})</div>')
-                                    fotos_html = ''
-                                    for fp in fotos_ev:
-                                        fotos_html += (
-                                            f'<a href="{fp}" target="_blank" style="display:block;'
-                                            f'width:80px;height:80px;border-radius:10px;overflow:hidden;'
-                                            f'border:2px solid #dde4f0;background:#f3f4f6;flex-shrink:0;">'
-                                            f'<img src="{fp}" style="width:100%;height:100%;object-fit:cover;" '
-                                            f'onerror="this.style.display=\'none\'"/>'
-                                            f'</a>'
-                                        )
-                                    ui.html(f'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'
-                                            f'{fotos_html}</div>')
-
-                                # ── EVIDENCIA VIDEOS ───────────────────────
-                                if videos_ev:
-                                    ui.html(f'<div style="font-size:10px;font-weight:900;color:#2356a8;'
-                                            f'text-transform:uppercase;letter-spacing:1.5px;'
-                                            f'margin-bottom:8px;">📹 Videos ({len(videos_ev)})</div>')
-                                    for vp in videos_ev:
-                                        vfname = vp.split('/')[-1]
-                                        ui.html(f'''
-                                        <div style="background:#0f172a;border-radius:10px;overflow:hidden;
-                                                    border:1.5px solid #3b82f6;margin-bottom:8px;">
-                                            <video src="{vp}" controls preload="metadata" playsinline
-                                                style="width:100%;max-height:260px;display:block;">
-                                                Tu navegador no soporta video.
-                                            </video>
-                                            <div style="padding:8px 12px;display:flex;align-items:center;gap:8px;">
-                                                <span style="font-size:14px;">🎥</span>
-                                                <span style="font-size:11px;color:#94a3b8;flex:1;
-                                                             font-family:monospace;overflow:hidden;
-                                                             white-space:nowrap;text-overflow:ellipsis;">{vfname}</span>
-                                                <a href="{vp}" target="_blank"
-                                                   style="color:#60a5fa;font-size:11px;font-weight:700;
-                                                          text-decoration:none;white-space:nowrap;">Abrir →</a>
-                                            </div>
-                                        </div>
-                                        ''')
-
-                                # ── COTIZACIÓN ─────────────────────────────
-                                if items_ev:
-                                    ui.html(f'<div style="font-size:10px;font-weight:900;color:#2356a8;'
-                                            f'text-transform:uppercase;letter-spacing:1.5px;'
-                                            f'margin-bottom:8px;">🔩 Cotización de Repuestos</div>')
-                                    items_html = ''
-                                    for it_ev in items_ev:
-                                        it_name = it_ev.get('nombre', it_ev.get('item', 'Ítem'))
-                                        it_cant = it_ev.get('cantidad', 1)
-                                        it_pu   = float(it_ev.get('precio_unitario', 0))
-                                        it_tot  = float(it_ev.get('total', 0))
-                                        items_html += (
-                                            f'<div style="display:flex;justify-content:space-between;'
-                                            f'align-items:center;padding:6px 10px;border-bottom:1px solid #f1f5f9;">'
-                                            f'<div>'
-                                            f'<div style="font-size:12px;font-weight:700;color:#1e293b;">{it_name}</div>'
-                                            f'<div style="font-size:10px;color:#94a3b8;">Cant: {it_cant} × S/ {it_pu:.2f}</div>'
-                                            f'</div>'
-                                            f'<div style="font-size:13px;font-weight:800;color:#1a3a6b;">S/ {it_tot:.2f}</div>'
-                                            f'</div>'
-                                        )
-                                    base_v = total_ev / 1.18
-                                    igv_v  = total_ev - base_v
-                                    ui.html(f'''
-                                    <div style="background:white;border:1px solid #e2e8f0;
-                                                border-radius:10px;overflow:hidden;margin-bottom:4px;">
-                                        {items_html}
-                                        <div style="padding:10px 12px;background:#f8fafc;
-                                                    border-top:2px solid #e2e8f0;text-align:right;">
-                                            <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">
-                                                Base: S/ {base_v:.2f} | IGV: S/ {igv_v:.2f}
-                                            </div>
-                                            <div style="font-size:18px;font-weight:900;color:#1a3a6b;">
-                                                TOTAL S/ {total_ev:,.2f}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    ''')
-
-                                # ── Links de documentos ────────────────────
-                                pdf_ev = getattr(ord_ev, 'pdf_cotizacion', '') or ''
-                                fac_ev = getattr(ord_ev, 'factura_sunat', '') or ''
-                                if (pdf_ev and os.path.exists(pdf_ev)) or (fac_ev and os.path.exists(fac_ev)):
-                                    doc_links = ''
-                                    if pdf_ev and os.path.exists(pdf_ev):
-                                        doc_links += (f'<a href="/{pdf_ev}" target="_blank" '
-                                                      f'style="display:inline-flex;align-items:center;gap:4px;'
-                                                      f'background:#274495;color:white;padding:6px 12px;'
-                                                      f'border-radius:8px;font-size:11px;font-weight:700;'
-                                                      f'text-decoration:none;margin-right:6px;">📄 Presupuesto PDF</a>')
-                                    if fac_ev and os.path.exists(fac_ev):
-                                        doc_links += (f'<a href="/{fac_ev}" target="_blank" '
-                                                      f'style="display:inline-flex;align-items:center;gap:4px;'
-                                                      f'background:#059669;color:white;padding:6px 12px;'
-                                                      f'border-radius:8px;font-size:11px;font-weight:700;'
-                                                      f'text-decoration:none;">🧾 Factura SUNAT</a>')
-                                    ui.html(f'<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">'
-                                            f'{doc_links}</div>')
-
-
-                # ════════════════════════════════════════════════
-                # 7. MI CUENTA — Cambiar Contraseña
-                # ════════════════════════════════════════════════
-                with ui.element('div').classes('p-card'):
-                    _section_title('🔐', 'Mi Cuenta')
-                    ui.html('''
-                    <p style="font-size:13px;color:var(--gris-texto);margin:0 0 18px 0;">
-                        Aquí puede cambiar su contraseña de acceso al portal.
-                        Use letras, números o un PIN. Su contraseña inicial es su DNI o RUC.
-                    </p>
-                    ''')
-
-                    msg_cuenta = ui.label('').style(
-                        'font-size:13px;font-weight:600;margin-bottom:8px;display:block;'
-                    )
-                    msg_cuenta.visible = False
-
-                    with ui.element('div').style('display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:480px;'):
-                        nueva_pass = ui.input(
-                            'Nueva contraseña / PIN',
-                            password=True,
-                            password_toggle_button=True
-                        ).props('outlined dense').style('width:100%;')
-                        confirmar_pass = ui.input(
-                            'Confirmar nueva contraseña',
-                            password=True,
-                            password_toggle_button=True
-                        ).props('outlined dense').style('width:100%;')
-
-                    ui.html('''
-                    <p style="font-size:11px;color:var(--gris-texto);margin:8px 0 16px 0;">
-                        Mínimo 4 caracteres. Puede usar letras, números o combinaciones.
-                    </p>
-                    ''')
-
-                    def _cambiar_contrasena():
-                        nueva = (nueva_pass.value or '').strip()
-                        confirmar = (confirmar_pass.value or '').strip()
-                        msg_cuenta.visible = True
-
-                        if len(nueva) < 4:
-                            msg_cuenta.text = '⚠ La contraseña debe tener al menos 4 caracteres.'
-                            msg_cuenta.style(
-                                'font-size:13px;font-weight:600;margin-bottom:8px;display:block;'
-                                'color:#ef4444;'
-                            )
+                    async def submit_appointment():
+                        if not selected_date['value'] or not veh_select.value:
+                            ui.notify('Por favor seleccione fecha y vehículo', type='warning', position='top')
                             return
-                        if nueva != confirmar:
-                            msg_cuenta.text = '⚠ Las contraseñas no coinciden. Intente nuevamente.'
-                            msg_cuenta.style(
-                                'font-size:13px;font-weight:600;margin-bottom:8px;display:block;'
-                                'color:#ef4444;'
-                            )
-                            return
-
+                        # Guardar en DB
+                        db_c = get_db()
                         try:
-                            db2 = get_db()
-                            cli = db2.query(Cliente).filter_by(id=user_id).first()
-                            if cli:
-                                cli.pin_acceso = hash_password(nueva)
-                                db2.commit()
-                                msg_cuenta.text = '✅ Contraseña actualizada correctamente.'
-                                msg_cuenta.style(
-                                    'font-size:13px;font-weight:600;margin-bottom:8px;display:block;'
-                                    'color:#1db97a;'
-                                )
-                                nueva_pass.value = ''
-                                confirmar_pass.value = ''
-                            else:
-                                msg_cuenta.text = '⚠ Error: cliente no encontrado.'
-                                msg_cuenta.style(
-                                    'font-size:13px;font-weight:600;margin-bottom:8px;display:block;'
-                                    'color:#ef4444;'
-                                )
-                            db2.close()
-                        except Exception as ex:
-                            msg_cuenta.text = f'⚠ Error al guardar: {ex}'
-                            msg_cuenta.style(
-                                'font-size:13px;font-weight:600;margin-bottom:8px;display:block;'
-                                'color:#ef4444;'
-                            )
+                            # Concatenar fecha y hora
+                            db_c.add(Cita(
+                                cliente_id=user_id,
+                                vehiculo_placa=veh_select.value,
+                                fecha_cita=selected_date['value'],
+                                hora=hora_select.value,
+                                motivo=f"[{serv_select.value}] {desc_input.value}"
+                            ))
+                            db_c.commit()
+                            ui.notify('¡Cita solicitada con éxito!', type='positive', icon='cloud_done')
+                            # Reset
+                            desc_input.value = ''
+                        except Exception as e:
+                            ui.notify(f'Error: {str(e)}', type='negative')
+                        finally: db_c.close()
 
-                    ui.button(
-                        'Actualizar Contraseña',
-                        icon='lock_reset',
-                        on_click=_cambiar_contrasena
-                    ).style(
-                        'background:#1a3a6b;color:white;font-weight:700;'
-                        'border-radius:10px;padding:10px 22px;font-size:13px;'
-                    )
+                    with ui.button(on_click=submit_appointment).classes('w-full mt-6 bg-[#1a3a6b] text-white py-6 rounded-2xl shadow-xl hover:translate-y-[-1px] transition-all'):
+                        with ui.row().classes('items-center gap-3'):
+                            ui.label('📅').classes('text-xl')
+                            ui.label('Confirmar Cita').classes('text-sm font-bold tracking-wider')
 
-    except Exception as exc:
+                # Notificaciones
+                with ui.element('div').classes('card-premium w-full'):
+                    with ui.row().classes('w-full justify-between items-center mb-6'):
+                        ui.label('🔔 Notificaciones').classes('text-lg font-bold text-blue-900')
+                        ui.button('Marcar todo como leído').props('flat no-caps').classes('text-[10px] font-bold text-blue-400')
+                    
+                    with ui.column().classes('w-full gap-3'):
+                        _notif_item('engineering', 'Reparación iniciada', 'El técnico comenzó el trabajo en taller.', 'Hace 3 horas')
+                        _notif_item('visibility', 'Diagnóstico subido', 'Ya puede revisar el informe técnico.', 'Hoy 08:00 AM')
+
+            # 6. HISTORIAL DE SERVICIOS
+            with ui.element('div').classes('card-premium w-full mt-4 overflow-hidden'):
+                ui.label('📂 Historial de Servicios').classes('text-lg font-bold text-blue-900 mb-6')
+                
+                # Encabezados de tabla con NiceGUI puro
+                with ui.row().classes('w-full bg-gray-50 p-4 border-b-2 border-gray-100 items-center hide-on-mobile'):
+                    ui.label('FECHA').classes('flex-1 text-[11px] font-bold text-gray-400')
+                    ui.label('SERVICIO').classes('flex-[2] text-[11px] font-bold text-gray-400')
+                    ui.label('FOLIO').classes('flex-1 text-[11px] font-bold text-gray-400')
+                    ui.label('COSTO').classes('flex-1 text-[11px] font-bold text-gray-400 text-center')
+                    ui.label('ESTADO').classes('flex-1 text-[11px] font-bold text-gray-400 text-right')
+
+                # Filas de la tabla
+                with ui.column().classes('w-full gap-0'):
+                    for o in ordenes_all[:8]:
+                        with ui.row().classes('w-full p-4 border-b border-gray-100 items-center hover:bg-blue-50/30 transition-colors'):
+                            ui.label(str(o.fecha)).classes('flex-1 text-sm text-gray-500')
+                            ui.label(o.motivo[:40] + '...' if o.motivo and len(o.motivo)>40 else str(o.motivo or 'Revisión')).classes('flex-[2] text-sm font-bold text-gray-800')
+                            ui.badge(str(o.consecutivo)).props('outline').classes('flex-1 text-blue-600 font-mono self-center m-0')
+                            
+                            o_total = sum(float(it.get('total', 0) or 0) for it in (o.items_cotizacion or []))
+                            ui.label(f'S/ {o_total:,.2f}').classes('flex-1 text-sm font-bold text-blue-900 text-center')
+                            
+                            is_done = o.estado in ('ARCHIVADO', 'ENTREGA')
+                            badge_color = 'green-1' if is_done else 'amber-1'
+                            text_color = 'green-9' if is_done else 'amber-9'
+                            with ui.element('div').classes('flex-1 flex justify-end'):
+                                ui.button(icon='visibility', on_click=lambda _, order_obj=o: _view_order_details(order_obj)).props('flat round color=blue-9 size=sm')
+                                ui.badge(o.estado).classes(f'bg-{badge_color} text-{text_color} px-3 py-1 rounded-full text-[10px] font-bold ml-2')
+
+    except Exception as e:
         import traceback
-        with container:
-            ui.label(f'Error al cargar portal: {exc}').classes('text-red-500 p-8')
-            ui.label(traceback.format_exc()).classes('text-xs font-mono text-gray-400 p-4')
+        ui.label(f'Error al cargar portal: {e}').classes('p-10 text-red-500')
+        ui.label(traceback.format_exc()).classes('p-10 text-xs font-mono text-gray-400')
     finally:
         db.close()
 
+# --- HELPERS UI ---
 
-# ─── HELPERS DE RENDER ────────────────────────────────────────────────────────
+def _handle_cal_select(parent, button, date_str, state_dict):
+    # Deseleccionar todos buscando en los hijos del contenedor
+    for child in parent:
+        if 'cal-day' in str(child.classes):
+            child.classes(remove='selected')
+    # Seleccionar actual
+    button.classes('selected')
+    state_dict['value'] = date_str
 
-def _render_tracker_card(order: 'Orden', vehiculo):
-    PHASES = [
-        ('RECEPCIÓN',  '📥'),
-        ('DIAGNÓSTICO','🔍'),
-        ('REPUESTOS',  '📦'),
-        ('APROBACIÓN', '✅'),
-        ('REPARACIÓN', '🔧'),
-        ('CONTROL',    '🛡️'),
-        ('ENTREGA',    '🚘'),
-    ]
-    # Mapa de normalización: variantes sin tilde → con tilde oficial
-    _NORM = {
-        'RECEPCION':  'RECEPCIÓN',
-        'DIAGNOSTICO':'DIAGNÓSTICO',
-        'APROBACION': 'APROBACIÓN',
-        'REPARACION': 'REPARACIÓN',
-    }
-    estado_raw = (order.estado or '').upper().strip()
-    estado = _NORM.get(estado_raw, estado_raw)
-    current_idx = next(
-        (i for i, (n, _) in enumerate(PHASES) if n == estado), 0
-    )
-    total_phases = len(PHASES)
-    pct = int((current_idx / (total_phases - 1)) * 92) if total_phases > 1 else 0
-
-    veh_label = ''
-    if vehiculo:
-        veh_label = f'{vehiculo.marca} {vehiculo.modelo} {vehiculo.año} — {vehiculo.placa}'.strip()
-
-    # Generar HTML de fases
-    phases_html = ''
-    for i, (name, emoji) in enumerate(PHASES):
-        if i < current_idx:
-            cls   = 'done'
-            inner = '✓'
-            sub   = '✔ Listo'
-        elif i == current_idx:
-            cls   = 'active'
-            inner = emoji
-            sub   = '⏳ En curso'
-        else:
-            cls   = 'pending'
-            inner = str(i + 1)
-            sub   = '— Pendiente'
-
-        phases_html += f'''
-        <div class="phase-item {cls}">
-            <div class="phase-circle">{inner}</div>
-            <div class="phase-name">{name}</div>
-            <div class="phase-sub">{sub}</div>
-        </div>
-        '''
-
-    tecnico = order.tecnico or ''
-    motivo  = order.motivo or 'Procesando...'
-
-    ui.html(f'''
-    <div class="p-tracker">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;flex-wrap:wrap;gap:12px;">
-            <div>
-                <div style="font-size:17px;font-weight:800;color:var(--azul);margin-bottom:4px;">
-                    Seguimiento en Vivo
-                </div>
-                <div style="font-size:13px;color:var(--gris-texto);">
-                    Orden de Trabajo: <strong style="color:var(--azul);">#{order.consecutivo}</strong>
-                    {f" · {veh_label}" if veh_label else ""}
-                </div>
-            </div>
-            <div style="background:var(--azul-super-claro);color:var(--azul-med);
-                        padding:6px 14px;border-radius:100px;font-size:12px;
-                        font-weight:600;border:1px solid var(--azul-borde);">
-                📋 Estado: {estado}
-            </div>
-        </div>
-
-        <div class="phases-wrapper">
-            <div class="phases-line"></div>
-            <div class="phases-progress" style="width:{pct}%;"></div>
-            {phases_html}
-        </div>
-
-        <div class="tracker-status">
-            Estado actual: <strong>{estado}</strong>
-            {f" — {motivo}" if motivo else ""}
-            {f" · Mecánico: {tecnico}" if tecnico else ""}
-        </div>
-    </div>
-    ''')
-
-
-def _stat_card(icon, value, label):
-    """Stat card mejorada con colores y animaciones"""
-    # Definir colores según el icono
-    colors = {
-        '🚗': ('rgba(59, 130, 246, 0.15)', 'rgba(96, 165, 250, 0.05)', '#3b82f6', '#60a5fa'),
-        '🔧': ('rgba(16, 185, 129, 0.15)', 'rgba(16, 185, 129, 0.05)', '#10b981', '#34d399'),
-        '📋': ('rgba(139, 92, 246, 0.15)', 'rgba(139, 92, 246, 0.05)', '#8b5cf6', '#a78bfa'),
-        '📅': ('rgba(245, 158, 11, 0.15)', 'rgba(245, 158, 11, 0.05)', '#f59e0b', '#fbbf24'),
-    }
-    bg, bg_icon, color_start, color_end = colors.get(icon, ('rgba(148, 163, 184, 0.1)', 'rgba(148, 163, 184, 0.05)', '#94a3b8', '#cbd5e1'))
-    
-    ui.html(f'''
-    <div class="portal-stat-card" style="--color-start: {color_start}; --color-end: {color_end};">
-        <div class="portal-stat-icon" style="background: {bg}; color: {color_start};">
-            {icon}
-        </div>
-        <div class="p-stat-num" style="font-size: 2rem; font-weight: 900; color: #1e293b; margin-bottom: 0.25rem;">
-            {value}
-        </div>
-        <div class="p-stat-label" style="font-size: 0.875rem; color: #64748b; font-weight: 600;">
-            {label}
-        </div>
-    </div>
-    ''')
-
-
-def _section_title(icon, text):
-    """Título de sección mejorado con estilo premium"""
-    ui.html(f'''
-    <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 2px solid #f1f5f9;">
-        <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, rgba(39, 68, 149, 0.1), rgba(96, 165, 250, 0.05)); display: flex; align-items: center; justify-content: center; font-size: 20px;">
-            {icon}
-        </div>
-        <span style="font-size: 1.125rem; font-weight: 800; color: #1e293b; letter-spacing: -0.5px;">
-            {text}
-        </span>
-    </div>
-    ''')
-
+def _quick_stat(icon, value, label):
+    with ui.element('div').classes('stat-card flex-1 bg-white p-6 rounded-2xl border border-gray-100 flex items-center gap-4 shadow-sm'):
+        with ui.element('div').classes('stat-icon-wrap'):
+            ui.label(icon).classes('text-xl')
+        with ui.column().classes('gap-0'):
+            ui.label(value).classes('text-2xl font-extrabold text-[#1a3a6b]')
+            ui.label(label).classes('text-[10px] text-gray-400 font-bold uppercase tracking-wider')
 
 def _data_row(label, val):
-    ui.html(f'''
-    <div class="p-data-row">
-        <span class="p-data-label">{label}</span>
-        <span class="p-data-val">{val}</span>
-    </div>
-    ''')
+    with ui.row().classes('w-full justify-between items-center text-sm'):
+        ui.label(label).classes('text-gray-400 font-medium')
+        ui.label(val).classes('font-bold text-gray-800 text-right')
 
+def _notif_item(icon, title, desc, time):
+    with ui.row().classes('w-full gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100 items-start'):
+        ui.icon(icon, color='blue-800', size='xs').classes('mt-1')
+        with ui.column().classes('gap-0 flex-1'):
+            ui.label(title).classes('text-xs font-bold text-gray-800')
+            ui.label(desc).classes('text-[10px] text-gray-400 leading-tight')
+            ui.label(time).classes('text-[9px] text-blue-300 font-bold mt-1')
 
-def _notif_item_html(nueva: bool, icon_cls: str, icon: str, titulo: str, desc: str, tiempo: str):
-    nueva_cls = 'nueva' if nueva else ''
-    dot_cls   = '' if nueva else 'read'
-    ui.html(f'''
-    <div class="p-notif-item {nueva_cls}">
-        <div class="p-ni-dot {dot_cls}"></div>
-        <div class="p-ni-icon {icon_cls}">{icon}</div>
-        <div style="flex:1;">
-            <div class="p-ni-title">{titulo}</div>
-            <div class="p-ni-desc">{desc}</div>
-            <div class="p-ni-time">{tiempo}</div>
-        </div>
-    </div>
-    ''')
+def _render_tracker(current_state):
+    phases = [
+        ('RECEPCIÓN', 'login'), 
+        ('DIAGNÓSTICO', 'search'), 
+        ('REPUESTOS', 'precision_manufacturing'),
+        ('APROBACIÓN', 'check_circle'), 
+        ('REPARACIÓN', 'engineering'), 
+        ('CONTROL', 'verified'), 
+        ('ENTREGA', 'verified_user')
+    ]
+    
+    current_idx = 0
+    for i, (name, _) in enumerate(phases):
+        if name == current_state: current_idx = i
+    
+    with ui.row().classes('w-full justify-between relative mt-4'):
+        # Línea de progreso
+        ui.element('div').classes('absolute top-[24px] left-0 right-0 h-1 bg-gray-100 shadow-inner')
+        ui.element('div').classes('absolute top-[24px] left-0 h-1 bg-blue-900 transition-all duration-1000 shadow-lg').style(f'width: {(current_idx / (len(phases)-1)) * 100}%')
+        
+        for i, (name, icon) in enumerate(phases):
+            status_cls = 'done' if i < current_idx else 'active' if i == current_idx else 'pending'
+            with ui.column().classes(f'phase-item {status_cls}'):
+                with ui.element('div').classes('phase-circle shadow-xl'):
+                    if i < current_idx: ui.icon('check', size='sm')
+                    elif i == current_idx: ui.icon(icon, size='sm')
+                    else: ui.label(str(i+1)).classes('text-xs font-bold')
+                
+                ui.label(name).classes('text-[9px] font-black text-center whitespace-pre-wrap w-16')
 
-
-# _build_client_notifications eliminada — se usa get_client_notifications() de utils/notifications.py
-
-
-def _item_icon(nombre: str) -> str:
-    n = nombre.lower()
-    if any(x in n for x in ['aceite', 'lubric']): return '🛢️'
-    if any(x in n for x in ['freno', 'pastill', 'disco']): return '🛞'
-    if any(x in n for x in ['agua', 'refriger', 'anticongelante']): return '💧'
-    if any(x in n for x in ['filtro']): return '🔄'
-    if any(x in n for x in ['mano de obra', 'servicio', 'diagnóstico', 'diagnostico']): return '🔧'
-    if any(x in n for x in ['batería', 'bateria', 'eléctric', 'electric']): return '⚡'
-    if any(x in n for x in ['llanta', 'neumático', 'goma']): return '🚗'
-    return '🔩'
-
-
-def _mes(m: int) -> str:
-    return ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
-            'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][m]
-
-
-def _safe_json(data) -> list:
+def _safe_json(data):
     if not data: return []
     if isinstance(data, list): return data
     try: return json.loads(data)
     except: return []
 
+def _view_order_details(o):
+    with ui.dialog() as d, ui.card().classes('w-full max-w-lg p-0 bg-slate-50 overflow-hidden shadow-2xl'):
+        # Header ultra-slim corporativo
+        with ui.row().classes('w-full p-4 bg-blue-950 text-white items-center justify-between'):
+            with ui.column().classes('gap-0'):
+                ui.label(o.consecutivo).classes('text-lg font-black tracking-tighter italic')
+                ui.label(o.fecha).classes('text-[10px] opacity-70')
+            ui.button(icon='close', on_click=d.close).props('flat round color=white size=sm')
 
-# ═══════════════════════════════════════════════════════════════
-# DIÁLOGOS INTERACTIVOS PARA STATS CARDS
-# ═══════════════════════════════════════════════════════════════
+        with ui.scroll_area().classes('w-full p-4').style('height: 80vh'):
+            # 1. TRACKER DE 7 FASES
+            ui.label('SEGUIMIENTO DE ETAPAS').classes('text-[10px] font-bold text-slate-400 tracking-widest mb-4')
+            _render_tracker(o.estado)
+            
+            ui.separator().classes('my-6 opacity-50')
 
-def _mostrar_vehiculos_dialog(db, cliente_id):
-    """Muestra diálogo con lista de vehículos del cliente"""
-    from utils.models import Vehiculo
-    
-    vehiculos = db.query(Vehiculo).filter_by(cliente_id=cliente_id).all()
-    
-    with ui.dialog() as dialog, ui.card().classes('w-full max-w-2xl'):
-        with ui.row().classes('w-full items-center justify-between mb-4 pb-4 border-b-2 border-gray-100'):
-            ui.label('🚗 Mis Vehículos').classes('text-2xl font-black text-gray-900')
-            ui.button(icon='close', on_click=dialog.close).props('flat round').classes('text-gray-400')
-        
-        if vehiculos:
-            with ui.column().classes('w-full gap-4'):
-                for v in vehiculos:
-                    with ui.card().classes('w-full bg-gradient-to-r from-blue-50 to-white border-l-4 border-blue-500 hover:shadow-lg transition-all'):
-                        with ui.row().classes('w-full items-center gap-4'):
-                            with ui.element('div').classes('p-4 bg-blue-100 rounded-xl'):
-                                ui.icon('directions_car', size='xl').classes('text-blue-600')
-                            
-                            with ui.column().classes('flex-1 gap-1'):
-                                ui.label(f'{v.marca} {v.modelo} {v.año}'.strip()).classes('text-lg font-bold text-gray-900')
-                                ui.label(f'Placa: {v.placa}').classes('text-sm text-gray-600 font-semibold')
-                                if v.color:
-                                    ui.label(f'Color: {v.color}').classes('text-sm text-gray-500')
-                            
-                            with ui.badge().props('color=blue'):
-                                ui.label(v.tipo_vehiculo or 'Auto')
-        else:
-            ui.label('No hay vehículos registrados').classes('text-center text-gray-400 py-8')
-    
-    dialog.open()
+            # 2. DETALLES POR ETAPA
+            # — Recepción —
+            with ui.column().classes('w-full gap-2 mb-6'):
+                with ui.row().classes('items-center gap-2'):
+                    ui.icon('login', color='blue-9', size='xs')
+                    ui.label('1. RECEPCIÓN').classes('text-xs font-black text-blue-900')
+                
+                with ui.card().classes('w-full p-3 bg-white border border-slate-200 shadow-sm'):
+                    ui.label('MOTIVO DE INGRESO:').classes('text-[9px] font-bold text-slate-400')
+                    ui.label(o.motivo or 'Revisión').classes('text-sm text-slate-800 font-medium')
+                    with ui.row().classes('w-full mt-2 gap-4'):
+                        with ui.column().classes('gap-0'):
+                            ui.label('KM').classes('text-[9px] text-slate-400')
+                            ui.label(o.km or '-').classes('text-xs font-bold')
+                
+                # Evidencia de esta fase
+                _render_fase_media(o, 'RECEPCIÓN')
 
-
-def _mostrar_servicio_dialog(orden, vehiculo):
-    """Muestra detalles del servicio activo"""
-    if not orden:
-        with ui.dialog() as dialog, ui.card().classes('w-full max-w-md'):
-            ui.label('No hay servicio activo').classes('text-center text-gray-400 py-8')
-            ui.button('Cerrar', on_click=dialog.close).classes('w-full btn-sandoval')
-        dialog.open()
-        return
-    
-    with ui.dialog() as dialog, ui.card().classes('w-full max-w-2xl'):
-        with ui.row().classes('w-full items-center justify-between mb-4 pb-4 border-b-2 border-gray-100'):
-            ui.label('🔧 Servicio Activo').classes('text-2xl font-black text-gray-900')
-            ui.button(icon='close', on_click=dialog.close).props('flat round').classes('text-gray-400')
-        
-        # Info del vehículo
-        if vehiculo:
-            with ui.card().classes('w-full bg-gradient-to-r from-green-50 to-white border-l-4 border-green-500 mb-4'):
-                ui.label(f'🚗 {vehiculo.marca} {vehiculo.modelo} - {vehiculo.placa}').classes('text-lg font-bold text-gray-900 mb-2')
-                with ui.grid(columns=2).classes('w-full gap-2 text-sm'):
-                    ui.label(f'📍 Estado: ').classes('text-gray-600 font-semibold')
-                    with ui.badge().props(f'color={_get_estado_color(orden.estado)}'):
-                        ui.label(orden.estado)
+            # — Diagnóstico —
+            if o.estado not in ('RECEPCIÓN'):
+                with ui.column().classes('w-full gap-2 mb-6'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.icon('search', color='blue-9', size='xs')
+                        ui.label('2. DIAGNÓSTICO TÉCNICO').classes('text-xs font-black text-blue-900')
                     
-                    ui.label(f'👨‍🔧 Técnico: ').classes('text-gray-600 font-semibold')
-                    ui.label(orden.tecnico or 'No asignado').classes('text-gray-900')
+                    with ui.card().classes('w-full p-3 bg-white border border-slate-200 shadow-sm'):
+                        if o.diagnostico:
+                            ui.label(o.diagnostico).classes('text-sm text-slate-800 whitespace-pre-wrap')
+                        else:
+                            ui.label('Diagnóstico en proceso...').classes('text-sm text-slate-400 italic')
+                    _render_fase_media(o, 'DIAGNÓSTICO')
+
+            # — Cotización —
+            if o.estado not in ('RECEPCIÓN', 'DIAGNÓSTICO'):
+                with ui.column().classes('w-full gap-2 mb-6'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.icon('request_quote', color='blue-9', size='xs')
+                        ui.label('3. COTIZACIÓN DE REPUESTOS').classes('text-xs font-black text-blue-900')
                     
-                    ui.label(f'📅 Ingreso: ').classes('text-gray-600 font-semibold')
-                    ui.label(orden.fecha or '—').classes('text-gray-900')
-        
-        # Servicios
-        if orden.items_cotizacion:
-            ui.label('Servicios solicitados:').classes('text-lg font-bold text-gray-900 mt-4 mb-2')
-            with ui.column().classes('w-full gap-2'):
-                for item in orden.items_cotizacion:
-                    desc = item.get('descripcion', 'Servicio')
-                    cant = item.get('cantidad', 1)
-                    ui.label(f'• {desc} (x{cant})').classes('text-sm text-gray-700')
-        
-        ui.button('Cerrar', on_click=dialog.close).classes('w-full btn-sandoval mt-4')
-    
-    dialog.open()
-
-
-def _mostrar_historial_dialog(db, cliente_id):
-    """Muestra historial de visitas del cliente"""
-    from utils.models import Orden, Vehiculo
-    
-    ordenes = db.query(Orden).join(Vehiculo).filter(Vehiculo.cliente_id == cliente_id).order_by(Orden.fecha.desc()).limit(20).all()
-    
-    with ui.dialog() as dialog, ui.card().classes('w-full max-w-3xl').style('max-height: 80vh; overflow-y: auto;'):
-        with ui.row().classes('w-full items-center justify-between mb-4 pb-4 border-b-2 border-gray-100'):
-            ui.label('📋 Historial de Visitas').classes('text-2xl font-black text-gray-900')
-            ui.button(icon='close', on_click=dialog.close).props('flat round').classes('text-gray-400')
-        
-        if ordenes:
-            with ui.column().classes('w-full gap-3'):
-                for o in ordenes:
-                    vehiculo = db.query(Vehiculo).filter_by(id=o.vehiculo_id).first()
-                    with ui.card().classes('w-full hover:shadow-lg transition-all border-l-4').style(f'border-color: {_get_estado_color(o.estado)};'):
-                        with ui.row().classes('w-full items-start justify-between'):
-                            with ui.column().classes('flex-1 gap-1'):
-                                ui.label(f'Orden #{o.consecutivo}').classes('text-lg font-bold text-gray-900')
-                                if vehiculo:
-                                    ui.label(f'🚗 {vehiculo.marca} {vehiculo.modelo} - {vehiculo.placa}').classes('text-sm text-gray-600')
-                                ui.label(f'📅 {o.fecha}').classes('text-xs text-gray-500')
+                    items = _safe_json(o.items_cotizacion)
+                    if items:
+                        with ui.card().classes('w-full p-0 bg-white border border-slate-200 overflow-hidden shadow-sm'):
+                            total = 0
+                            for it in items:
+                                val = float(it.get('total', 0))
+                                total += val
+                                with ui.row().classes('w-full p-2 justify-between border-b border-slate-100 items-center'):
+                                    ui.label(it.get('nombre', 'Item')).classes('text-[11px] font-bold text-slate-700')
+                                    ui.label(f"S/ {val:,.2f}").classes('text-[11px] font-black text-blue-900')
                             
-                            with ui.badge().props(f'color={_get_estado_color(o.estado)}'):
-                                ui.label(o.estado)
-        else:
-            ui.label('No hay historial de visitas').classes('text-center text-gray-400 py-8')
+                            with ui.row().classes('w-full p-3 bg-blue-50/50 justify-between items-center'):
+                                ui.label('TOTAL ESTIMADO').classes('text-[10px] font-black text-blue-900')
+                                ui.label(f"S/ {total:,.2f}").classes('text-lg font-black text-blue-950')
+                    else:
+                        ui.label('Listando repuestos necesarios...').classes('text-xs text-slate-400 italic p-2')
+
+            # Botón de acción rápido
+            if o.estado == 'REPARACIÓN':
+                ui.button('VER AVANCE EN VIVO', icon='play_circle').props('unelevated color=blue-9').classes('w-full rounded-xl py-4 mt-4 font-black')
+
+        d.open()
+
+def _render_fase_media(order, fase_nombre):
+    """Filtra y renderiza la evidencia de una fase específica"""
+    medios_raw = _safe_json(order.fotos_evidencia)
+    # Filtrar solo los que pertenecen a esta fase (o los que no tienen fase si es RECEPCIÓN - retrocompatibilidad)
+    medios = []
+    for m in medios_raw:
+        if isinstance(m, dict):
+            if m.get('fase') == fase_nombre:
+                medios.append(m.get('path'))
+        elif isinstance(m, str) and fase_nombre == 'RECEPCIÓN':
+            medios.append(m)
     
-    dialog.open()
-
-
-def _mostrar_cita_dialog(db, cliente_id):
-    """Muestra próxima cita o permite agendar"""
-    from utils.models import Cita, Vehiculo
-    from datetime import datetime
-    
-    # Buscar próxima cita
-    citas = db.query(Cita).join(Vehiculo).filter(
-        Vehiculo.cliente_id == cliente_id,
-        Cita.estado == 'pendiente'
-    ).order_by(Cita.fecha_hora).all()
-    
-    with ui.dialog() as dialog, ui.card().classes('w-full max-w-2xl'):
-        with ui.row().classes('w-full items-center justify-between mb-4 pb-4 border-b-2 border-gray-100'):
-            ui.label('📅 Mis Citas').classes('text-2xl font-black text-gray-900')
-            ui.button(icon='close', on_click=dialog.close).props('flat round').classes('text-gray-400')
-        
-        if citas:
-            ui.label(f'Tienes {len(citas)} cita(s) programada(s):').classes('text-lg font-semibold text-gray-700 mb-3')
-            with ui.column().classes('w-full gap-3'):
-                for cita in citas[:5]:
-                    vehiculo = db.query(Vehiculo).filter_by(id=cita.vehiculo_id).first()
-                    with ui.card().classes('w-full bg-gradient-to-r from-orange-50 to-white border-l-4 border-orange-500'):
-                        with ui.row().classes('w-full items-center gap-4'):
-                            with ui.element('div').classes('p-4 bg-orange-100 rounded-xl'):
-                                ui.icon('event', size='xl').classes('text-orange-600')
-                            
-                            with ui.column().classes('flex-1 gap-1'):
-                                ui.label(f'📅 {cita.fecha_hora}').classes('text-lg font-bold text-gray-900')
-                                if vehiculo:
-                                    ui.label(f'🚗 {vehiculo.marca} {vehiculo.modelo} - {vehiculo.placa}').classes('text-sm text-gray-600')
-                                if cita.motivo:
-                                    ui.label(f'Motivo: {cita.motivo}').classes('text-sm text-gray-500')
-        else:
-            with ui.column().classes('w-full items-center gap-4 py-8'):
-                ui.icon('event_busy', size='64px').classes('text-gray-300')
-                ui.label('No tienes citas programadas').classes('text-lg text-gray-400 font-semibold')
-                ui.label('Comunícate con el taller para agendar una cita').classes('text-sm text-gray-500')
-                with ui.row().classes('gap-2 mt-4'):
-                    ui.button('📞 Llamar', icon='phone').classes('bg-green-600 text-white')
-                    ui.button('💬 WhatsApp', icon='chat').classes('bg-green-500 text-white')
-    
-    dialog.open()
-
-
-def _get_estado_color(estado):
-    """Retorna color Quasar según el estado"""
-    colores = {
-        'RECEPCION': 'blue',
-        'DIAGNOSTICO': 'purple',
-        'COTIZACION': 'orange',
-        'EN_TRABAJO': 'indigo',
-        'CONTROL_CALIDAD': 'teal',
-        'ENTREGA': 'green',
-        'RECHAZADO': 'red',
-        'ARCHIVADO': 'grey'
-    }
-    return colores.get(estado, 'grey')
-
+    if medios:
+        with ui.row().classes('w-full gap-2 mt-2 overflow-x-auto no-wrap p-1'):
+            for path in medios:
+                ui.image(path).classes('w-24 h-24 rounded-lg shadow-md object-cover border-2 border-white')
