@@ -544,10 +544,11 @@
   <div class="slide-up">
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-xl font-black text-gray-900">Órdenes</h2>
+      <button onclick="showNuevaOrden()" class="btn-primary py-2 px-4 text-sm">+ Nueva</button>
     </div>
     ${data.length === 0 ? '<div class="card p-10 text-center text-gray-400">Sin órdenes</div>' :
           data.map(o => `
-      <div class="card p-4 mb-3 cursor-pointer active:scale-[.98] transition-all" onclick="showOrden(${o.id})">
+      <div class="card p-4 mb-3 cursor-pointer active:scale-[.98] transition-all" onclick="showOrden('${o.consecutivo}')">
         <div class="flex items-start justify-between mb-2">
           <div>
             <p class="font-black text-[#274495] text-sm">${o.consecutivo}</p>
@@ -563,8 +564,85 @@
   </div>`;
     }
 
-    async function showOrden(id) {
-      const o = await apiFetch('/api/ordenes/' + id);
+    async function showNuevaOrden() {
+      // Cargar clientes para el select
+      const clientes = await apiFetch('/api/clientes?q=') || [];
+      const cliOpts = clientes.map(c => `<option value="${c.id}">${c.nombre} ${c.apellidos} (${c.id})</option>`).join('');
+      openSheet(`
+    <div class="p-5">
+      <p class="text-lg font-black text-gray-900 mb-5">Nueva Orden de Servicio</p>
+      <div class="mb-3">
+        <label class="text-xs font-bold text-gray-400 block mb-1">CLIENTE</label>
+        <select id="no-cliente" onchange="cargarVehiculos(this.value)" class="w-full">
+          <option value="">— Seleccionar cliente —</option>
+          ${cliOpts}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="text-xs font-bold text-gray-400 block mb-1">PLACA DEL VEHÍCULO</label>
+        <select id="no-placa" class="w-full">
+          <option value="">— Seleccionar cliente primero —</option>
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="text-xs font-bold text-gray-400 block mb-1">KILOMETRAJE</label>
+        <input id="no-km" type="number" placeholder="Ej: 45000">
+      </div>
+      <div class="mb-3">
+        <label class="text-xs font-bold text-gray-400 block mb-1">TIPO</label>
+        <select id="no-tipo" class="w-full">
+          <option>Express</option>
+          <option>Correctivo</option>
+          <option>Preventivo</option>
+          <option>Garantía</option>
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="text-xs font-bold text-gray-400 block mb-1">TÉCNICO ASIGNADO</label>
+        <input id="no-tecnico" placeholder="Nombre del técnico">
+      </div>
+      <div class="mb-5">
+        <label class="text-xs font-bold text-gray-400 block mb-1">MOTIVO / PROBLEMA *</label>
+        <textarea id="no-motivo" rows="3" placeholder="Describe el problema del vehículo..."></textarea>
+      </div>
+      <button onclick="guardarNuevaOrden()" class="btn-primary w-full text-center">Crear Orden de Servicio</button>
+    </div>
+  `);
+    }
+
+    async function cargarVehiculos(clienteId) {
+      if (!clienteId) return;
+      const veh = await apiFetch('/api/clientes/' + clienteId + '/vehiculos') || [];
+      const sel = document.getElementById('no-placa');
+      if (!sel) return;
+      sel.innerHTML = veh.length
+        ? veh.map(v => `<option value="${v.placa}">${v.placa} — ${v.marca} ${v.modelo}</option>`).join('')
+        : '<option value="">— Sin vehículos registrados —</option>';
+    }
+
+    async function guardarNuevaOrden() {
+      const motivo = document.getElementById('no-motivo').value.trim();
+      if (!motivo) { toastErr('El motivo es obligatorio'); return; }
+      const body = {
+        cliente_id: document.getElementById('no-cliente').value || null,
+        vehiculo_placa: document.getElementById('no-placa').value || null,
+        motivo,
+        km: document.getElementById('no-km').value,
+        tecnico: document.getElementById('no-tecnico').value,
+        tipo: document.getElementById('no-tipo').value,
+      };
+      const r = await apiFetch('/api/ordenes/nueva', { method: 'POST', body: JSON.stringify(body) });
+      if (r && r.ok) {
+        toastOk('Orden creada: ' + r.consecutivo);
+        closeSheet();
+        pageOrdenes();
+      } else {
+        toastErr(r?.error || 'Error al crear orden');
+      }
+    }
+
+    async function showOrden(cons) {
+      const o = await apiFetch('/api/ordenes/' + cons);
       if (!o) return;
       const ESTADOS = ['RECEPCIÓN', 'DIAGNÓSTICO', 'REPUESTOS', 'APROBACIÓN', 'REPARACIÓN', 'CONTROL', 'ENTREGA', 'ARCHIVADO'];
       const totalItems = (o.items || []).reduce((s, it) => s + (it.total || it.subtotal || 0), 0);

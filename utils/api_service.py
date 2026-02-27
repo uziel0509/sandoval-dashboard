@@ -220,56 +220,65 @@ async def api_ordenes_list(request: Request) -> JSONResponse:
         q = db.query(Orden).order_by(Orden.fecha.desc())
         if estado:
             q = q.filter(Orden.estado == estado)
-        ordenes = q.limit(50).all()
+        ordenes = q.limit(100).all()
         data = []
         for o in ordenes:
             cli = db.query(Cliente).filter_by(id=o.cliente_id).first()
             data.append({
-                'id': o.id, 'consecutivo': o.consecutivo,
-                'fecha': str(o.fecha or ''), 'estado': o.estado,
+                'id': o.consecutivo,
+                'consecutivo': o.consecutivo,
+                'fecha': str(o.fecha or ''),
+                'estado': o.estado,
                 'cliente_nombre': f'{cli.nombre} {cli.apellidos}'.strip() if cli else '—',
                 'vehiculo_placa': o.vehiculo_placa or '',
-                'descripcion': o.descripcion_problema or '',
+                'descripcion': o.motivo or '',
             })
         return json_ok(data)
     finally:
         db.close()
 
 
+
 async def api_orden_get(request: Request) -> JSONResponse:
     user = _require_admin(request)
     if isinstance(user, JSONResponse):
         return user
-    orden_id = int(request.path_params.get('id', 0))
+    cons = request.path_params.get('id', '')
     db = get_db()
     try:
-        o = db.query(Orden).filter_by(id=orden_id).first()
+        o = db.query(Orden).filter_by(consecutivo=cons).first()
         if not o:
             return json_err('Orden no encontrada', 404)
         cli = db.query(Cliente).filter_by(id=o.cliente_id).first()
+        veh = db.query(Vehiculo).filter_by(placa=o.vehiculo_placa).first() if o.vehiculo_placa else None
         return json_ok({
-            'id': o.id, 'consecutivo': o.consecutivo,
+            'id': o.consecutivo,
+            'consecutivo': o.consecutivo,
             'fecha': str(o.fecha or ''), 'estado': o.estado,
             'cliente_id': o.cliente_id,
             'cliente_nombre': f'{cli.nombre} {cli.apellidos}'.strip() if cli else '—',
             'cliente_telefono': cli.telefono if cli else '',
             'vehiculo_placa': o.vehiculo_placa or '',
-            'vehiculo_marca': o.vehiculo_marca or '',
-            'vehiculo_modelo': o.vehiculo_modelo or '',
-            'descripcion': o.descripcion_problema or '',
+            'vehiculo_marca': veh.marca if veh else '',
+            'vehiculo_modelo': veh.modelo if veh else '',
+            'descripcion': o.motivo or '',
+            'km': o.km or '',
+            'tecnico': o.tecnico or '',
+            'tipo': o.tipo or 'Express',
             'items': o.items_cotizacion or [],
-            'notas': o.notas_tecnico or '',
+            'notas': o.observaciones or '',
         })
     finally:
         db.close()
 
 
+
 async def api_orden_estado(request: Request) -> JSONResponse:
-    """PUT /api/ordenes/{id}/estado  {estado: 'DIAGNÓSTICO' | ...}"""
+    """PUT /api/ordenes/{id}/estado  {estado: ...}"""
     user = _require_admin(request)
     if isinstance(user, JSONResponse):
         return user
-    orden_id = int(request.path_params.get('id', 0))
+    cons = request.path_params.get('id', '')
     try:
         body = await request.json()
     except Exception:
@@ -277,18 +286,72 @@ async def api_orden_estado(request: Request) -> JSONResponse:
     nuevo_estado = body.get('estado', '').strip()
     db = get_db()
     try:
-        o = db.query(Orden).filter_by(id=orden_id).first()
+        o = db.query(Orden).filter_by(consecutivo=cons).first()
         if not o:
             return json_err('Orden no encontrada', 404)
         o.estado = nuevo_estado
         db.commit()
-        log_actividad(f'Orden {o.consecutivo} → {nuevo_estado}', 'api')
         return json_ok({'ok': True, 'estado': nuevo_estado})
     except Exception as e:
         db.rollback()
         return json_err(str(e))
     finally:
         db.close()
+
+
+async def api_orden_create(request: Request) -> JSONResponse:
+    """POST /api/ordenes/nueva"""
+    user = _require_admin(request)
+    if isinstance(user, JSONResponse):
+        return user
+    try:
+        body = await request.json()
+    except Exception:
+        return json_err('Body inválido')
+    db = get_db()
+    try:
+        # Generar consecutivo
+        year = datetime.now().year
+        count = db.query(Orden).filter(Orden.fecha.like(f'{year}%')).count()
+        consecutivo = f'OS-{year}-{count + 1:04d}'
+        o = Orden(
+            consecutivo=consecutivo,
+            fecha=datetime.now().strftime('%Y-%m-%d'),
+            cliente_id=body.get('cliente_id') or None,
+            vehiculo_placa=body.get('vehiculo_placa') or None,
+            motivo=body.get('motivo', ''),
+            km=body.get('km', ''),
+            tecnico=body.get('tecnico', ''),
+            tipo=body.get('tipo', 'Express'),
+            observaciones=body.get('observaciones', ''),
+            estado='RECEPCIÓN',
+            approval_token=secrets.token_hex(16),
+            report_token=secrets.token_hex(16),
+        )
+        db.add(o)
+        db.commit()
+        log_actividad(f'Nueva orden {consecutivo} creada desde app', 'api')
+        return json_ok({'ok': True, 'consecutivo': consecutivo}, 201)
+    except Exception as e:
+        db.rollback()
+        return json_err(str(e))
+    finally:
+        db.close()
+
+
+async def api_vehiculos_cliente(request: Request) -> JSONResponse:
+    """GET /api/clientes/{id}/vehiculos"""
+    user = _require_admin(request)
+    if isinstance(user, JSONResponse):
+        return user
+    cliente_id = request.path_params.get('id', '')
+    db = get_db()
+    try:
+        vehiculos = db.query(Vehiculo).filter_by(cliente_id=cliente_id).all()
+        return json_ok([{'placa': v.placa, 'marca': v.marca, 'modelo': v.modelo, 'año': v.año} for v in vehiculos])
+    finally:
+        db.close()
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -588,10 +651,12 @@ def register_api_routes(app):
     app.add_api_route('/api/auth/logout',             api_logout,              methods=['POST', 'OPTIONS'])
     app.add_api_route('/api/dashboard',               api_dashboard,           methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/ordenes',                 api_ordenes_list,        methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/ordenes/nueva',           api_orden_create,        methods=['POST', 'OPTIONS'])
     app.add_api_route('/api/ordenes/{id}',            api_orden_get,           methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/ordenes/{id}/estado',     api_orden_estado,        methods=['PUT',  'OPTIONS'])
     app.add_api_route('/api/clientes',                api_clientes_list,       methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/clientes/nuevo',          api_cliente_create,      methods=['POST', 'OPTIONS'])
+    app.add_api_route('/api/clientes/{id}/vehiculos', api_vehiculos_cliente,   methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/vehiculos',               api_vehiculos_list,      methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/inventario',              api_inventario_list,     methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/notas-venta',             api_notas_list,          methods=['GET',  'OPTIONS'])
