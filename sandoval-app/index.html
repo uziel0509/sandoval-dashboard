@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#274495">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Sandoval Dashboard</title>
+<link rel="manifest" href="/app/manifest.json">
+<link rel="icon" href="/assets/logo_sandoval.jpg">
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<style>
+  *{font-family:'Outfit',sans-serif;-webkit-tap-highlight-color:transparent}
+  body{background:#f1f5f9;overscroll-behavior:none}
+  .slide-up{animation:slideUp .25s ease}
+  @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+  .card{background:white;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+  .btn-primary{background:linear-gradient(135deg,#274495,#1e367a);color:white;border-radius:12px;padding:14px 24px;font-weight:700;transition:all .2s}
+  .btn-primary:active{transform:scale(.97)}
+  .btn-secondary{background:#f1f5f9;color:#374151;border-radius:12px;padding:12px 20px;font-weight:600}
+  .badge{border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700}
+  .nav-tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 12px;color:#94a3b8;font-size:10px;font-weight:600;transition:.2s;flex:1}
+  .nav-tab.active{color:#274495}
+  .nav-tab .mi{font-size:22px}
+  ::-webkit-scrollbar{display:none}
+  input,textarea,select{outline:none;border:1.5px solid #e2e8f0;border-radius:10px;padding:12px 14px;width:100%;font-size:15px;transition:.2s;background:white}
+  input:focus,textarea:focus,select:focus{border-color:#274495;box-shadow:0 0 0 3px rgba(39,68,149,.1)}
+  .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#1e293b;color:white;padding:12px 24px;border-radius:999px;font-size:14px;font-weight:600;z-index:9999;animation:slideUp .3s ease}
+  .chip{display:inline-flex;align-items:center;padding:4px 12px;border-radius:999px;font-size:11px;font-weight:700}
+  .estado-RECEPCIÓN{background:#e2e8f0;color:#475569}
+  .estado-DIAGNÓSTICO{background:#dbeafe;color:#1e40af}
+  .estado-REPUESTOS{background:#ede9fe;color:#5b21b6}
+  .estado-APROBACIÓN{background:#fef3c7;color:#92400e}
+  .estado-REPARACIÓN{background:#dbeafe;color:#1d4ed8}
+  .estado-CONTROL{background:#f0fdf4;color:#166534}
+  .estado-ENTREGA{background:#d1fae5;color:#065f46}
+  .estado-ARCHIVADO{background:#f1f5f9;color:#64748b}
+  .estado-pagada{background:#d1fae5;color:#065f46}
+  .estado-borrador{background:#fef3c7;color:#92400e}
+  .estado-anulada{background:#fee2e2;color:#991b1b}
+  .estado-Pendiente{background:#fef3c7;color:#92400e}
+  .estado-Confirmada{background:#dbeafe;color:#1e40af}
+  .estado-Completada{background:#d1fae5;color:#065f46}
+  .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;display:flex;align-items:flex-end;justify-content:center;backdrop-filter:blur(4px)}
+  .modal-sheet{background:white;border-radius:24px 24px 0 0;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;padding-bottom:env(safe-area-inset-bottom)}
+  #loading{position:fixed;inset:0;background:#274495;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s}
+</style>
+</head>
+<body>
+
+<!-- SPLASH -->
+<div id="loading">
+  <img src="/assets/logo_sandoval.jpg" class="w-24 h-24 rounded-2xl shadow-2xl mb-6 object-contain bg-white p-2">
+  <p class="text-white text-2xl font-black tracking-tight">SANDOVAL</p>
+  <p class="text-blue-200 text-sm font-medium mt-1">Cargando sistema...</p>
+</div>
+
+<!-- APP ROOT -->
+<div id="app" class="hidden min-h-screen flex flex-col">
+
+  <!-- TOP BAR -->
+  <header id="topbar" class="bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between sticky top-0 z-50 shadow-sm">
+    <div class="flex items-center gap-3">
+      <img src="/assets/logo_sandoval.jpg" class="w-9 h-9 rounded-xl object-contain bg-white border border-gray-100">
+      <div>
+        <p class="text-xs font-black text-[#274495] leading-none">SANDOVAL</p>
+        <p id="topbar-section" class="text-[11px] text-gray-400 font-medium leading-none mt-0.5">Dashboard</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <div id="user-badge" class="w-9 h-9 rounded-full bg-[#274495] flex items-center justify-center text-white text-sm font-black"></div>
+      <button onclick="logout()" class="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center">
+        <span class="material-icons-round text-red-400 text-xl">logout</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- CONTENT -->
+  <main id="content" class="flex-1 overflow-y-auto pb-24 px-4 pt-4"></main>
+
+  <!-- BOTTOM NAV (se rellena dinámicamente) -->
+  <nav id="bottom-nav" class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex items-center z-50 shadow-lg" style="padding-bottom:env(safe-area-inset-bottom)"></nav>
+</div>
+
+<!-- LOGIN -->
+<div id="login-screen" class="hidden min-h-screen flex items-center justify-center p-5 bg-gradient-to-br from-[#f8fafc] to-[#e2e8f0]">
+  <div class="w-full max-w-sm slide-up">
+    <div class="text-center mb-8">
+      <img src="/assets/logo_sandoval.jpg" class="w-20 h-20 rounded-2xl shadow-lg mx-auto mb-4 object-contain bg-white p-2">
+      <h1 class="text-2xl font-black text-gray-900">SANDOVAL</h1>
+      <p class="text-gray-400 text-sm font-medium">Mecánica y Repuestos</p>
+    </div>
+    <div class="card p-6">
+      <!-- Tabs -->
+      <div class="flex bg-gray-100 rounded-xl p-1 mb-6">
+        <button onclick="switchLoginTab('staff')" id="tab-staff" class="flex-1 py-2.5 rounded-lg text-sm font-bold transition-all bg-white text-[#274495] shadow-sm">Personal</button>
+        <button onclick="switchLoginTab('cliente')" id="tab-cliente" class="flex-1 py-2.5 rounded-lg text-sm font-bold transition-all text-gray-400">Cliente</button>
+      </div>
+      <!-- Staff login -->
+      <div id="panel-staff">
+        <div class="mb-4">
+          <label class="text-xs font-bold text-gray-500 mb-1 block">USUARIO</label>
+          <input id="staff-user" type="text" placeholder="usuario" autocomplete="username">
+        </div>
+        <div class="mb-6">
+          <label class="text-xs font-bold text-gray-500 mb-1 block">CONTRASEÑA</label>
+          <input id="staff-pass" type="password" placeholder="••••••" autocomplete="current-password">
+        </div>
+        <button onclick="doLogin('staff')" class="btn-primary w-full text-center">Iniciar Sesión</button>
+      </div>
+      <!-- Cliente login -->
+      <div id="panel-cliente" class="hidden">
+        <div class="mb-4">
+          <label class="text-xs font-bold text-gray-500 mb-1 block">PLACA DEL VEHÍCULO</label>
+          <input id="cli-placa" type="text" placeholder="ABC-123" style="text-transform:uppercase">
+        </div>
+        <div class="mb-2">
+          <label class="text-xs font-bold text-gray-500 mb-1 block">CONTRASEÑA</label>
+          <input id="cli-pass" type="password" placeholder="DNI o RUC inicial">
+        </div>
+        <p class="text-[11px] text-gray-400 mb-5">Contraseña inicial: su DNI o RUC</p>
+        <button onclick="doLogin('cliente')" class="btn-primary w-full text-center">Ingresar al Portal</button>
+      </div>
+      <p id="login-error" class="text-red-500 text-sm text-center mt-4 hidden font-medium"></p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── ESTADO GLOBAL ────────────────────────────────────
+const S = {
+  token: localStorage.getItem('s_token'),
+  user: JSON.parse(localStorage.getItem('s_user') || 'null'),
+  page: 'dashboard',
+};
+
+const API = '';  // mismo origen
+
+// ─── UTILIDADES ───────────────────────────────────────
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Authorization': 'Bearer ' + S.token, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    ...opts,
+  });
+  if (res.status === 401) { logout(); return null; }
+  return res.json();
+}
+
+function toast(msg, color = '#1e293b') {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.style.background = color;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2800);
+}
+function toastOk(m) { toast('✓ ' + m, '#065f46'); }
+function toastErr(m) { toast('✗ ' + m, '#991b1b'); }
+
+function chip(estado) {
+  return `<span class="chip estado-${estado}">${estado}</span>`;
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('es-PE', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+function fmtMoney(n) {
+  return 'S/ ' + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 });
+}
+
+function setPage(name) {
+  S.page = name;
+  document.getElementById('topbar-section').textContent = NAV_LABELS[name] || name;
+  // Actualizar nav activo
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.page === name);
+  });
+  renderPage(name);
+}
+
+// ─── LOGIN ────────────────────────────────────────────
+function switchLoginTab(tab) {
+  const isStaff = tab === 'staff';
+  document.getElementById('panel-staff').classList.toggle('hidden', !isStaff);
+  document.getElementById('panel-cliente').classList.toggle('hidden', isStaff);
+  document.getElementById('tab-staff').className = 'flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ' + (isStaff ? 'bg-white text-[#274495] shadow-sm' : 'text-gray-400');
+  document.getElementById('tab-cliente').className = 'flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ' + (!isStaff ? 'bg-white text-[#274495] shadow-sm' : 'text-gray-400');
+}
+
+async function doLogin(tipo) {
+  const body = tipo === 'staff'
+    ? { tipo: 'staff', username: document.getElementById('staff-user').value.trim(), password: document.getElementById('staff-pass').value }
+    : { tipo: 'cliente', placa: document.getElementById('cli-placa').value.trim().toUpperCase(), password: document.getElementById('cli-pass').value.trim() };
+
+  const errEl = document.getElementById('login-error');
+  try {
+    const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || 'Error'; errEl.classList.remove('hidden'); return; }
+    S.token = data.token;
+    S.user = data.user;
+    localStorage.setItem('s_token', S.token);
+    localStorage.setItem('s_user', JSON.stringify(S.user));
+    startApp();
+  } catch (e) { errEl.textContent = 'No se pudo conectar al servidor'; errEl.classList.remove('hidden'); }
+}
+
+function logout() {
+  fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + S.token } }).catch(() => {});
+  S.token = null; S.user = null;
+  localStorage.removeItem('s_token');
+  localStorage.removeItem('s_user');
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+}
+
+// ─── APP INIT ─────────────────────────────────────────
+function isAdmin() {
+  return S.user && ['admin', 'recepcionista', 'tecnico'].includes(S.user.rol);
+}
+
+const NAV_LABELS = {
+  dashboard: 'Dashboard', ordenes: 'Órdenes', clientes: 'Clientes',
+  inventario: 'Inventario', notas: 'Notas de Venta', citas: 'Citas',
+  'mis-ordenes': 'Mis Órdenes', 'mis-citas': 'Mis Citas', 'agendar': 'Agendar Cita',
+};
+
+const ADMIN_NAV = [
+  { page: 'dashboard', icon: 'grid_view', label: 'Dashboard' },
+  { page: 'ordenes',   icon: 'build',     label: 'Órdenes'   },
+  { page: 'clientes',  icon: 'people',    label: 'Clientes'  },
+  { page: 'inventario',icon: 'inventory_2',label: 'Inventario'},
+  { page: 'notas',     icon: 'receipt_long',label: 'Ventas'  },
+];
+
+const CLIENT_NAV = [
+  { page: 'mis-ordenes', icon: 'build_circle', label: 'Mis Órdenes' },
+  { page: 'mis-citas',   icon: 'event',        label: 'Mis Citas'   },
+  { page: 'agendar',     icon: 'add_circle',   label: 'Agendar'     },
+];
+
+function buildNav(items) {
+  const nav = document.getElementById('bottom-nav');
+  nav.innerHTML = items.map(it => `
+    <button class="nav-tab ${S.page === it.page ? 'active' : ''}" data-page="${it.page}" onclick="setPage('${it.page}')">
+      <span class="material-icons-round mi">${it.icon}</span>
+      <span>${it.label}</span>
+    </button>
+  `).join('');
+}
+
+function startApp() {
+  document.getElementById('loading').style.opacity = '0';
+  setTimeout(() => document.getElementById('loading').remove(), 400);
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  const initials = (S.user?.nombre || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  document.getElementById('user-badge').textContent = initials;
+  const nav = isAdmin() ? ADMIN_NAV : CLIENT_NAV;
+  buildNav(nav);
+  const firstPage = isAdmin() ? 'dashboard' : 'mis-ordenes';
+  setPage(firstPage);
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/app/sw.js').catch(() => {});
+}
+
+// ─── PÁGINAS ADMIN ────────────────────────────────────
+async function pageDashboard() {
+  const c = document.getElementById('content');
+  c.innerHTML = '<div class="text-center py-10 text-gray-400">Cargando...</div>';
+  const d = await apiFetch('/api/dashboard');
+  if (!d) return;
+  c.innerHTML = `
+  <div class="slide-up">
+    <h2 class="text-xl font-black text-gray-900 mb-4">Panel de Control</h2>
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      ${kpiCard('Órdenes Activas', d.n_ordenes_activas, 'engineering', '#274495', '#eff6ff')}
+      ${kpiCard('Clientes', d.n_clientes, 'groups', '#6366f1', '#eef2ff')}
+      ${kpiCard('Ingresos Taller', fmtMoney(d.total_ingresos), 'payments', '#10b981', '#f0fdf4')}
+      ${kpiCard('Ventas Mes', fmtMoney(d.ventas_mes), 'receipt_long', '#f59e0b', '#fffbeb')}
+    </div>
+    ${d.stock_bajo > 0 ? `<div class="card p-4 mb-4 border border-red-100 bg-red-50">
+      <div class="flex items-center gap-3">
+        <span class="material-icons-round text-red-500">warning</span>
+        <div><p class="font-bold text-red-700 text-sm">Stock bajo en ${d.stock_bajo} productos</p><p class="text-xs text-red-400">Revisar inventario</p></div>
+      </div>
+    </div>` : ''}
+    <div class="card p-4 mb-4">
+      <p class="text-xs font-black text-gray-400 tracking-widest mb-3">ESTADOS DEL TALLER</p>
+      ${Object.entries(d.estados).filter(([,v]) => v > 0).map(([est, cnt]) => `
+        <div class="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+          <div class="flex items-center gap-2">${chip(est)}</div>
+          <span class="font-black text-gray-700">${cnt}</span>
+        </div>`).join('')}
+    </div>
+    <button onclick="setPage('ordenes')" class="btn-primary w-full text-center">Ver Órdenes</button>
+  </div>`;
+}
+
+function kpiCard(title, value, icon, color, bg) {
+  return `<div class="card p-4">
+    <div class="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style="background:${bg}">
+      <span class="material-icons-round" style="color:${color};font-size:20px">${icon}</span>
+    </div>
+    <p class="text-[10px] font-black text-gray-400 tracking-widest">${title.toUpperCase()}</p>
+    <p class="text-lg font-black text-gray-900 mt-1">${value}</p>
+  </div>`;
+}
+
+// ─── ÓRDENES ──────────────────────────────────────────
+async function pageOrdenes() {
+  const c = document.getElementById('content');
+  c.innerHTML = '<div class="text-center py-10 text-gray-400">Cargando...</div>';
+  const data = await apiFetch('/api/ordenes');
+  if (!data) return;
+  c.innerHTML = `
+  <div class="slide-up">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-black text-gray-900">Órdenes</h2>
+    </div>
+    ${data.length === 0 ? '<div class="card p-10 text-center text-gray-400">Sin órdenes</div>' :
+      data.map(o => `
+      <div class="card p-4 mb-3 cursor-pointer active:scale-[.98] transition-all" onclick="showOrden(${o.id})">
+        <div class="flex items-start justify-between mb-2">
+          <div>
+            <p class="font-black text-[#274495] text-sm">${o.consecutivo}</p>
+            <p class="font-bold text-gray-700 text-sm">${o.cliente_nombre}</p>
+          </div>
+          ${chip(o.estado)}
+        </div>
+        <div class="flex items-center gap-3 text-xs text-gray-400">
+          <span class="flex items-center gap-1"><span class="material-icons-round" style="font-size:14px">directions_car</span>${o.vehiculo_placa || '—'}</span>
+          <span>${fmtDate(o.fecha)}</span>
+        </div>
+      </div>`).join('')}
+  </div>`;
+}
+
+async function showOrden(id) {
+  const o = await apiFetch('/api/ordenes/' + id);
+  if (!o) return;
+  const ESTADOS = ['RECEPCIÓN','DIAGNÓSTICO','REPUESTOS','APROBACIÓN','REPARACIÓN','CONTROL','ENTREGA','ARCHIVADO'];
+  const totalItems = (o.items || []).reduce((s, it) => s + (it.total || it.subtotal || 0), 0);
+  openSheet(`
+    <div class="p-5">
+      <div class="flex items-center justify-between mb-4">
+        <div><p class="text-lg font-black text-[#274495]">${o.consecutivo}</p><p class="text-sm text-gray-400">${fmtDate(o.fecha)}</p></div>
+        ${chip(o.estado)}
+      </div>
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="bg-gray-50 rounded-xl p-3"><p class="text-[10px] font-black text-gray-400">CLIENTE</p><p class="font-bold text-sm mt-1">${o.cliente_nombre}</p></div>
+        <div class="bg-gray-50 rounded-xl p-3"><p class="text-[10px] font-black text-gray-400">VEHÍCULO</p><p class="font-bold text-sm mt-1">${o.vehiculo_placa} ${o.vehiculo_marca}</p></div>
+      </div>
+      <div class="bg-gray-50 rounded-xl p-3 mb-4"><p class="text-[10px] font-black text-gray-400 mb-1">PROBLEMA</p><p class="text-sm text-gray-700">${o.descripcion || '—'}</p></div>
+      ${o.items && o.items.length ? `
+      <div class="mb-4"><p class="text-[10px] font-black text-gray-400 mb-2">ÍTEMS (${fmtMoney(totalItems)})</p>
+        ${o.items.map(it => `<div class="flex justify-between py-2 border-b border-gray-100 text-sm"><span>${it.nombre||it.descripcion||'Ítem'}</span><span class="font-bold">${fmtMoney(it.total||it.subtotal||0)}</span></div>`).join('')}
+      </div>` : ''}
+      <p class="text-[10px] font-black text-gray-400 mb-2">CAMBIAR ESTADO</p>
+      <div class="flex flex-wrap gap-2 mb-4">
+        ${ESTADOS.map(est => `<button onclick="cambiarEstado(${o.id},'${est}')" class="chip estado-${est} cursor-pointer active:scale-95">${est}</button>`).join('')}
+      </div>
+    </div>
+  `);
+}
+
+async function cambiarEstado(id, estado) {
+  const r = await apiFetch('/api/ordenes/' + id + '/estado', { method: 'PUT', body: JSON.stringify({ estado }) });
+  if (r && r.ok) { toastOk('Estado actualizado: ' + estado); closeSheet(); pageOrdenes(); }
+  else toastErr('Error al cambiar estado');
+}
+
+// ─── CLIENTES ─────────────────────────────────────────
+async function pageClientes() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+  <div class="slide-up">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-black text-gray-900">Clientes</h2>
+      <button onclick="showClienteForm()" class="btn-primary py-2 px-4 text-sm">+ Nuevo</button>
+    </div>
+    <div class="mb-4"><input type="search" id="cli-search" placeholder="Buscar cliente..." oninput="searchClientes(this.value)"></div>
+    <div id="cli-list"><div class="text-center py-6 text-gray-400">Cargando...</div></div>
+  </div>`;
+  loadClientes('');
+}
+
+async function loadClientes(q) {
+  const data = await apiFetch('/api/clientes?q=' + encodeURIComponent(q));
+  const el = document.getElementById('cli-list');
+  if (!data || !el) return;
+  el.innerHTML = data.length === 0 ? '<div class="card p-8 text-center text-gray-400">Sin resultados</div>' :
+    data.map(c => `
+      <div class="card p-4 mb-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center font-black text-blue-700">${(c.nombre[0]||'?')}</div>
+          <div class="flex-1">
+            <p class="font-bold text-gray-800">${c.nombre} ${c.apellidos}</p>
+            <p class="text-xs text-gray-400">${c.id} · ${c.telefono || 'Sin tel.'}</p>
+          </div>
+        </div>
+      </div>`).join('');
+}
+
+let _searchTimeout;
+function searchClientes(q) { clearTimeout(_searchTimeout); _searchTimeout = setTimeout(() => loadClientes(q), 400); }
+
+function showClienteForm() {
+  openSheet(`
+    <div class="p-5">
+      <p class="text-lg font-black text-gray-900 mb-5">Nuevo Cliente</p>
+      <div class="mb-3"><label class="text-xs font-bold text-gray-400 block mb-1">DNI / RUC *</label><input id="nc-id" placeholder="12345678"></div>
+      <div class="mb-3"><label class="text-xs font-bold text-gray-400 block mb-1">NOMBRES *</label><input id="nc-nombre" placeholder="Nombre"></div>
+      <div class="mb-3"><label class="text-xs font-bold text-gray-400 block mb-1">APELLIDOS</label><input id="nc-ape" placeholder="Apellidos"></div>
+      <div class="mb-3"><label class="text-xs font-bold text-gray-400 block mb-1">TELÉFONO</label><input id="nc-tel" type="tel" placeholder="999 999 999"></div>
+      <div class="mb-5"><label class="text-xs font-bold text-gray-400 block mb-1">EMAIL</label><input id="nc-email" type="email" placeholder="correo@ejemplo.com"></div>
+      <button onclick="guardarCliente()" class="btn-primary w-full text-center">Guardar Cliente</button>
+    </div>`);
+}
+
+async function guardarCliente() {
+  const id = document.getElementById('nc-id').value.trim();
+  const nombre = document.getElementById('nc-nombre').value.trim();
+  if (!id || !nombre) { toastErr('DNI y nombre son obligatorios'); return; }
+  const r = await apiFetch('/api/clientes/nuevo', { method: 'POST', body: JSON.stringify({ id, nombre, apellidos: document.getElementById('nc-ape').value, telefono: document.getElementById('nc-tel').value, email: document.getElementById('nc-email').value }) });
+  if (r && r.ok) { toastOk('Cliente guardado'); closeSheet(); loadClientes(''); }
+  else toastErr(r?.error || 'Error al guardar');
+}
+
+// ─── INVENTARIO ───────────────────────────────────────
+async function pageInventario() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+  <div class="slide-up">
+    <h2 class="text-xl font-black text-gray-900 mb-4">Inventario</h2>
+    <div class="mb-4"><input type="search" id="inv-search" placeholder="Buscar producto..." oninput="filterInv(this.value)"></div>
+    <div id="inv-list"><div class="text-center py-6 text-gray-400">Cargando...</div></div>
+  </div>`;
+  const data = await apiFetch('/api/inventario');
+  window._invData = data || [];
+  renderInv(window._invData);
+}
+
+function filterInv(q) {
+  const filtered = (window._invData || []).filter(i => !q || i.nombre.toLowerCase().includes(q.toLowerCase()) || i.codigo.toLowerCase().includes(q.toLowerCase()));
+  renderInv(filtered);
+}
+
+function renderInv(items) {
+  const el = document.getElementById('inv-list');
+  if (!el) return;
+  el.innerHTML = items.length === 0 ? '<div class="card p-8 text-center text-gray-400">Sin resultados</div>' :
+    items.map(i => `
+      <div class="card p-4 mb-3">
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <p class="font-bold text-gray-800 text-sm">${i.nombre}</p>
+            <p class="text-xs text-gray-400">${i.codigo} · ${i.categoria}</p>
+          </div>
+          <div class="text-right">
+            <p class="font-black text-[#274495] text-sm">${fmtMoney(i.precio)}</p>
+            <span class="chip mt-1 ${i.stock <= i.stock_minimo ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">Stock: ${i.stock}</span>
+          </div>
+        </div>
+      </div>`).join('');
+}
+
+// ─── NOTAS DE VENTA ───────────────────────────────────
+async function pageNotas() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+  <div class="slide-up">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-black text-gray-900">Notas de Venta</h2>
+      <button onclick="showNotaForm()" class="btn-primary py-2 px-4 text-sm">+ Nueva</button>
+    </div>
+    <div id="notas-list"><div class="text-center py-6 text-gray-400">Cargando...</div></div>
+  </div>`;
+  const data = await apiFetch('/api/notas-venta');
+  const el = document.getElementById('notas-list');
+  if (!data || !el) return;
+  el.innerHTML = data.length === 0 ? '<div class="card p-8 text-center text-gray-400">Sin notas</div>' :
+    data.map(n => `
+      <div class="card p-4 mb-3">
+        <div class="flex items-center justify-between mb-1">
+          <p class="font-black text-[#274495] text-sm">${n.numero}</p>
+          ${chip(n.estado)}
+        </div>
+        <p class="text-sm text-gray-700">${n.cliente_nombre || 'Mostrador'}</p>
+        <div class="flex justify-between mt-2">
+          <span class="text-xs text-gray-400">${fmtDate(n.fecha)}</span>
+          <span class="font-black text-green-700">${fmtMoney(n.total)}</span>
+        </div>
+      </div>`).join('');
+}
+
+function showNotaForm() {
+  const invData = window._invData || [];
+  const opts = invData.filter(i => i.stock > 0).map(i => `<option value="${i.codigo}">${i.nombre} — Stock:${i.stock} — ${fmtMoney(i.precio)}</option>`).join('');
+  window._notaItems = [];
+  openSheet(`
+    <div class="p-5">
+      <p class="text-lg font-black text-gray-900 mb-4">Nueva Nota de Venta</p>
+      <div class="mb-3"><label class="text-xs font-bold text-gray-400 block mb-1">CLIENTE</label><input id="nv-cliente" placeholder="Nombre o 'Mostrador'"></div>
+      <p class="text-xs font-black text-gray-400 mb-2">PRODUCTOS</p>
+      <div class="flex gap-2 mb-2">
+        <select id="nv-prod" class="flex-1">${opts || '<option>— Sin stock —</option>'}</select>
+        <input id="nv-qty" type="number" value="1" min="1" style="width:70px">
+        <button onclick="addNotaItem()" class="btn-primary py-2 px-3 text-sm">+</button>
+      </div>
+      <div id="nv-items" class="mb-4 min-h-8"></div>
+      <div id="nv-total" class="text-right font-black text-gray-700 mb-4"></div>
+      <button onclick="guardarNota()" class="btn-primary w-full text-center">Registrar Venta</button>
+    </div>`);
+  if (!invData.length) apiFetch('/api/inventario').then(d => { window._invData = d || []; });
+}
+
+function addNotaItem() {
+  const sel = document.getElementById('nv-prod');
+  const qty = parseInt(document.getElementById('nv-qty').value) || 1;
+  const codigo = sel.value;
+  const inv = (window._invData || []).find(i => i.codigo === codigo);
+  if (!inv) return;
+  const exist = window._notaItems.find(i => i.codigo === codigo);
+  if (exist) { exist.cantidad += qty; exist.subtotal = +(exist.cantidad * exist.precio).toFixed(2); }
+  else window._notaItems.push({ codigo, nombre: inv.nombre, cantidad: qty, precio: inv.precio, subtotal: +(qty * inv.precio).toFixed(2) });
+  renderNotaItems();
+}
+
+function renderNotaItems() {
+  const sub = window._notaItems.reduce((s, i) => s + i.subtotal, 0);
+  const tot = +(sub * 1.18).toFixed(2);
+  document.getElementById('nv-items').innerHTML = window._notaItems.map((it, idx) => `
+    <div class="flex items-center justify-between py-2 border-b border-gray-100 text-sm">
+      <span class="flex-1">${it.nombre} x${it.cantidad}</span>
+      <span class="font-bold text-green-700 mr-2">${fmtMoney(it.subtotal)}</span>
+      <button onclick="window._notaItems.splice(${idx},1);renderNotaItems()" class="text-red-400 text-xs">✕</button>
+    </div>`).join('');
+  document.getElementById('nv-total').textContent = `Total + IGV: ${fmtMoney(tot)}`;
+}
+
+async function guardarNota() {
+  if (!window._notaItems.length) { toastErr('Agrega al menos un producto'); return; }
+  const r = await apiFetch('/api/notas-venta/nueva', { method: 'POST', body: JSON.stringify({ cliente_nombre: document.getElementById('nv-cliente').value.trim() || 'Mostrador', items: window._notaItems }) });
+  if (r && r.ok) { toastOk('Venta registrada: ' + r.numero + ' — ' + fmtMoney(r.total)); closeSheet(); pageNotas(); }
+  else toastErr(r?.error || 'Error al guardar');
+}
+
+// ─── CLIENTE: MIS ÓRDENES ─────────────────────────────
+async function pageMisOrdenes() {
+  const c = document.getElementById('content');
+  c.innerHTML = '<div class="text-center py-10 text-gray-400">Cargando...</div>';
+  const data = await apiFetch('/api/cliente/mis-ordenes');
+  if (!data) return;
+  c.innerHTML = `
+  <div class="slide-up">
+    <h2 class="text-xl font-black text-gray-900 mb-4">Mis Órdenes</h2>
+    ${data.length === 0 ? '<div class="card p-10 text-center text-gray-400">Sin órdenes registradas</div>' :
+      data.map(o => `
+        <div class="card p-4 mb-3 cursor-pointer" onclick="showClienteOrden(${JSON.stringify(o).replace(/"/g,'&quot;')})">
+          <div class="flex items-start justify-between mb-2">
+            <div><p class="font-black text-[#274495]">${o.consecutivo}</p><p class="text-sm text-gray-600">${o.vehiculo_placa} ${o.vehiculo_marca}</p></div>
+            ${chip(o.estado)}
+          </div>
+          <p class="text-xs text-gray-400">${fmtDate(o.fecha)}</p>
+          ${o.estado === 'APROBACIÓN' ? '<div class="mt-2 bg-amber-50 rounded-lg p-2 text-xs text-amber-700 font-bold">⚠ Requiere tu aprobación</div>' : ''}
+        </div>`).join('')}
+  </div>`;
+}
+
+function showClienteOrden(o) {
+  const total = (o.items || []).reduce((s, it) => s + (it.total || it.subtotal || 0), 0);
+  openSheet(`
+    <div class="p-5">
+      <div class="flex justify-between items-center mb-4">
+        <div><p class="text-lg font-black text-[#274495]">${o.consecutivo}</p><p class="text-xs text-gray-400">${fmtDate(o.fecha)}</p></div>
+        ${chip(o.estado)}
+      </div>
+      <div class="bg-gray-50 rounded-xl p-3 mb-4">
+        <p class="text-[10px] font-black text-gray-400">DESCRIPCIÓN</p>
+        <p class="text-sm text-gray-700 mt-1">${o.descripcion || '—'}</p>
+      </div>
+      ${o.items && o.items.length ? `
+      <div class="mb-4">
+        <p class="text-[10px] font-black text-gray-400 mb-2">COTIZACIÓN — ${fmtMoney(total)}</p>
+        ${o.items.map(it => `<div class="flex justify-between py-2 border-b border-gray-100 text-sm"><span>${it.nombre||it.descripcion||'Ítem'}</span><span class="font-bold">${fmtMoney(it.total||it.subtotal||0)}</span></div>`).join('')}
+      </div>` : ''}
+      ${o.estado === 'APROBACIÓN' ? `
+      <p class="text-sm text-center text-gray-500 mb-4">¿Apruebas la cotización de ${fmtMoney(total)}?</p>
+      <div class="flex gap-3">
+        <button onclick="aprobarOrden(${o.id},false)" class="flex-1 btn-secondary text-red-600 text-center">✗ Rechazar</button>
+        <button onclick="aprobarOrden(${o.id},true)" class="flex-1 btn-primary text-center">✓ Aprobar</button>
+      </div>` : ''}
+    </div>`);
+}
+
+async function aprobarOrden(id, aprobado) {
+  const r = await apiFetch('/api/cliente/aprobar', { method: 'POST', body: JSON.stringify({ orden_id: id, aprobado }) });
+  if (r && r.ok) { toastOk(aprobado ? 'Cotización aprobada ✓' : 'Cotización rechazada'); closeSheet(); pageMisOrdenes(); }
+  else toastErr(r?.error || 'Error');
+}
+
+// ─── CLIENTE: CITAS ───────────────────────────────────
+async function pageMisCitas() {
+  const c = document.getElementById('content');
+  c.innerHTML = '<div class="text-center py-10 text-gray-400">Cargando...</div>';
+  const data = await apiFetch('/api/cliente/mis-citas');
+  if (!data) return;
+  c.innerHTML = `
+  <div class="slide-up">
+    <h2 class="text-xl font-black text-gray-900 mb-4">Mis Citas</h2>
+    ${data.length === 0 ? '<div class="card p-10 text-center text-gray-400">Sin citas agendadas</div>' :
+      data.map(c => `
+        <div class="card p-4 mb-3">
+          <div class="flex items-center justify-between mb-1">
+            <p class="font-bold text-gray-800">${fmtDate(c.fecha)}</p>
+            ${chip(c.estado)}
+          </div>
+          <p class="text-sm text-gray-500">${c.descripcion || 'Sin descripción'}</p>
+        </div>`).join('')}
+  </div>`;
+}
+
+function pageAgendar() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+  <div class="slide-up">
+    <h2 class="text-xl font-black text-gray-900 mb-6">Agendar Cita</h2>
+    <div class="card p-5">
+      <div class="mb-4"><label class="text-xs font-bold text-gray-400 block mb-1">FECHA Y HORA</label><input id="ag-fecha" type="datetime-local"></div>
+      <div class="mb-4"><label class="text-xs font-bold text-gray-400 block mb-1">PLACA DEL VEHÍCULO</label><input id="ag-placa" value="${S.user?.placa || ''}" placeholder="ABC-123"></div>
+      <div class="mb-6"><label class="text-xs font-bold text-gray-400 block mb-1">MOTIVO</label><textarea id="ag-desc" rows="3" placeholder="Ej: Cambio de aceite, revisión general..."></textarea></div>
+      <button onclick="guardarCita()" class="btn-primary w-full text-center">Agendar Cita</button>
+    </div>
+  </div>`;
+  // Poner fecha mínima = mañana
+  const manana = new Date(); manana.setDate(manana.getDate() + 1);
+  document.getElementById('ag-fecha').min = manana.toISOString().slice(0, 16);
+}
+
+async function guardarCita() {
+  const fecha = document.getElementById('ag-fecha').value;
+  const placa = document.getElementById('ag-placa').value.trim().toUpperCase();
+  const desc = document.getElementById('ag-desc').value.trim();
+  if (!fecha) { toastErr('Selecciona fecha y hora'); return; }
+  const r = await apiFetch('/api/citas/nueva', { method: 'POST', body: JSON.stringify({ fecha, placa, descripcion: desc, cliente_id: S.user?.id }) });
+  if (r && r.ok) { toastOk('Cita agendada exitosamente'); setPage('mis-citas'); }
+  else toastErr(r?.error || 'Error al agendar');
+}
+
+// ─── SHEET / MODAL ────────────────────────────────────
+function openSheet(html) {
+  closeSheet();
+  const overlay = document.createElement('div');
+  overlay.id = 'sheet-overlay';
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal-sheet slide-up">
+    <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mt-3 mb-1"></div>
+    ${html}
+  </div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeSheet(); });
+  document.body.appendChild(overlay);
+}
+
+function closeSheet() {
+  const el = document.getElementById('sheet-overlay');
+  if (el) el.remove();
+}
+
+// ─── ROUTER ───────────────────────────────────────────
+function renderPage(name) {
+  window.scrollTo(0, 0);
+  const c = document.getElementById('content');
+  c.innerHTML = '';
+  switch (name) {
+    case 'dashboard':   pageDashboard(); break;
+    case 'ordenes':     pageOrdenes();   break;
+    case 'clientes':    pageClientes();  break;
+    case 'inventario':  pageInventario();break;
+    case 'notas':       pageNotas();     break;
+    case 'mis-ordenes': pageMisOrdenes();break;
+    case 'mis-citas':   pageMisCitas();  break;
+    case 'agendar':     pageAgendar();   break;
+    default: c.innerHTML = '<div class="text-center py-10 text-gray-400">Página en desarrollo</div>';
+  }
+}
+
+// ─── ARRANQUE ─────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  if (S.token && S.user) {
+    // Verificar token
+    try {
+      const me = await fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + S.token } });
+      if (me.ok) { startApp(); return; }
+    } catch (e) {}
+  }
+  document.getElementById('loading').style.opacity = '0';
+  setTimeout(() => {
+    const l = document.getElementById('loading');
+    if (l) l.remove();
+    document.getElementById('login-screen').classList.remove('hidden');
+  }, 400);
+});
+
+// Enter en login
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const ps = document.getElementById('panel-staff');
+    if (ps && !ps.classList.contains('hidden')) doLogin('staff');
+  }
+});
+</script>
+</body>
+</html>

@@ -58,7 +58,13 @@ try:
     from pages.encuesta import encuesta_page
     from pages import portal_cliente
     log_boot("Todos los componentes importados")
-    
+
+    # ─── REST API para la PWA móvil ───
+    from utils.api_service import register_api_routes
+    register_api_routes(app)
+    app.add_static_files('/app', 'sandoval-app')
+    log_boot("API REST y PWA registrados")
+
     # ─── Abrir WhatsApp en navegador externo (compatible pywebview) ───
     @app.get('/open-whatsapp')
     def open_whatsapp(phone: str = '51999999999', msg: str = 'Hola, necesito información sobre mi vehículo'):
