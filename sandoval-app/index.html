@@ -1579,30 +1579,31 @@
       try {
         const raw = (typeof o.fotos_evidencia === 'string') ? JSON.parse(o.fotos_evidencia) : (o.fotos_evidencia || []);
         medios = raw.filter(m => {
-          if (typeof m === 'object') return m.fase === faseNombre;
-          if (typeof m === 'string' && faseNombre === 'RECEPCIÓN') return true;
+          if (typeof m === 'object' && m !== null) return m.fase === faseNombre;
+          if (typeof m === 'string' && (faseNombre === 'RECEPCIÓN' || !faseNombre)) return true;
           return false;
-        }).map(m => typeof m === 'object' ? m.path : m);
+        }).map(m => (typeof m === 'object' && m !== null) ? m.path : m);
       } catch (e) { console.error(e); }
 
-      if (!medios || !medios.length) return '<p class="text-center py-10 text-gray-400 text-xs italic">No hay archivos multimedia en esta fase</p>';
+      if (!medios || !medios.length) return '<div class="bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center text-gray-400 text-xs font-bold italic uppercase tracking-widest">Sin evidencias en esta fase</div>';
 
       return `
         <div class="space-y-4">
           ${medios.map(path => {
+        if (!path) return '';
         const isVideo = path.toLowerCase().endsWith('.mp4') || path.toLowerCase().endsWith('.mov') || path.toLowerCase().endsWith('.webm');
         if (isVideo) {
           return `
-                <div class="media-container">
-                  <video controls playsinline preload="metadata">
+                <div class="media-container shadow-lg">
+                  <video controls playsinline preload="metadata" class="rounded-xl">
                     <source src="${path}" type="video/mp4">
-                    Tu navegador no soporta videos.
                   </video>
+                  <p class="text-[9px] text-white/50 absolute bottom-2 right-2 font-black tracking-widest">VIDEO</p>
                 </div>`;
         } else {
           return `
-                <div class="media-container">
-                  <img src="${path}" class="w-full" onclick="window.open('${path}')">
+                <div class="media-container shadow-md">
+                  <img src="${path}" class="w-full rounded-xl" onclick="window.open('${path}')">
                 </div>`;
         }
       }).join('')}
@@ -1619,15 +1620,36 @@
       const total = (o.items || []).reduce((s, it) => s + (it.total || it.subtotal || 0), 0);
 
       if (phaseId === 'RECEPCIÓN') {
+        const obs = o.observaciones || '';
+        const combustible = obs.toLowerCase().includes('combustible:') ? obs.split(/combustible:/i)[1].trim() : 'No especificado';
+
         contentHtml = `
-          <p class="text-sm font-bold text-gray-700 mb-2">Motivo de Ingreso:</p>
-          <p class="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-xl border border-gray-100">${o.descripcion || o.motivo || 'Ingreso vehicular'}</p>
-          <div class="flex gap-4 mb-6">
-            <div class="flex-1 bg-gray-50 p-3 rounded-xl border border-gray-100"><p class="text-[9px] text-gray-400 font-bold uppercase">KM Entrada</p><p class="text-sm font-black text-gray-700">${o.km || '—'}</p></div>
-            <div class="flex-1 bg-gray-50 p-3 rounded-xl border border-gray-100"><p class="text-[9px] text-gray-400 font-bold uppercase">Fecha</p><p class="text-sm font-black text-gray-700">${fmtDate(o.fecha)}</p></div>
+          <p class="text-[10px] font-black text-gray-400 tracking-widest mb-2 uppercase">Información de Entrada</p>
+          <div class="space-y-3 mb-6">
+             <div class="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+               <p class="text-[9px] text-blue-900 font-black uppercase tracking-widest mb-1">Motivo / Problema</p>
+               <p class="text-sm text-gray-700 font-bold">${o.descripcion || o.motivo || 'Ingreso vehicular'}</p>
+             </div>
+             
+             <div class="grid grid-cols-2 gap-3">
+               <div class="bg-gray-50 p-3 rounded-2xl border border-gray-100">
+                 <p class="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Kilometraje</p>
+                 <p class="text-sm font-black text-gray-800">${o.km || '—'} KM</p>
+               </div>
+               <div class="bg-gray-50 p-3 rounded-2xl border border-gray-100">
+                 <p class="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Combustible</p>
+                 <p class="text-sm font-black text-gray-800">${combustible}</p>
+               </div>
+             </div>
+             
+             <div class="bg-gray-50 p-3 rounded-2xl border border-gray-100">
+                <p class="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Fecha de Ingreso</p>
+                <p class="text-sm font-bold text-gray-800">${fmtDate(o.fecha)}</p>
+             </div>
           </div>
         `;
-      } else if (phaseId === 'DIAGNÓSTICO') {
+      }
+      else if (phaseId === 'DIAGNÓSTICO') {
         contentHtml = `
           <p class="text-sm font-bold text-gray-700 mb-2">Resultado del Diagnóstico:</p>
           <div class="text-sm text-gray-600 mb-6 bg-gray-50 p-3 rounded-xl border border-gray-100 whitespace-pre-wrap">${o.diagnostico || 'El técnico está evaluando el vehículo...'}</div>
