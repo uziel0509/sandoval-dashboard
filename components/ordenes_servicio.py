@@ -2760,10 +2760,20 @@ def open_create_order_dialog(container, state, stats_container=None):
     
     db = get_db()
     try:
-        clients = db.query(Cliente).all()
+        clients  = db.query(Cliente).all()
         client_opts = {c.id: f"{c.nombre} {c.apellidos}".strip() for c in clients}
         vehicles = db.query(Vehiculo).all()
-        vehicle_opts = {v.placa: f"{v.marca} {v.modelo} - {v.placa}" for v in vehicles}
+        # Todas las opciones y agrupadas por cliente_id
+        all_vehicle_opts = {
+            v.placa: f"{v.marca} {v.modelo} — {v.placa}"
+            for v in vehicles
+        }
+        vehicles_by_client = {}
+        for v in vehicles:
+            cid = v.cliente_id
+            if cid:
+                vehicles_by_client.setdefault(cid, {})
+                vehicles_by_client[cid][v.placa] = f"{v.marca} {v.modelo} — {v.placa}"
     finally:
         db.close()
     
@@ -2792,51 +2802,104 @@ def open_create_order_dialog(container, state, stats_container=None):
                 # Cliente
                 ui.label('Cliente *').classes('text-gray-600 text-xs mb-[-5px]')
                 with ui.row().classes('w-full gap-2 items-center'):
-                    cliente_sel = ui.select(client_opts, with_input=True, label='SELECCIONA CLIENTE').props('outlined dense use-input bg-color=white').classes('flex-1')
-                    
-                    def on_client_created(new_id):
-                        db = get_db()
+                    cliente_sel = ui.select(
+                        client_opts,
+                        with_input=True,
+                        label='SELECCIONA CLIENTE'
+                    ).props('outlined dense use-input bg-color=white').classes('flex-1')
+
+                    def on_client_created(new_cid):
+                        db2 = get_db()
                         try:
-                            c = db.query(Cliente).filter_by(id=new_id).first()
+                            c = db2.query(Cliente).filter_by(id=new_cid).first()
                             if c:
-                                new_opts = client_opts.copy()
-                                new_opts[c.id] = f"{c.nombre} {c.apellidos}".strip()
-                                cliente_sel.options = new_opts
-                                cliente_sel.value = c.id
+                                client_opts[c.id] = f"{c.nombre} {c.apellidos}".strip()
+                                cliente_sel.options = dict(client_opts)
+                                cliente_sel.value   = c.id
                                 cliente_sel.update()
                         finally:
-                            db.close()
+                            db2.close()
 
                     def open_new_client():
                         open_client_dialog(None, None, on_success=on_client_created)
 
-                    ui.button(icon='add', on_click=open_new_client).props('unelevated color=lime-13 text-color=black round dense')
+                    ui.button(icon='add', on_click=open_new_client).props(
+                        'unelevated color=lime-13 text-color=black round dense')
 
-                # Vehículo
+                # ── Vehículo — filtrado automático por cliente ──────────
                 ui.label('Vehículo *').classes('text-gray-600 text-xs mb-[-5px]')
+
+                # Indicador de autoselección
+                vehiculo_hint = ui.label('').classes(
+                    'text-[10px] text-lime-700 font-bold -mt-1 mb-1 h-4'
+                )
+
                 with ui.row().classes('w-full gap-2 items-center'):
-                    vehiculo_sel = ui.select(vehicle_opts, with_input=True, label='SELECCIONA VEHÍCULO').props('outlined dense use-input bg-color=white').classes('flex-1')
-                    
+                    vehiculo_sel = ui.select(
+                        {},                         # Empieza vacío — se llena al elegir cliente
+                        with_input=True,
+                        label='PRIMERO SELECCIONA UN CLIENTE'
+                    ).props('outlined dense use-input bg-color=white').classes('flex-1')
+
+                    def _refresh_vehicle_opts(cid):
+                        """Actualiza el selector de vehículo según el cliente elegido."""
+                        client_vehicles = vehicles_by_client.get(cid, {})
+                        if not client_vehicles:
+                            vehiculo_sel.options = {}
+                            vehiculo_sel.label   = 'SIN VEHÍCULOS REGISTRADOS — Agrégalo con +'
+                            vehiculo_sel.value   = None
+                            vehiculo_hint.text   = ''
+                        elif len(client_vehicles) == 1:
+                            placa_unica = list(client_vehicles.keys())[0]
+                            vehiculo_sel.options = client_vehicles
+                            vehiculo_sel.label   = 'VEHÍCULO'
+                            vehiculo_sel.value   = placa_unica
+                            vehiculo_hint.text   = f'✔ Vehículo autoseleccionado: {client_vehicles[placa_unica]}'
+                        else:
+                            vehiculo_sel.options = client_vehicles
+                            vehiculo_sel.label   = 'SELECCIONA VEHÍCULO'
+                            vehiculo_sel.value   = None
+                            vehiculo_hint.text   = f'{len(client_vehicles)} vehículos registrados para este cliente'
+                        vehiculo_sel.update()
+
+                    def _on_cliente_change():
+                        cid = cliente_sel.value
+                        if cid:
+                            _refresh_vehicle_opts(cid)
+                        else:
+                            vehiculo_sel.options = {}
+                            vehiculo_sel.value   = None
+                            vehiculo_sel.label   = 'PRIMERO SELECCIONA UN CLIENTE'
+                            vehiculo_hint.text   = ''
+                            vehiculo_sel.update()
+
+                    cliente_sel.on('update:model-value', lambda _: _on_cliente_change())
+
                     def on_vehicle_created(new_placa):
-                        db = get_db()
+                        db2 = get_db()
                         try:
-                            v = db.query(Vehiculo).filter_by(placa=new_placa).first()
+                            v = db2.query(Vehiculo).filter_by(placa=new_placa).first()
                             if v:
-                                new_opts = vehicle_opts.copy()
-                                new_opts[v.placa] = f"{v.marca} {v.modelo} - {v.placa}"
-                                vehiculo_sel.options = new_opts
-                                vehiculo_sel.value = v.placa
-                                vehiculo_sel.update()
-                                # Si el vehículo tiene dueño y no hay cliente seleccionado, seleccionarlo
-                                if v.cliente_id and not cliente_sel.value:
-                                    cliente_sel.value = v.cliente_id
+                                all_vehicle_opts[v.placa] = f"{v.marca} {v.modelo} — {v.placa}"
+                                if v.cliente_id:
+                                    vehicles_by_client.setdefault(v.cliente_id, {})
+                                    vehicles_by_client[v.cliente_id][v.placa] = all_vehicle_opts[v.placa]
+                                    if not cliente_sel.value and v.cliente_id in client_opts:
+                                        cliente_sel.value = v.cliente_id
+                                        cliente_sel.update()
+                                    _refresh_vehicle_opts(v.cliente_id or cliente_sel.value)
+                                else:
+                                    vehiculo_sel.options = all_vehicle_opts
+                                    vehiculo_sel.value   = v.placa
+                                    vehiculo_sel.update()
                         finally:
-                            db.close()
-                            
+                            db2.close()
+
                     def open_new_vehicle():
                         open_vehicle_dialog(None, None, on_success=on_vehicle_created)
 
-                    ui.button(icon='add', on_click=open_new_vehicle).props('unelevated color=lime-13 text-color=black round dense')
+                    ui.button(icon='add', on_click=open_new_vehicle).props(
+                        'unelevated color=lime-13 text-color=black round dense')
 
                 # Técnico
                 ui.label('Técnico responsable').classes('text-gray-600 text-xs mb-[-5px]')
