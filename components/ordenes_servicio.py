@@ -1178,7 +1178,7 @@ def _render_order_card(order, clients, vehicles, container, state, stats_contain
                 elif order.estado == 'REPARACIÓN':
                     ui.button(icon='edit', on_click=lambda o=order: open_advanced_repair_module(o.consecutivo, container, state, stats_container)).props('flat dense color=amber-8 size=sm').tooltip('Editar Reparación')
                 else:
-                    ui.button(icon='edit', on_click=lambda o=order: open_edit_reception_dialog(o.consecutivo, container, state)).props('flat dense color=amber-8 size=sm').tooltip('Editar Recepción')
+                    ui.button(icon='edit', on_click=lambda o=order: open_edit_reception_dialog(o.consecutivo, container, state, stats_container)).props('flat dense color=amber-8 size=sm').tooltip('Editar Recepción')
                 
                 # Gestión Interna (Llave/Settings)
                 ui.button(icon='settings', on_click=lambda o=order: open_order_detail(o.consecutivo, container, state)).props('flat dense color=grey-7 size=sm').tooltip('Detalles')
@@ -3378,31 +3378,35 @@ def open_customer_preview(consecutivo):
         db.close()
 
 
-def open_edit_reception_dialog(consecutivo, container, state):
+def open_edit_reception_dialog(consecutivo, container, state, stats_container=None):
     """Edita datos iniciales de recepción"""
     db = get_db()
     try:
         order = db.query(Orden).filter_by(consecutivo=consecutivo).first()
-        if not order: 
+        if not order:
+            theme.notify_error('Orden no encontrada')
             return
-        
-        new_reception_files = [] # Para nuevas fotos durante edición
-        
-        # Datos actuales para prellenar
-        curr_motivo = order.motivo
-        curr_km = order.km
-        curr_tecnico = order.tecnico
-        curr_diag_req = order.diagnostico_requerido
-        curr_tipo = order.tipo
-        curr_obs = order.observaciones # A veces guardamos combustible aqui
-        
+
+        new_reception_files = []  # Para nuevas fotos durante edición
+
+        # Datos actuales con getattr para evitar AttributeError
+        curr_motivo  = getattr(order, 'motivo', '') or ''
+        curr_km      = getattr(order, 'km', '') or ''
+        curr_tecnico = getattr(order, 'tecnico', '') or ''
+        curr_diag_req = getattr(order, 'diagnostico_requerido', True)
+        curr_tipo    = getattr(order, 'tipo', 'Express') or 'Express'
+        curr_obs     = getattr(order, 'observaciones', '') or ''
+
         # Intentar extraer combustible de obs si está formateado "Combustible: X"
-        combustible_val = 'Reserva'
-        if 'Combustible: ' in (curr_obs or ''):
+        combustible_val = '1/4'
+        if 'Combustible: ' in curr_obs:
             parts = curr_obs.split('Combustible: ')
             if len(parts) > 1:
                 combustible_val = parts[1].split('\n')[0].strip()
 
+    except Exception as ex:
+        theme.notify_error(f'Error al cargar orden: {ex}')
+        return
     finally:
         db.close()
 
@@ -3422,7 +3426,7 @@ def open_edit_reception_dialog(consecutivo, container, state):
                  
                  with ui.row().classes('w-full gap-4'):
                      km_input = ui.input('Kilometraje', value=curr_km).props('outlined dense bg-color=white').classes('flex-1')
-                     comb_input = ui.select(['Reserva', '1/4', '1/2', '3/4', 'Full'], value=combustible_val, label='Nivel Combustible').props('outlined dense bg-color=white').classes('flex-1')
+                     comb_input = ui.select(['Reserva', '1/8', '1/4', '1/2', '3/4', 'Full'], value=combustible_val if combustible_val in ['Reserva','1/8','1/4','1/2','3/4','Full'] else '1/4', label='Nivel Combustible').props('outlined dense bg-color=white').classes('flex-1')
              
                 with ui.column().classes('flex-1 gap-4'):
                     ui.label('GESTIÓN DE FOTOS').classes('text-xs font-bold text-blue-600 border-b w-full pb-1')
@@ -3530,7 +3534,7 @@ def open_edit_reception_dialog(consecutivo, container, state):
                         ddb.commit()
                         theme.notify_success('Recepción actualizada')
                         dialog.close()
-                        refresh_orders(container, state)
+                        refresh_orders(container, state, stats_container)
                 except Exception as e:
                     ddb.rollback()
                     theme.notify_error(f'Error: {e}')
