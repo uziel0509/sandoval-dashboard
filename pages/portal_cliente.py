@@ -862,6 +862,254 @@ def show_portal(container):
                             ''')
 
                 # ════════════════════════════════════════════════
+                # 2c. SEGUIMIENTO DE ETAPAS 2-7 (Solo Lectura)
+                # ════════════════════════════════════════════════
+                if active_order and active_dict:
+                    _NORM7 = {
+                        'RECEPCION': 'RECEPCIÓN', 'DIAGNOSTICO': 'DIAGNÓSTICO',
+                        'APROBACION': 'APROBACIÓN', 'REPARACION': 'REPARACIÓN',
+                    }
+                    _PH7 = ['RECEPCIÓN','DIAGNÓSTICO','REPUESTOS','APROBACIÓN','REPARACIÓN','CONTROL','ENTREGA']
+                    _es7  = (active_dict.get('estado', '') or '').upper().strip()
+                    _esn7 = _NORM7.get(_es7, _es7)
+                    _ci7  = _PH7.index(_esn7) if _esn7 in _PH7 else 0
+
+                    def _phst7(i):
+                        return 'done' if i < _ci7 else ('active' if i == _ci7 else 'pending')
+
+                    def _phdr7(num, icon, name, st):
+                        if st == 'done':
+                            c, bg, bd, inner, lbl = '#1db97a', '#f0fdf4', '#bbf7d0', '✓', 'COMPLETADO'
+                        elif st == 'active':
+                            c, bg, bd, inner, lbl = '#1a3a6b', '#e8f0fb', '#c5d8f5', icon, 'EN CURSO'
+                        else:
+                            c, bg, bd, inner, lbl = '#94a3b8', '#f8fafc', '#e2e8f0', str(num), 'PENDIENTE'
+                        return (
+                            '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">'
+                            + '<div style="width:36px;height:36px;background:' + bg + ';border:2px solid ' + bd + ';'
+                            + 'border-radius:50%;display:flex;align-items:center;justify-content:center;'
+                            + 'font-size:15px;font-weight:900;color:' + c + ';flex-shrink:0;">' + inner + '</div>'
+                            + '<div><span style="font-size:12px;font-weight:900;color:#1a3a6b;'
+                            + 'text-transform:uppercase;letter-spacing:1px;">' + name + '</span>'
+                            + '<span style="background:' + bg + ';color:' + c + ';font-size:9px;font-weight:800;'
+                            + 'padding:2px 8px;border-radius:100px;margin-left:8px;">' + lbl + '</span>'
+                            + '</div></div>'
+                        )
+
+                    _chk7  = active_dict.get('checklist_reparacion') or {}
+                    if isinstance(_chk7, str):
+                        try: _chk7 = json.loads(_chk7)
+                        except Exception: _chk7 = {}
+                    _dd7   = (_chk7 or {}).get('diagnostic_details', {}) or {}
+                    _qchk7 = (_chk7 or {}).get('quick_check', {}) or {}
+                    _sc7   = _dd7.get('scanner_path', '')
+                    _pdx7  = active_dict.get('diagnostico', '') or ''
+                    _its7  = _safe_json(active_dict.get('items_cotizacion'))
+                    _sub7  = sum(float(it.get('total', 0) or 0) for it in _its7)
+                    _apst7 = active_dict.get('approval_status', 'pendiente') or 'pendiente'
+                    _apdt7 = active_dict.get('approval_date', '') or ''
+                    _nt7   = active_dict.get('notas_entrega', '') or ''
+                    _pm7   = active_dict.get('proximo_mantenimiento', '') or ''
+
+                    with ui.element('div').classes('p-card').style('padding:0;'):
+                        # Cabecera
+                        ui.html(
+                            '<div style="padding:16px 20px 12px;border-bottom:1px solid #f1f5f9;">'
+                            '<div style="display:flex;align-items:center;gap:10px;">'
+                            '<div style="width:36px;height:36px;background:#e8f0fb;border-radius:10px;'
+                            'display:flex;align-items:center;justify-content:center;font-size:18px;">📊</div>'
+                            '<div>'
+                            '<div style="font-size:13px;font-weight:900;color:#1a3a6b;">'
+                            'Seguimiento Completo de Mi Servicio</div>'
+                            '<div style="font-size:11px;color:#6b7a99;">Solo lectura — actualizado por el taller 🔒</div>'
+                            '</div></div>'
+                            + '<div style="margin-top:8px;padding:5px 10px;background:#f8fafc;'
+                            + 'border-radius:8px;font-size:11px;color:#1a3a6b;font-weight:700;">'
+                            + 'Etapa actual: ' + _esn7 + ' (' + str(_ci7 + 1) + '/7)</div>'
+                            + '</div>'
+                        )
+
+                        # FASE 2: DIAGNÓSTICO
+                        with ui.element('div').style('padding:16px 20px;border-bottom:1px solid #f8fafc;'):
+                            ui.html(_phdr7(2, '🔍', '2. Diagnóstico', _phst7(1)))
+                            if _phst7(1) in ('done', 'active'):
+                                if _dd7:
+                                    _dr7 = ''
+                                    for _fk, _fl in [('tests','Pruebas'),('codes','Códigos OBD'),
+                                                      ('analysis','Análisis'),('solution','Solución')]:
+                                        _fv = _dd7.get(_fk, '')
+                                        if _fv:
+                                            _dr7 += (
+                                                '<div style="padding:7px 10px;background:white;border:1px solid #e2e8f0;'
+                                                'border-radius:8px;margin-bottom:5px;">'
+                                                '<div style="font-size:9px;font-weight:800;color:#94a3b8;'
+                                                'text-transform:uppercase;margin-bottom:2px;">' + _fl + '</div>'
+                                                + '<div style="font-size:12px;color:#1e293b;font-weight:600;">' + str(_fv) + '</div></div>'
+                                            )
+                                    if _dr7:
+                                        ui.html('<div style="margin-bottom:8px;">' + _dr7 + '</div>')
+                                elif _pdx7:
+                                    ui.html(
+                                        '<div style="padding:10px;background:white;border:1px solid #e2e8f0;'
+                                        'border-radius:8px;font-size:12px;color:#1e293b;white-space:pre-wrap;'
+                                        'line-height:1.5;margin-bottom:8px;">' + _pdx7 + '</div>'
+                                    )
+                                else:
+                                    ui.html('<div style="font-size:12px;color:#94a3b8;padding:8px;">El técnico está preparando el diagnóstico.</div>')
+                                if _sc7:
+                                    ui.html(
+                                        '<div style="background:#f0fdf4;border:1.5px solid #86efac;'
+                                        'border-radius:10px;padding:12px;">'
+                                        '<div style="font-size:10px;font-weight:800;color:#15803d;margin-bottom:8px;">'
+                                        '🔬 REPORTE DE ESCÁNER OBD</div>'
+                                        + '<iframe src="/' + _sc7 + '" style="width:100%;height:280px;border:none;'
+                                        + 'border-radius:6px;background:#fff;" title="Escaner"></iframe>'
+                                        + '<div style="display:flex;gap:8px;margin-top:8px;">'
+                                        + '<a href="/' + _sc7 + '" target="_blank" style="flex:1;text-align:center;padding:7px;'
+                                        + 'border-radius:7px;background:white;color:#15803d;text-decoration:none;'
+                                        + 'font-size:11px;font-weight:700;border:1.5px solid #16a34a;">🔍 Ver</a>'
+                                        + '<a href="/' + _sc7 + '" download style="flex:1;text-align:center;padding:7px;'
+                                        + 'border-radius:7px;background:#16a34a;color:white;text-decoration:none;'
+                                        + 'font-size:11px;font-weight:700;">⬇️ Descargar</a>'
+                                        + '</div></div>'
+                                    )
+
+                        # FASE 3: REPUESTOS
+                        with ui.element('div').style('padding:16px 20px;border-bottom:1px solid #f8fafc;'):
+                            ui.html(_phdr7(3, '📦', '3. Repuestos', _phst7(2)))
+                            if _phst7(2) in ('done', 'active'):
+                                if _its7:
+                                    _r7 = ''
+                                    for _it7 in _its7:
+                                        _nm7  = _it7.get('nombre', _it7.get('item', 'Ítem'))
+                                        _ct7  = _it7.get('cantidad', 1)
+                                        _tot7 = float(_it7.get('total', 0))
+                                        _ts7  = '{:,.2f}'.format(_tot7)
+                                        _r7 += (
+                                            '<div style="display:flex;justify-content:space-between;'
+                                            'align-items:center;padding:5px 8px;border-bottom:1px solid #f1f5f9;">'
+                                            + '<div><div style="font-size:12px;font-weight:700;color:#1e293b;">'
+                                            + str(_nm7) + '</div>'
+                                            + '<div style="font-size:10px;color:#94a3b8;">Cant: '
+                                            + str(_ct7) + '</div></div>'
+                                            + '<div style="font-size:13px;font-weight:800;color:#1a3a6b;">S/ '
+                                            + _ts7 + '</div></div>'
+                                        )
+                                    _ss7 = '{:,.2f}'.format(_sub7)
+                                    _bs7 = '{:,.2f}'.format(_sub7 / 1.18)
+                                    ui.html(
+                                        '<div style="background:white;border:1px solid #e2e8f0;'
+                                        'border-radius:10px;overflow:hidden;margin-bottom:4px;">'
+                                        + _r7
+                                        + '<div style="padding:8px 12px;background:#f8fafc;'
+                                        'border-top:2px solid #e2e8f0;text-align:right;">'
+                                        + '<div style="font-size:10px;color:#94a3b8;margin-bottom:2px;">'
+                                        + 'Inc. IGV | Base: S/ ' + _bs7 + '</div>'
+                                        + '<div style="font-size:18px;font-weight:900;color:#1a3a6b;">'
+                                        + 'TOTAL S/ ' + _ss7 + '</div></div></div>'
+                                    )
+                                else:
+                                    ui.html('<div style="font-size:12px;color:#94a3b8;padding:8px;">La cotización está siendo preparada.</div>')
+
+                        # FASE 4: APROBACIÓN
+                        with ui.element('div').style('padding:16px 20px;border-bottom:1px solid #f8fafc;'):
+                            ui.html(_phdr7(4, '✅', '4. Aprobación', _phst7(3)))
+                            if _phst7(3) in ('done', 'active'):
+                                if _apst7 == 'aprobado':
+                                    ui.html(
+                                        '<div style="background:#f0fdf4;border:1.5px solid #86efac;'
+                                        'border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;">'
+                                        '<span style="font-size:24px;">✅</span>'
+                                        '<div><div style="font-size:13px;font-weight:800;color:#15803d;">PRESUPUESTO APROBADO</div>'
+                                        + '<div style="font-size:11px;color:#166534;">Confirmado: ' + _apdt7 + '</div></div></div>'
+                                    )
+                                elif _apst7 == 'rechazado':
+                                    ui.html(
+                                        '<div style="background:#fef2f2;border:1.5px solid #fecaca;'
+                                        'border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;">'
+                                        '<span style="font-size:24px;">❌</span>'
+                                        '<div><div style="font-size:13px;font-weight:800;color:#dc2626;">NO APROBADO</div>'
+                                        '<div style="font-size:11px;color:#b91c1c;">El taller se comunicará.</div></div></div>'
+                                    )
+                                else:
+                                    ui.html(
+                                        '<div style="background:#fffbeb;border:1.5px solid #fde68a;'
+                                        'border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;">'
+                                        '<span style="font-size:22px;">⏳</span>'
+                                        '<div><div style="font-size:13px;font-weight:700;color:#92400e;">Esperando su respuesta</div>'
+                                        '<div style="font-size:11px;color:#a16207;">Revise el enlace enviado por WhatsApp o Email.</div></div></div>'
+                                    )
+
+                        # FASE 5: REPARACIÓN
+                        with ui.element('div').style('padding:16px 20px;border-bottom:1px solid #f8fafc;'):
+                            ui.html(_phdr7(5, '🔧', '5. Reparación', _phst7(4)))
+                            _s5 = _phst7(4)
+                            if _s5 == 'active':
+                                ui.html(
+                                    '<div style="background:#e8f0fb;border:1.5px solid #c5d8f5;'
+                                    'border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;">'
+                                    '<span style="font-size:22px;">🔧</span>'
+                                    '<div><div style="font-size:13px;font-weight:700;color:#1a3a6b;">'
+                                    'Su vehículo está siendo reparado ahora.</div>'
+                                    '<div style="font-size:11px;color:#2356a8;">'
+                                    'El técnico trabaja en los sistemas aprobados.</div></div></div>'
+                                )
+                            elif _s5 == 'done':
+                                ui.html(
+                                    '<div style="font-size:12px;color:#15803d;padding:8px;'
+                                    'background:#f0fdf4;border-radius:8px;font-weight:700;">✓ Reparación completada.</div>'
+                                )
+
+                        # FASE 6: CONTROL DE CALIDAD
+                        with ui.element('div').style('padding:16px 20px;border-bottom:1px solid #f8fafc;'):
+                            ui.html(_phdr7(6, '🛡️', '6. Control de Calidad', _phst7(5)))
+                            _s6 = _phst7(5)
+                            if _s6 in ('done', 'active') and _qchk7:
+                                _ok6  = sum(1 for v in _qchk7.values()
+                                            if (v.get('status') if isinstance(v, dict) else v) == 'OK')
+                                _tot6 = len(_qchk7)
+                                _ch6  = '<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin-bottom:8px;">Inspección: ' + str(_ok6) + '/' + str(_tot6) + ' puntos OK</div>'
+                                for _k6, _v6 in _qchk7.items():
+                                    _sv6 = _v6.get('status') if isinstance(_v6, dict) else _v6
+                                    _ok6b = _sv6 == 'OK'
+                                    _ch6 += (
+                                        '<div style="display:flex;justify-content:space-between;align-items:center;'
+                                        'padding:4px 8px;border-radius:6px;margin-bottom:3px;background:'
+                                        + ('white;border:1px solid #e2e8f0;">' if _ok6b else '#fef2f2;border:1px solid #fecaca;">')
+                                        + '<span style="font-size:11px;color:#1e293b;">'
+                                        + ('✅ ' if _ok6b else '⚠️ ') + str(_k6) + '</span>'
+                                        + ('<span style="font-size:9px;background:#dcfce7;color:#15803d;'
+                                           'padding:2px 7px;border-radius:100px;font-weight:800;">OK</span>'
+                                           if _ok6b else
+                                           '<span style="font-size:9px;background:#fee2e2;color:#dc2626;'
+                                           'padding:2px 7px;border-radius:100px;font-weight:800;">REVISAR</span>')
+                                        + '</div>'
+                                    )
+                                ui.html(_ch6)
+                            elif _s6 in ('done', 'active'):
+                                ui.html('<div style="font-size:12px;color:#94a3b8;padding:8px;">Inspección de calidad en proceso.</div>')
+
+                        # FASE 7: ENTREGA
+                        with ui.element('div').style('padding:16px 20px;'):
+                            ui.html(_phdr7(7, '🚘', '7. Entrega', _phst7(6)))
+                            _s7 = _phst7(6)
+                            if _s7 in ('done', 'active'):
+                                if _nt7:
+                                    ui.html(
+                                        '<div style="padding:8px 10px;background:white;border:1px solid #e2e8f0;'
+                                        'border-radius:8px;font-size:12px;color:#1e293b;margin-bottom:6px;">'
+                                        '<b>Notas de entrega:</b><br>' + _nt7 + '</div>'
+                                    )
+                                if _pm7:
+                                    ui.html(
+                                        '<div style="background:#f0fdf4;border:1px solid #bbf7d0;'
+                                        'border-radius:8px;padding:8px 10px;font-size:12px;color:#15803d;font-weight:700;">'
+                                        '📅 Próximo mantenimiento: ' + _pm7 + '</div>'
+                                    )
+                                if not _nt7 and not _pm7:
+                                    ui.html('<div style="font-size:12px;color:#94a3b8;padding:8px;">Entrega en proceso.</div>')
+
+                # ════════════════════════════════════════════════
                 # 3. GRID: Estado vehículo + Repuestos/Cotización
                 # ════════════════════════════════════════════════
                 with ui.element('div').classes('p-grid-2'):
