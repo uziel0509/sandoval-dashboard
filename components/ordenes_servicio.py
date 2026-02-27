@@ -440,7 +440,7 @@ def open_new_diagnostic_modal(consecutivo, container, state, stats_container=Non
                                 except Exception as err:
                                     theme.notify_error(f"Error crítico al subir: {str(err)}")
                                 
-                            ui.upload(on_upload=handle_upload, auto_upload=True).props('flat dense color=blue-7 accept="image/*" label="Agregar fotos"').classes('w-full border-2 border-dashed border-gray-300 rounded-lg p-2 hover:border-blue-400 transition-colors')
+                            ui.upload(on_upload=handle_upload, auto_upload=True, multiple=True, max_file_size=10_000_000).props('flat dense color=blue-7 accept="image/*" label="Seleccionar fotos (varias)"').classes('w-full border-2 border-dashed border-gray-300 rounded-lg p-2 hover:border-blue-400 transition-colors')
 
 
             # ─── FOOTER ───
@@ -3491,7 +3491,7 @@ def open_edit_reception_dialog(consecutivo, container, state, stats_container=No
                         except Exception as err:
                             theme.notify_error(f"Error: {str(err)}")
 
-                    ui.upload(on_upload=handle_edit_up, auto_upload=True).props('flat dense color=blue-7 accept="image/*" label="Añadir fotos extra"').classes('w-full border border-dashed border-gray-300 rounded p-1')
+                    ui.upload(on_upload=handle_edit_up, auto_upload=True, multiple=True, max_file_size=10_000_000).props('flat dense color=blue-7 accept="image/*" label="Añadir fotos (varias)"').classes('w-full border border-dashed border-gray-300 rounded p-1')
                     refresh_edit_photos()
 
                     with ui.row().classes('w-full justify-between items-center mt-2'):
