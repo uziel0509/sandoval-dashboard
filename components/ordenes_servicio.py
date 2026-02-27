@@ -1133,7 +1133,8 @@ def open_archive_dialog(consecutivo: str, container, state, stats_container=None
 
 
 def _render_order_card(order, clients, vehicles, container, state, stats_container=None):
-    cfg = theme.ESTADOS_CONFIG.get(order.estado, {'icon': 'build', 'color': 'grey-6', 'hex': '#999'})
+    cur_estado = (order.estado or 'RECEPCIÓN').strip().upper()
+    cfg = theme.ESTADOS_CONFIG.get(cur_estado, theme.ESTADOS_CONFIG.get('RECEPCIÓN'))
     client = clients.get(order.cliente_id)
     vehicle = vehicles.get(order.vehiculo_placa)
     
@@ -1169,19 +1170,19 @@ def _render_order_card(order, clients, vehicles, container, state, stats_contain
             with ui.row().classes('gap-1'):
                 # Vista Cliente (Ojo)
                 has_diag = bool(order.checklist_reparacion or (order.diagnostico and len(order.diagnostico or '') > 10))
-                if order.estado == 'DIAGNÓSTICO' and not has_diag:
+                if cur_estado == 'DIAGNÓSTICO' and not has_diag:
                     ui.button(icon='visibility').props('flat dense color=grey-4 size=sm disable').tooltip('Sin Diagnóstico')
-                elif order.estado == 'REPARACIÓN':
+                elif cur_estado == 'REPARACIÓN':
                     ui.button(icon='visibility', on_click=lambda o=order: open_repair_view_dialog(o.consecutivo)).props('flat dense color=cyan-7 size=sm').tooltip('Ver Informe Reparación')
                 else:
                     ui.button(icon='visibility', on_click=lambda o=order: open_customer_preview(o.consecutivo)).props('flat dense color=cyan-7 size=sm').tooltip('Vista Cliente')
                 
                 # Editar (Lápiz)
-                if order.estado == 'DIAGNÓSTICO':
+                if cur_estado == 'DIAGNÓSTICO':
                     ui.button(icon='edit', on_click=lambda o=order: open_new_diagnostic_modal(o.consecutivo, container, state, stats_container)).props('flat dense color=amber-8 size=sm').tooltip('Editar Diagnóstico')
-                elif order.estado in ('REPUESTOS', 'APROBACIÓN'):
+                elif cur_estado in ('REPUESTOS', 'APROBACIÓN'):
                     ui.button(icon='edit', on_click=lambda o=order: open_parts_management_dialog(o.consecutivo, container, state, stats_container)).props('flat dense color=amber-8 size=sm').tooltip('Editar Repuestos/Servicios')
-                elif order.estado == 'REPARACIÓN':
+                elif cur_estado == 'REPARACIÓN':
                     ui.button(icon='edit', on_click=lambda o=order: open_advanced_repair_module(o.consecutivo, container, state, stats_container)).props('flat dense color=amber-8 size=sm').tooltip('Editar Reparación')
                 else:
                     ui.button(icon='edit', on_click=lambda o=order: open_edit_reception_dialog(o.consecutivo, container, state)).props('flat dense color=amber-8 size=sm').tooltip('Editar Recepción')
@@ -1190,42 +1191,46 @@ def _render_order_card(order, clients, vehicles, container, state, stats_contain
                 ui.button(icon='settings', on_click=lambda o=order: open_order_detail(o.consecutivo, container, state)).props('flat dense color=grey-7 size=sm').tooltip('Detalles')
                 
                 # Retroceder (Flecha Izquierda)
-                curr_idx = ESTADOS.index(order.estado)
+                try:
+                    curr_idx = ESTADOS.index(cur_estado)
+                except ValueError:
+                    curr_idx = 0
+                
                 if curr_idx > 0:
                      prev_est = ESTADOS[curr_idx - 1]
                      ui.button(icon='arrow_back',
                          on_click=lambda o=order, pe=prev_est: (regress_order(o.consecutivo, pe), refresh_orders(container, state, stats_container))
                      ).props(f'flat dense color={cfg["color"]} size=sm').tooltip(f'Retroceder -> {prev_est}')
 
-                if order.estado != 'ARCHIVADO':
-                    next_idx = min(ESTADOS.index(order.estado) + 1, len(ESTADOS) - 1)
+                if cur_estado != 'ARCHIVADO':
+                    next_idx = min(curr_idx + 1, len(ESTADOS) - 1)
                     next_est = ESTADOS[next_idx]
                     
-                    if order.estado == 'RECEPCIÓN':
+                    if cur_estado == 'RECEPCIÓN':
                          ui.button(icon='arrow_forward', 
                              on_click=lambda o=order: open_advance_reception_dialog(o.consecutivo, container, state, stats_container)
                          ).props(f'flat dense color={cfg["color"]} size=sm').tooltip(f'Avanzar -> {next_est}')
-                    elif order.estado == 'DIAGNÓSTICO':
+                    elif cur_estado == 'DIAGNÓSTICO':
                          ui.button(icon='arrow_forward', 
                              on_click=lambda o=order: open_advance_diagnostic_dialog(o.consecutivo, container, state, stats_container)
                          ).props(f'flat dense color={cfg["color"]} size=sm').tooltip(f'Avanzar -> {next_est}')
-                    elif order.estado == 'REPUESTOS':
+                    elif cur_estado == 'REPUESTOS':
                          ui.button(icon='arrow_forward', 
                              on_click=lambda o=order: open_advance_parts_dialog(o.consecutivo, container, state, stats_container)
                          ).props(f'flat dense color={cfg["color"]} size=sm').tooltip(f'Avanzar -> {next_est}')
-                    elif order.estado == 'APROBACIÓN':
+                    elif cur_estado == 'APROBACIÓN':
                          ui.button(icon='arrow_forward', 
                              on_click=lambda o=order: open_advance_approval_dialog(o.consecutivo, container, state, stats_container)
                          ).props(f'flat dense color={cfg["color"]} size=sm').tooltip(f'Avanzar -> {next_est}')
-                    elif order.estado.strip() == 'REPARACIÓN':
+                    elif cur_estado == 'REPARACIÓN':
                          ui.button(icon='arrow_forward', 
                              on_click=lambda o=order: open_advance_repair_dialog(o.consecutivo, container, state, stats_container)
                          ).props(f'flat dense color={cfg["color"]} size=sm').tooltip(f'Avanzar -> {next_est}')
-                    elif order.estado.strip() == 'CONTROL':
+                    elif cur_estado == 'CONTROL':
                          ui.button(icon='arrow_forward',
                              on_click=lambda o=order: open_quality_control_dialog(o.consecutivo, container, state, stats_container)
                          ).props(f'flat dense color={cfg["color"]} size=sm').tooltip('Control de Calidad → Entrega')
-                    elif order.estado.strip() == 'ENTREGA':
+                    elif cur_estado == 'ENTREGA':
                          ui.button(icon='arrow_forward', 
                              on_click=lambda o=order: open_archive_dialog(o.consecutivo, container, state, stats_container)
                          ).props(f'flat dense color={cfg["color"]} size=sm').tooltip('Finalizar y Archivar')
@@ -2588,7 +2593,7 @@ def open_order_detail(consecutivo, container, state):
                     with ui.card().classes('bg-gray-50 border border-gray-200 p-4 w-full shadow-sm'):
                         with ui.row().classes('w-full justify-between items-center mb-2'):
                             ui.label('DIAGNÓSTICO').classes('text-xs text-gray-500 uppercase font-bold')
-                            if o.get('status') == 'DIAGNÓSTICO' or o.get('diagnostico'):
+                            if o.get('estado') == 'DIAGNÓSTICO' or o.get('diagnostico'):
                                 ui.button(icon='edit', on_click=lambda: (dialog.close(), open_new_diagnostic_modal(consecutivo, container, state, stats_container))).props('flat dense size=xs color=blue-6').tooltip('Editar con Formulario Completo')
                         
                         if o.get('diagnostico'):
