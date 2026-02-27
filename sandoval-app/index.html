@@ -475,8 +475,11 @@
     }
 
     function startApp() {
-      document.getElementById('loading').style.opacity = '0';
-      setTimeout(() => document.getElementById('loading').remove(), 400);
+      const loadingEl = document.getElementById('loading');
+      if (loadingEl) {
+        loadingEl.style.opacity = '0';
+        setTimeout(() => loadingEl.remove(), 400);
+      }
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('app').classList.remove('hidden');
       const initials = (S.user?.nombre || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
