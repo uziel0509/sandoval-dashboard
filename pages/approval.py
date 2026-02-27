@@ -123,194 +123,159 @@ def _render_already_responded(order, client, vehicle):
 
 
 def _render_approval(order, client, vehicle, token):
-    with ui.column().classes('w-full min-h-screen items-center py-8 px-4'):
-        # Header
-        with ui.card().classes('w-full max-w-2xl bg-white border border-gray-200 p-6 mb-4 shadow-sm'):
+    _VIDEO_EXT = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.ogg'}
+    def _ev_is_video(p):
+        return os.path.splitext((p or '').lower())[1] in _VIDEO_EXT
+
+    import json
+    checklist_data = order.checklist_reparacion
+    if isinstance(checklist_data, str):
+        try: checklist_data = json.loads(checklist_data)
+        except: checklist_data = {}
+    diag_details = (checklist_data or {}).get('diagnostic_details', {})
+    quick_check  = (checklist_data or {}).get('quick_check', {})
+    items        = order.items_cotizacion or []
+
+    with ui.column().classes('w-full min-h-screen items-center py-8 px-4 bg-gray-50'):
+
+        # ── HEADER ────────────────────────────────────────────────────────
+        with ui.card().classes('w-full max-w-2xl bg-white border border-gray-200 p-5 mb-4 shadow-sm rounded-2xl'):
             with ui.row().classes('w-full items-center justify-between'):
                 with ui.row().classes('items-center gap-3'):
                     ui.icon('build_circle', size='40px').classes('text-lime-600')
                     with ui.column().classes('gap-0'):
                         ui.label('SANDOVAL').classes('text-2xl font-bold text-gray-800')
-                        ui.label('Mecánica y Repuestos').classes('text-xs text-gray-500')
-                ui.label(f'Orden {order.consecutivo}').classes('text-xl font-bold text-gray-800')
-        
-            # Parse structured diagnostic data
-            import json
-            checklist_data = order.checklist_reparacion
-            if isinstance(checklist_data, str):
-                try: checklist_data = json.loads(checklist_data)
-                except: checklist_data = {}
-            
-            diag_details = (checklist_data or {}).get('diagnostic_details', {})
-            quick_check = (checklist_data or {}).get('quick_check', {})
-            
-            # --- SECCIÓN DIAGNÓSTICO ---
-            ui.label('REPORTE TÉCNICO DE EVALUACIÓN').classes('text-lg font-bold text-lime-700 mb-4')
-            
+                        ui.label('Mecánica y Repuestos — Reporte de Servicio').classes('text-xs text-gray-500')
+                with ui.column().classes('items-end gap-0'):
+                    ui.label(f'Orden {order.consecutivo}').classes('text-lg font-bold text-gray-800')
+                    ui.label(f'Estado: {order.estado}').classes('text-xs text-gray-400 font-mono')
+
+        # ── VEHÍCULO ──────────────────────────────────────────────────────
+        if vehicle:
+            with ui.card().classes('w-full max-w-2xl bg-white border border-gray-200 p-5 mb-4 shadow-sm rounded-2xl'):
+                ui.label('🚗 VEHÍCULO').classes('text-sm font-bold text-lime-700 uppercase tracking-widest mb-3')
+                with ui.grid(columns=2).classes('w-full gap-3'):
+                    _info_field('Marca / Modelo', f'{vehicle.marca} {vehicle.modelo}')
+                    _info_field('Placa', vehicle.placa)
+                    _info_field('Año', vehicle.año)
+                    _info_field('Color', vehicle.color or '—')
+                    _info_field('Kilometraje', f'{order.km or "—"} km')
+                    _info_field('Técnico', order.tecnico or '—')
+
+        # ── DIAGNÓSTICO TÉCNICO ───────────────────────────────────────────
+        with ui.card().classes('w-full max-w-2xl bg-white border border-gray-200 p-5 mb-4 shadow-sm rounded-2xl'):
+            ui.label('🔬 DIAGNÓSTICO TÉCNICO').classes('text-sm font-bold text-lime-700 uppercase tracking-widest mb-4')
+
             if diag_details:
-                with ui.column().classes('w-full gap-4'):
-                    # Sistemas afectados
-                    systems = diag_details.get('system', [])
-                    if isinstance(systems, str): systems = [systems]
-                    if systems:
-                        with ui.row().classes('w-full items-center gap-2'):
-                            ui.label('Sistemas:').classes('text-xs font-black text-gray-400 uppercase w-20')
-                            for s in systems:
-                                ui.label(s).classes('bg-slate-100 px-3 py-1 rounded-full text-[10px] font-bold border border-slate-200 text-slate-700 uppercase')
-                    
-                    def _diag_item(icon, label, value):
-                        if not value: return
-                        with ui.row().classes('w-full items-start gap-3 p-3 bg-slate-50/50 rounded-lg border border-slate-100'):
-                            ui.icon(icon, size='18px').classes('text-lime-600 mt-1')
-                            with ui.column().classes('gap-0'):
-                                ui.label(label).classes('text-[10px] font-black text-gray-400 uppercase tracking-widest')
-                                ui.label(value).classes('text-sm text-gray-800 leading-relaxed font-medium')
+                # Sistemas afectados
+                systems = diag_details.get('system', [])
+                if isinstance(systems, str): systems = [systems]
+                if systems:
+                    with ui.row().classes('items-center gap-2 mb-3'):
+                        ui.label('Sistemas:').classes('text-xs font-black text-gray-400 uppercase')
+                        for s in systems:
+                            ui.label(s).classes('bg-lime-50 px-3 py-1 rounded-full text-[10px] font-bold border border-lime-200 text-lime-800 uppercase')
 
-                    _diag_item('biotech', 'Pruebas Realizadas', diag_details.get('tests'))
-                    _diag_item('psychology', 'Análisis Técnico / Hallazgo', diag_details.get('analysis'))
-                    _diag_item('check_circle_outline', 'Solución Recomendada', diag_details.get('solution'))
-                     
-                    if diag_details.get('scanner_path'):
-                        with ui.row().classes('w-full justify-center mt-4'):
-                            ui.button('VER REPORTE DE ESCÁNER', icon='description', on_click=lambda: ui.download(diag_details.get('scanner_path'))).props('outline color=lime-9').classes('font-bold')
-                     
+                def _diag_item(icon, label, value):
+                    if not value: return
+                    with ui.row().classes('w-full items-start gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'):
+                        ui.icon(icon, size='18px').classes('text-lime-600 mt-1 flex-shrink-0')
+                        with ui.column().classes('gap-0 flex-1'):
+                            ui.label(label).classes('text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1')
+                            ui.label(value).classes('text-sm text-gray-800 leading-relaxed font-medium')
+
+                _diag_item('biotech',            'Pruebas Realizadas',          diag_details.get('tests'))
+                _diag_item('manage_search',       'Códigos Detectados',           diag_details.get('codes'))
+                _diag_item('psychology',          'Análisis Técnico / Hallazgo',  diag_details.get('analysis'))
+                _diag_item('check_circle_outline','Solución Recomendada',         diag_details.get('solution'))
+
+                if diag_details.get('scanner_path'):
+                    with ui.row().classes('w-full justify-center mt-3'):
+                        ui.button('VER REPORTE DE ESCÁNER', icon='description',
+                                  on_click=lambda: ui.download(diag_details.get('scanner_path'))
+                                  ).props('outline color=lime-9').classes('font-bold')
+
             elif order.diagnostico:
-                ui.label(order.diagnostico).classes('text-gray-800 whitespace-pre-wrap text-sm leading-relaxed p-4 bg-slate-50 rounded-lg border border-slate-100')
+                ui.label(order.diagnostico).classes(
+                    'text-gray-800 whitespace-pre-wrap text-sm leading-relaxed p-4 bg-slate-50 rounded-lg border border-slate-100')
             else:
-                ui.label('Diagnóstico en proceso...').classes('text-gray-400 italic text-sm')
+                ui.label('El diagnóstico aún no ha sido redactado por el técnico.').classes('text-gray-400 italic text-sm')
 
-            # --- SECCIÓN INSPECCIÓN VISUAL (Checklist) ---
-            if quick_check:
-                ui.separator().classes('my-6')
-                ui.label('INSPECCIÓN DE SEGURIDAD Y ESTADO').classes('text-lg font-bold text-lime-700 mb-4')
-                
+        # ── INSPECCIÓN PREVENTIVA ─────────────────────────────────────────
+        if quick_check:
+            with ui.card().classes('w-full max-w-2xl bg-white border border-gray-200 p-5 mb-4 shadow-sm rounded-2xl'):
+                ui.label('✅ INSPECCIÓN DE SEGURIDAD Y ESTADO').classes('text-sm font-bold text-lime-700 uppercase tracking-widest mb-4')
                 with ui.grid(columns=1).classes('w-full gap-2'):
                     for item, data in quick_check.items():
                         status = data.get('status') if isinstance(data, dict) else data
-                        note = data.get('note', '') if isinstance(data, dict) else ''
-                        is_ok = status == 'OK'
-                        
-                        bg_color = 'bg-white' if is_ok else 'bg-red-50'
-                        border_color = 'border-slate-100' if is_ok else 'border-red-100'
-                        
-                        with ui.row().classes(f'w-full items-center justify-between p-3 rounded-xl border {border_color} {bg_color} shadow-sm'):
+                        note   = data.get('note', '') if isinstance(data, dict) else ''
+                        is_ok  = status == 'OK'
+                        bg_c   = 'bg-white' if is_ok else 'bg-red-50'
+                        bd_c   = 'border-slate-100' if is_ok else 'border-red-100'
+                        with ui.row().classes(f'w-full items-center justify-between p-3 rounded-xl border {bd_c} {bg_c} shadow-sm'):
                             with ui.row().classes('items-center gap-3'):
-                                ui.icon('verified' if is_ok else 'warning', size='20px').classes('text-green-500' if is_ok else 'text-red-500')
+                                ui.icon('verified' if is_ok else 'warning', size='20px').classes(
+                                    'text-green-500' if is_ok else 'text-red-500')
                                 ui.label(item).classes('text-sm font-bold text-slate-700')
-                            
                             with ui.row().classes('items-center gap-4'):
                                 if note:
                                     ui.label(note).classes('text-[11px] text-red-700 italic font-medium max-w-[200px] truncate')
-                                
-                                label_status = 'CONFORME' if is_ok else 'REVISAR'
-                                chip_color = 'bg-green-100 text-green-700' if is_ok else 'bg-red-100 text-red-700'
-                                ui.label(label_status).classes(f'px-3 py-1 rounded-full text-[9px] font-black tracking-widest {chip_color}')
-        
-        # Info del vehículo
-        if vehicle:
-            with ui.card().classes('w-full max-w-2xl bg-white border border-gray-200 p-6 mb-4 shadow-sm'):
-                ui.label('VEHÍCULO').classes('text-lg font-bold text-lime-700 mb-4')
-                with ui.grid(columns=2).classes('w-full gap-4'):
-                    _info_field('Marca/Modelo', f'{vehicle.marca} {vehicle.modelo}')
-                    _info_field('Placa', vehicle.placa)
-                    _info_field('Año', vehicle.año)
-                    _info_field('Color', vehicle.color)
-                    _info_field('VIN', vehicle.vin or '-')
-        
-        # Evidencia de Ingreso (Fotos + Videos)
-        if order.fotos_evidencia and isinstance(order.fotos_evidencia, list):
-            _VIDEO_EXT = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.ogg'}
-            def _ev_is_video(p):
-                import os
-                return os.path.splitext((p or '').lower())[1] in _VIDEO_EXT
+                                lbl_s   = 'CONFORME' if is_ok else 'REVISAR'
+                                chip_c  = 'bg-green-100 text-green-700' if is_ok else 'bg-red-100 text-red-700'
+                                ui.label(lbl_s).classes(f'px-3 py-1 rounded-full text-[9px] font-black tracking-widest {chip_c}')
 
-            fotos_ev = [p for p in order.fotos_evidencia if not _ev_is_video(p)]
-            videos_ev = [p for p in order.fotos_evidencia if _ev_is_video(p)]
+        # ── EVIDENCIA: FOTOS Y VIDEOS ─────────────────────────────────────
+        medios = [p for p in (order.fotos_evidencia or []) if isinstance(p, str)]
+        if medios:
+            fotos_ev  = [p for p in medios if not _ev_is_video(p)]
+            videos_ev = [p for p in medios if _ev_is_video(p)]
 
-            with ui.card().classes('w-full max-w-2xl bg-white border border-gray-200 p-6 mb-4 shadow-sm'):
-                ui.label('EVIDENCIA DE INGRESO').classes('text-lg font-bold text-lime-700 mb-4')
+            with ui.card().classes('w-full max-w-2xl bg-white border border-gray-200 p-5 mb-4 shadow-sm rounded-2xl'):
+                ui.label('📷 EVIDENCIA ADJUNTA').classes('text-sm font-bold text-lime-700 uppercase tracking-widest mb-4')
 
                 if fotos_ev:
+                    ui.label('Fotos:').classes('text-xs font-bold text-gray-500 mb-2')
                     with ui.row().classes('w-full gap-2 flex-wrap mb-4'):
                         for path in fotos_ev:
-                            with ui.card().classes('w-40 h-40 p-0 relative border border-gray-300 group shadow-sm rounded-lg overflow-hidden'):
-                                ui.image(path).classes('w-full h-full object-cover rounded')
+                            with ui.card().classes('w-36 h-36 p-0 relative border border-gray-200 rounded-xl overflow-hidden shadow-sm'):
+                                ui.image(path).classes('w-full h-full object-cover')
                                 ui.link('', path, new_tab=True).classes('absolute inset-0')
 
                 if videos_ev:
-                    ui.label('📹 Videos adjuntos por el técnico:').classes('text-sm font-bold text-blue-600 mb-3')
+                    ui.label('📹 Videos del técnico:').classes('text-xs font-bold text-blue-600 mb-3')
                     for path in videos_ev:
                         with ui.card().classes('w-full bg-slate-900 rounded-xl overflow-hidden border border-blue-200 shadow-md mb-3'):
                             ui.html(f'''
                                 <video src="{path}" controls preload="metadata" playsinline
-                                    style="width:100%;max-height:360px;display:block;">
+                                    style="width:100%;max-height:350px;display:block;">
                                     Tu navegador no soporta reproducción de video.
                                     <a href="{path}" target="_blank">Descargar video</a>
                                 </video>
                             ''')
                             with ui.row().classes('p-3 items-center gap-2'):
                                 ui.icon('videocam', size='xs').classes('text-blue-300')
-                                ui.label('Video adjunto por el técnico — haz clic ▶ para reproducir').classes('text-slate-300 text-xs flex-1')
-                                ui.html(f'<a href="{path}" target="_blank" style="color:#60a5fa;font-size:11px;font-weight:700;">Abrir →</a>')
+                                ui.label('Haz clic en ▶ para reproducir el video del técnico').classes('text-slate-300 text-xs flex-1')
+                                ui.html(f'<a href="{path}" target="_blank" style="color:#60a5fa;font-size:11px;font-weight:700;text-decoration:none;">Abrir →</a>')
 
-        
-        # ── Determinar flujo: RECEPCIÓN vs PRESUPUESTO ──────────────────────────
-        items = order.items_cotizacion or []
-        # Normalizar estado sin tilde para comparar
-        _NORM_ESTADO = {'RECEPCION': 'RECEPCIÓN', 'DIAGNOSTICO': 'DIAGNÓSTICO',
-                        'APROBACION': 'APROBACIÓN', 'REPARACION': 'REPARACIÓN'}
-        estado_norm = _NORM_ESTADO.get((order.estado or '').upper().strip(), (order.estado or '').upper().strip())
-        is_reception = estado_norm == 'RECEPCIÓN'
-        is_budget = bool(items) and not is_reception
-
-        # ── FLUJO A: Aprobación de Ingreso (estado RECEPCIÓN) ────────────────
-        if is_reception:
-            with ui.card().classes('w-full max-w-2xl bg-white border border-gray-200 p-6 mb-6 shadow-sm'):
-                ui.label('APROBACIÓN DE INGRESO').classes('text-lg font-bold text-lime-700 mb-4')
-                ui.label('Por favor revise las fotos de evidencia y confirme el estado de ingreso del vehículo.').classes('text-gray-600 mb-4')
-                ui.separator().classes('my-4')
-                ui.label('¿Aprueba el estado de ingreso del vehículo?').classes('text-center w-full text-lg font-bold text-gray-800 mb-4')
-
-                comentario_rec = ui.textarea('Comentario (opcional)', placeholder='Escriba algún comentario...').props(
-                    'outlined dense rows=2 bg-color=white'
-                ).classes('w-full mb-4')
-
-                with ui.row().classes('w-full justify-center gap-6 mb-4'):
-                    def aprobar_ingreso():
-                        _process_response(token, 'aprobado', comentario_rec.value)
-
-                    def rechazar_ingreso():
-                        _process_response(token, 'rechazado', comentario_rec.value)
-
-                    ui.button('RECHAZAR', icon='close', on_click=rechazar_ingreso).classes(
-                        'px-8 py-3 text-lg'
-                    ).props('outline color=red-7 size=lg')
-
-                    ui.button('APROBAR', icon='check', on_click=aprobar_ingreso).classes(
-                        'px-8 py-3 text-lg btn-sandoval'
-                    ).props('unelevated text-color=white')
-
-        # ── FLUJO B: Aprobación de Presupuesto (tiene ítems y NO es recepción) ─
-        elif is_budget:
-            with ui.card().classes('w-full max-w-2xl bg-white border border-gray-200 p-6 mb-6 shadow-sm'):
-                ui.label('COTIZACIÓN Y REPUESTOS').classes('text-lg font-bold text-lime-700 mb-4')
+        # ── COTIZACIÓN Y REPUESTOS ────────────────────────────────────────
+        if items:
+            with ui.card().classes('w-full max-w-2xl bg-white border border-gray-200 p-5 mb-4 shadow-sm rounded-2xl'):
+                ui.label('🔩 COTIZACIÓN DE REPUESTOS Y SERVICIOS').classes('text-sm font-bold text-lime-700 uppercase tracking-widest mb-4')
 
                 subtotal = 0.0
                 for item in items:
                     item_total = float(item.get('total', 0))
-                    subtotal += item_total
-                    with ui.row().classes('w-full justify-between items-center py-2 border-b border-gray-200'):
-                        with ui.column().classes('gap-0'):
-                            ui.label(item.get('nombre', '')).classes('text-gray-800 text-sm font-bold')
+                    subtotal  += item_total
+                    with ui.row().classes('w-full justify-between items-center py-3 border-b border-gray-100'):
+                        with ui.column().classes('gap-0 flex-1'):
+                            ui.label(item.get('nombre', item.get('item', 'Ítem'))).classes('text-gray-800 text-sm font-bold')
                             ui.label(
-                                f"Cant: {item.get('cantidad', 1)} × S/ {float(item.get('precio_unitario', 0)):.2f}"
-                            ).classes('text-gray-500 text-xs')
-                        ui.label(f'S/ {item_total:.2f}').classes('text-gray-800 font-bold')
+                                f"Cant: {item.get('cantidad', 1)} × S/ {float(item.get('precio_unitario', 0)):.2f}  |  {item.get('categoria', 'Repuesto')}"
+                            ).classes('text-gray-400 text-xs')
+                        ui.label(f'S/ {item_total:.2f}').classes('text-gray-900 font-bold text-sm ml-4')
 
-                # Desglose IGV (precios ya incluyen IGV)
                 base_sin_igv = subtotal / 1.18
-                igv_inc = subtotal - base_sin_igv
-
+                igv_inc      = subtotal - base_sin_igv
                 ui.separator().classes('my-4')
                 with ui.column().classes('w-full items-end gap-1'):
                     ui.html(f'''
@@ -319,40 +284,37 @@ def _render_approval(order, client, vehicle, token):
                     </div>
                     ''')
                     ui.label(f'TOTAL (Inc. IGV): S/ {subtotal:.2f}').classes('text-3xl font-bold text-lime-700')
-
-                ui.separator().classes('my-6')
-                ui.label('¿Aprueba este presupuesto?').classes('text-center w-full text-lg font-bold text-gray-800 mb-4')
-
-                comentario_bud = ui.textarea('Comentario (opcional)', placeholder='Escriba algún comentario...').props(
-                    'outlined dense rows=2 bg-color=white'
-                ).classes('w-full mb-4')
-
-                with ui.row().classes('w-full justify-center gap-6 mb-4'):
-                    def aprobar_budget():
-                        _process_response(token, 'aprobado', comentario_bud.value)
-
-                    def rechazar_budget():
-                        _process_response(token, 'rechazado', comentario_bud.value)
-
-                    ui.button('RECHAZAR', icon='close', on_click=rechazar_budget).classes(
-                        'px-8 py-3 text-lg'
-                    ).props('outline color=red-7 size=lg')
-
-                    ui.button('APROBAR', icon='check', on_click=aprobar_budget).classes(
-                        'px-8 py-3 text-lg btn-sandoval'
-                    ).props('unelevated text-color=white')
-
         else:
-            # Sin ítems y no es recepción → estado intermedio, solo informativo
-            with ui.card().classes('w-full max-w-2xl bg-white border border-gray-200 p-6 mb-6 shadow-sm text-center'):
-                ui.icon('hourglass_top', size='48px').classes('text-amber-400 mb-2')
-                ui.label('Su vehículo está siendo procesado').classes('text-lg font-bold text-gray-700')
-                ui.label(f'Estado actual: {order.estado}').classes('text-gray-500 text-sm mt-1')
-                ui.label('Le notificaremos cuando haya novedades.').classes('text-gray-400 text-sm mt-2')
+            # No hay cotización aún — informar
+            with ui.card().classes('w-full max-w-2xl bg-amber-50 border border-amber-200 p-4 mb-4 shadow-sm rounded-2xl'):
+                with ui.row().classes('items-center gap-3'):
+                    ui.icon('info', size='24px').classes('text-amber-500')
+                    ui.label('La cotización de repuestos aún no ha sido preparada. Se enviará otro enlace cuando esté lista.').classes('text-amber-800 text-sm font-medium')
+
+        # ── BOTONES DE APROBACIÓN ─────────────────────────────────────────
+        with ui.card().classes('w-full max-w-2xl bg-white border-2 border-lime-300 p-6 mb-6 shadow-md rounded-2xl'):
+            ui.label('📋 SU DECISIÓN').classes('text-sm font-bold text-lime-700 uppercase tracking-widest mb-2')
+            if items:
+                ui.label('¿Aprueba el diagnóstico y la cotización de repuestos indicada?').classes('text-gray-700 text-sm mb-1')
+            else:
+                ui.label('¿Aprueba el estado de ingreso de su vehículo y el diagnóstico inicial?').classes('text-gray-700 text-sm mb-1')
+            ui.label('Al APROBAR, el taller procederá con los trabajos. Al RECHAZAR, el taller se comunicará con usted.').classes('text-gray-400 text-xs mb-4')
+
+            comentario_inp = ui.textarea('Comentario u observación (opcional)',
+                                         placeholder='Ej: Estoy de acuerdo, pueden proceder...'
+                             ).props('outlined dense rows=2 bg-color=white').classes('w-full mb-4')
+
+            with ui.row().classes('w-full justify-center gap-6'):
+                def _rechazar():
+                    _process_response(token, 'rechazado', comentario_inp.value)
+                def _aprobar():
+                    _process_response(token, 'aprobado', comentario_inp.value)
+
+                ui.button('✗  RECHAZAR', on_click=_rechazar).classes('px-8 py-3 text-base font-bold').props('outline color=red-7 size=lg')
+                ui.button('✓  APROBAR',  on_click=_aprobar ).classes('px-8 py-3 text-base font-bold').props('unelevated color=lime-8 text-color=black size=lg')
 
         # Footer
-        ui.label('MECÁNICA Y REPUESTOS SANDOVAL EIRL').classes('text-gray-500 text-xs mt-6')
-
+        ui.label('MECÁNICA Y REPUESTOS SANDOVAL EIRL — Documento de aprobación confidencial').classes('text-gray-400 text-xs mt-2')
 
 def _info_field(label, value):
     with ui.column().classes('gap-0'):
