@@ -381,80 +381,89 @@ def _safe_json(data):
     except: return []
 
 def _view_order_details(o):
-    with ui.dialog() as d, ui.card().classes('w-full max-w-lg p-0 bg-slate-50 overflow-hidden shadow-2xl'):
-        # Header ultra-slim corporativo
-        with ui.row().classes('w-full p-4 bg-blue-950 text-white items-center justify-between'):
+    with ui.dialog() as d, ui.card().classes('w-full max-w-lg p-0 bg-slate-50 overflow-hidden shadow-2xl rounded-t-3xl'):
+        # Header Premium
+        with ui.row().classes('w-full p-5 bg-[#1a3a6b] text-white items-center justify-between shadow-lg'):
             with ui.column().classes('gap-0'):
-                ui.label(o.consecutivo).classes('text-lg font-black tracking-tighter italic')
-                ui.label(o.fecha).classes('text-[10px] opacity-70')
+                ui.label(o.consecutivo).classes('text-xl font-black italic tracking-tighter')
+                ui.label(f"Registrado el {o.fecha}").classes('text-[10px] opacity-80 uppercase font-bold')
             ui.button(icon='close', on_click=d.close).props('flat round color=white size=sm')
 
-        with ui.scroll_area().classes('w-full p-4').style('height: 80vh'):
-            # 1. TRACKER DE 7 FASES
-            ui.label('SEGUIMIENTO DE ETAPAS').classes('text-[10px] font-bold text-slate-400 tracking-widest mb-4')
+        with ui.scroll_area().classes('w-full p-5').style('height: 80vh'):
+            # --- 1. SEGUIMIENTO DE 7 ETAPAS (PROFESIONAL) ---
+            ui.label('SEGUIMIENTO EN TIEMPO REAL').classes('text-[10px] font-black text-slate-400 tracking-[0.3em] mb-4 p-1')
+            
+            # Reutilizar el tracker de 7 fases
             _render_tracker(o.estado)
             
-            ui.separator().classes('my-6 opacity-50')
+            ui.separator().classes('my-8 opacity-40')
 
-            # 2. DETALLES POR ETAPA
-            # — Recepción —
-            with ui.column().classes('w-full gap-2 mb-6'):
-                with ui.row().classes('items-center gap-2'):
-                    ui.icon('login', color='blue-9', size='xs')
-                    ui.label('1. RECEPCIÓN').classes('text-xs font-black text-blue-900')
+            # --- 2. DETALLES POR FASE ---
+            
+            # FASE 1: RECEPCIÓN
+            with ui.column().classes('w-full gap-3 mb-8'):
+                with ui.row().classes('items-center gap-2 mb-1'):
+                    ui.icon('login', color='blue-9', size='18px')
+                    ui.label('1. DETALLES DE RECEPCIÓN').classes('text-[11px] font-black text-blue-900 tracking-widest')
                 
-                with ui.card().classes('w-full p-3 bg-white border border-slate-200 shadow-sm'):
-                    ui.label('MOTIVO DE INGRESO:').classes('text-[9px] font-bold text-slate-400')
-                    ui.label(o.motivo or 'Revisión').classes('text-sm text-slate-800 font-medium')
-                    with ui.row().classes('w-full mt-2 gap-4'):
+                with ui.card().classes('w-full p-4 bg-white border border-slate-200 shadow-sm rounded-xl'):
+                    ui.label('SÍNTOMAS / MOTIVO:').classes('text-[9px] font-black text-slate-400')
+                    ui.label(o.motivo or 'Revisión General').classes('text-sm text-slate-800 font-bold leading-relaxed')
+                    with ui.row().classes('w-full mt-3 gap-6 border-t border-slate-100 pt-3'):
                         with ui.column().classes('gap-0'):
-                            ui.label('KM').classes('text-[9px] text-slate-400')
-                            ui.label(o.km or '-').classes('text-xs font-bold')
+                            ui.label('KILOMETRAJE').classes('text-[9px] text-slate-400')
+                            ui.label(f"{o.km or '-'} KM").classes('text-xs font-black text-slate-800')
+                        with ui.column().classes('gap-0'):
+                            ui.label('TÉCNICO').classes('text-[9px] text-slate-400')
+                            ui.label(o.tecnico or 'Asignado').classes('text-xs font-black text-slate-800')
                 
-                # Evidencia de esta fase
+                # Fotos de Recepción
                 _render_fase_media(o, 'RECEPCIÓN')
 
-            # — Diagnóstico —
+            # FASE 2: DIAGNÓSTICO
             if o.estado not in ('RECEPCIÓN'):
-                with ui.column().classes('w-full gap-2 mb-6'):
-                    with ui.row().classes('items-center gap-2'):
-                        ui.icon('search', color='blue-9', size='xs')
-                        ui.label('2. DIAGNÓSTICO TÉCNICO').classes('text-xs font-black text-blue-900')
+                with ui.column().classes('w-full gap-3 mb-8'):
+                    with ui.row().classes('items-center gap-2 mb-1'):
+                        ui.icon('search', color='blue-9', size='18px')
+                        ui.label('2. DIAGNÓSTICO TÉCNICO').classes('text-[11px] font-black text-blue-900 tracking-widest')
                     
-                    with ui.card().classes('w-full p-3 bg-white border border-slate-200 shadow-sm'):
+                    with ui.card().classes('w-full p-4 bg-white border border-slate-200 shadow-sm rounded-xl'):
+                        ui.label('RESULTADO DEL DIAGNÓSTICO:').classes('text-[9px] font-black text-slate-400')
                         if o.diagnostico:
-                            ui.label(o.diagnostico).classes('text-sm text-slate-800 whitespace-pre-wrap')
+                            ui.label(o.diagnostico).classes('text-sm text-slate-800 leading-relaxed')
                         else:
-                            ui.label('Diagnóstico en proceso...').classes('text-sm text-slate-400 italic')
+                            ui.label('Diagnóstico en curso...').classes('text-sm text-slate-400 italic font-medium')
+                    
+                    # Fotos de Diagnóstico
                     _render_fase_media(o, 'DIAGNÓSTICO')
 
-            # — Cotización —
+            # FASE 3: REPUESTOS
             if o.estado not in ('RECEPCIÓN', 'DIAGNÓSTICO'):
-                with ui.column().classes('w-full gap-2 mb-6'):
-                    with ui.row().classes('items-center gap-2'):
-                        ui.icon('request_quote', color='blue-9', size='xs')
-                        ui.label('3. COTIZACIÓN DE REPUESTOS').classes('text-xs font-black text-blue-900')
+                with ui.column().classes('w-full gap-3 mb-8'):
+                    with ui.row().classes('items-center gap-2 mb-1'):
+                        ui.icon('inventory', color='blue-9', size='18px')
+                        ui.label('3. PRESUPUESTO Y REPUESTOS').classes('text-[11px] font-black text-blue-900 tracking-widest')
                     
                     items = _safe_json(o.items_cotizacion)
                     if items:
-                        with ui.card().classes('w-full p-0 bg-white border border-slate-200 overflow-hidden shadow-sm'):
-                            total = 0
+                        with ui.column().classes('w-full gap-2'):
+                            total_ods = 0
                             for it in items:
                                 val = float(it.get('total', 0))
-                                total += val
-                                with ui.row().classes('w-full p-2 justify-between border-b border-slate-100 items-center'):
-                                    ui.label(it.get('nombre', 'Item')).classes('text-[11px] font-bold text-slate-700')
-                                    ui.label(f"S/ {val:,.2f}").classes('text-[11px] font-black text-blue-900')
+                                total_ods += val
+                                with ui.card().classes('w-full p-3 bg-white border border-slate-100 flex-row items-center justify-between'):
+                                    ui.label(it.get('nombre', 'Ítem')).classes('text-xs font-bold text-slate-700')
+                                    ui.label(f"S/ {val:,.2f}").classes('text-xs font-black text-blue-900')
                             
-                            with ui.row().classes('w-full p-3 bg-blue-50/50 justify-between items-center'):
+                            with ui.card().classes('w-full p-4 bg-blue-50 border-2 border-blue-100 items-end'):
                                 ui.label('TOTAL ESTIMADO').classes('text-[10px] font-black text-blue-900')
-                                ui.label(f"S/ {total:,.2f}").classes('text-lg font-black text-blue-950')
+                                ui.label(f"S/ {total_ods:,.2f}").classes('text-2xl font-black text-[#1a3a6b]')
                     else:
-                        ui.label('Listando repuestos necesarios...').classes('text-xs text-slate-400 italic p-2')
+                        ui.label('Preparando cotización de repuestos...').classes('text-xs text-slate-400 italic p-2')
 
-            # Botón de acción rápido
-            if o.estado == 'REPARACIÓN':
-                ui.button('VER AVANCE EN VIVO', icon='play_circle').props('unelevated color=blue-9').classes('w-full rounded-xl py-4 mt-4 font-black')
+            # Botón de contactar si está en etapas avanzadas
+            with ui.row().classes('w-full mt-4'):
+                ui.button('CONSULTAR POR WHATSAPP', icon='chat').props('unelevated color=green-6').classes('w-full h-14 rounded-2xl font-black text-sm')
 
         d.open()
 
