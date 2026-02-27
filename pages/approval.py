@@ -189,11 +189,86 @@ def _render_approval(order, client, vehicle, token):
                 _diag_item('psychology',          'Análisis Técnico / Hallazgo',  diag_details.get('analysis'))
                 _diag_item('check_circle_outline','Solución Recomendada',         diag_details.get('solution'))
 
-                if diag_details.get('scanner_path'):
-                    with ui.row().classes('w-full justify-center mt-3'):
-                        ui.button('VER REPORTE DE ESCÁNER', icon='description',
-                                  on_click=lambda: ui.download(diag_details.get('scanner_path'))
-                                  ).props('outline color=lime-9').classes('font-bold')
+
+                # ── REPORTE DE ESCÁNER (tarjeta premium destacada) ───────────
+                scanner_path = diag_details.get('scanner_path')
+                if scanner_path:
+                    ui.separator().classes('my-4')
+                    ui.html(f'''
+                    <div style="
+                        background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+                        border: 2px solid #16a34a;
+                        border-radius: 16px;
+                        padding: 20px;
+                        margin-top: 8px;
+                    ">
+                        <!-- Badge superior -->
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+                            <div style="
+                                background:#16a34a;color:white;
+                                font-size:10px;font-weight:900;
+                                letter-spacing:1.5px;text-transform:uppercase;
+                                padding:4px 12px;border-radius:100px;
+                            ">🔬 Diagnóstico Digital Certificado</div>
+                            <div style="font-size:11px;color:#166534;font-weight:600;">
+                                Escáner electrónico OBD realizado
+                            </div>
+                        </div>
+
+                        <!-- Título -->
+                        <div style="font-size:15px;font-weight:800;color:#14532d;margin-bottom:6px;">
+                            📊 Reporte Completo de Escáner Vehicular
+                        </div>
+                        <div style="font-size:12px;color:#166534;margin-bottom:16px;">
+                            Su vehículo fue analizado con escáner electrónico profesional.
+                            El reporte detalla todos los códigos de falla, sensores y parámetros del motor.
+                        </div>
+
+                        <!-- Visor PDF embebido -->
+                        <div style="
+                            background:white;border-radius:12px;
+                            overflow:hidden;border:1.5px solid #bbf7d0;
+                            box-shadow:0 4px 20px rgba(22,163,74,.12);
+                            margin-bottom:14px;
+                        ">
+                            <div style="
+                                background:#14532d;color:white;
+                                padding:8px 16px;font-size:11px;
+                                font-weight:700;letter-spacing:.5px;
+                                display:flex;align-items:center;gap:8px;
+                            ">
+                                <span>📄</span>
+                                <span>REPORTE DE ESCÁNER — Vista previa</span>
+                            </div>
+                            <iframe src="/{scanner_path}"
+                                style="width:100%;height:480px;border:none;display:block;"
+                                type="application/pdf"
+                                title="Reporte de Escáner">
+                                <div style="padding:24px;text-align:center;color:#6b7280;">
+                                    <div style="font-size:36px;margin-bottom:8px;">📄</div>
+                                    Tu navegador no puede mostrar el PDF directamente.
+                                </div>
+                            </iframe>
+                        </div>
+
+                        <!-- Botón de descarga -->
+                        <a href="/{scanner_path}" download
+                            style="
+                                display:flex;align-items:center;justify-content:center;gap:8px;
+                                background:#16a34a;color:white;text-decoration:none;
+                                font-weight:800;font-size:13px;letter-spacing:.3px;
+                                padding:12px 24px;border-radius:12px;
+                                box-shadow:0 4px 14px rgba(22,163,74,.35);
+                                transition:all .2s;
+                            "
+                            onmouseover="this.style.background='#15803d'"
+                            onmouseout="this.style.background='#16a34a'"
+                        >
+                            ⬇️ &nbsp;Descargar Reporte de Escáner (PDF)
+                        </a>
+                    </div>
+                    ''')
+
 
             elif order.diagnostico:
                 ui.label(order.diagnostico).classes(
