@@ -315,6 +315,127 @@
       color: #10b981;
     }
 
+    /* ── DISEÑO DE CUADRITOS INTERACTIVOS (NUEVO) ── */
+    .phase-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .phase-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 20px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .phase-card.done {
+      background: #ecfdf5;
+      border-color: #10b98133;
+    }
+
+    .phase-card.active {
+      background: white;
+      border-color: #274495;
+      border-width: 2px;
+      box-shadow: 0 10px 15px -3px rgba(39, 68, 149, 0.1);
+    }
+
+    .phase-card.pending {
+      opacity: 0.6;
+    }
+
+    .phase-card .card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .phase-card.done .card-icon {
+      background: #10b981;
+      color: white;
+    }
+
+    .phase-card.active .card-icon {
+      background: #274495;
+      color: white;
+    }
+
+    .phase-card.pending .card-icon {
+      background: #e2e8f0;
+      color: #94a3b8;
+    }
+
+    .phase-card .card-title {
+      font-size: 11px;
+      font-weight: 900;
+      color: #1e293b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .phase-card .card-status {
+      font-size: 9px;
+      font-weight: 700;
+    }
+
+    .phase-card.done .card-status {
+      color: #059669;
+    }
+
+    .phase-card.active .card-status {
+      color: #1d4ed8;
+    }
+
+    .phase-card.pending .card-status {
+      color: #64748b;
+    }
+
+    .phase-detail-overlay {
+      position: fixed;
+      inset: 0;
+      background: white;
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .phase-detail-overlay.open {
+      transform: translateX(0);
+    }
+
+    .media-container {
+      width: 100%;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #000;
+      margin-bottom: 12px;
+      position: relative;
+    }
+
+    .media-container video,
+    .media-container img {
+      width: 100%;
+      height: auto;
+      display: block;
+      max-height: 400px;
+      object-fit: contain;
+    }
+
     /* ── SPLASH 3D (idéntico al desktop) ── */
     #loading {
       position: fixed;
@@ -1132,14 +1253,14 @@
       </div>
 
       <div class="card p-4 mb-4 border border-blue-100 bg-blue-50">
-        <p class="text-xs font-black text-blue-700 mb-3">📷 EVIDENCIA FOTOGRÁFICA</p>
-        <p class="text-xs text-gray-500 mb-3">Sube fotos del vehículo (daños, estado, etc.)</p>
-        <input type="file" id="ev-input" accept="image/*" multiple capture="environment"
+        <p class="text-xs font-black text-blue-700 mb-3">📸 EVIDENCIA MULTIMEDIA</p>
+        <p class="text-xs text-gray-500 mb-3">Sube fotos o videos del vehículo (daños, estado, etc.)</p>
+        <input type="file" id="ev-input" accept="image/*,video/*" multiple
           class="hidden" onchange="subirEvidenciaInline('${cons}', this)">
         <button onclick="document.getElementById('ev-input').click()"
           class="w-full border-2 border-dashed border-blue-300 rounded-xl py-4 text-blue-600 font-bold text-sm flex items-center justify-center gap-2">
-          <span class="material-icons-round">add_a_photo</span>
-          Tomar / Seleccionar Fotos
+          <span class="material-icons-round">perm_media</span>
+          Tomar / Seleccionar Multimedia
         </button>
         <div id="ev-preview" class="grid grid-cols-3 gap-2 mt-3"></div>
         <p id="ev-count" class="text-xs text-center text-gray-400 mt-2"></p>
@@ -1170,16 +1291,21 @@
           if (data.ok) {
             subidas++;
             if (preview) {
-              const img = document.createElement('img');
-              img.src = data.url;
-              img.className = 'w-full h-24 object-cover rounded-xl border border-gray-100';
-              preview.appendChild(img);
+              const isVid = data.url.toLowerCase().endsWith('.mp4') || data.url.toLowerCase().endsWith('.mov');
+              const item = document.createElement('div');
+              item.className = 'w-full h-24 rounded-xl border border-gray-100 overflow-hidden relative bg-gray-100';
+              if (isVid) {
+                item.innerHTML = `<div class="w-full h-full flex items-center justify-center text-gray-400"><span class="material-icons-round">videocam</span></div>`;
+              } else {
+                item.innerHTML = `<img src="${data.url}" class="w-full h-full object-cover">`;
+              }
+              preview.appendChild(item);
             }
           } else toastErr('Error: ' + (data.error || 'fallo al subir'));
         } catch (e) { toastErr('Error de conexión'); }
       }
-      if (subidas > 0 && countEl) countEl.textContent = `${subidas} foto(s) subida(s)`;
-      if (subidas > 0) toastOk(`${subidas} foto(s) subida(s) correctamente`);
+      if (subidas > 0 && countEl) countEl.textContent = `${subidas} archivo(s) subido(s)`;
+      if (subidas > 0) toastOk(`${subidas} archivo(s) subido(s) correctamente`);
     }
 
     async function showOrden(cons) {
@@ -1414,25 +1540,33 @@
   </div>`;
     }
 
-    function renderTracker(currentEstado) {
-      const phases = ['RECEPCIÓN', 'DIAGNÓSTICO', 'REPUESTOS', 'APROBACIÓN', 'REPARACIÓN', 'CONTROL', 'ENTREGA'];
-      let currentIdx = phases.indexOf(currentEstado);
-      if (currentIdx === -1) currentIdx = 0;
-      const progressWidth = (currentIdx / (phases.length - 1)) * 100;
+    function renderTracker(o) {
+      const phases = [
+        { id: 'RECEPCIÓN', label: 'Recepción', icon: 'assignment_turned_in' },
+        { id: 'DIAGNÓSTICO', label: 'Diagnóstico', icon: 'psychology' },
+        { id: 'REPUESTOS', label: 'Presupuesto', icon: 'shopping_cart' },
+        { id: 'APROBACIÓN', label: 'Aprobación', icon: 'verified' },
+        { id: 'REPARACIÓN', label: 'Reparación', icon: 'build_circle' },
+        { id: 'CONTROL', label: 'Control Calidad', icon: 'fact_check' },
+        { id: 'ENTREGA', label: 'Entrega', icon: 'local_shipping' }
+      ];
+      const ESTADOS_PLANOS = ['RECEPCIÓN', 'DIAGNÓSTICO', 'REPUESTOS', 'APROBACIÓN', 'REPARACIÓN', 'CONTROL', 'ENTREGA'];
+      const currentIdx = ESTADOS_PLANOS.indexOf(o.estado);
 
       return `
-        <div class="relative flex justify-between items-start mb-10 px-1">
-          <div class="phase-line"></div>
-          <div class="phase-progress" style="width: ${progressWidth}%"></div>
-          ${phases.map((f, i) => {
+        <div class="phase-grid">
+          ${phases.map((p, i) => {
         const isDone = i < currentIdx;
         const isActive = i === currentIdx;
         const statusCls = isDone ? 'done' : (isActive ? 'active' : 'pending');
-        const icon = isDone ? 'check' : (i + 1);
+        const statusTxt = isDone ? 'Completado' : (isActive ? 'En proceso' : 'Pendiente');
+        const orderDataJson = JSON.stringify(o).replace(/"/g, '&quot;');
         return `
-              <div class="phase-step ${statusCls}">
-                <div class="step-circle">${icon}</div>
-                <span class="step-label">${f.replace('Ó', 'O')}</span>
+              <div class="phase-card ${statusCls}" onclick="showPhaseDetail('${p.id}', ${orderDataJson})">
+                <div class="card-icon"><span class="material-icons-round">${p.icon}</span></div>
+                <p class="card-title">${p.label}</p>
+                <p class="card-status">${statusTxt}</p>
+                ${isDone ? '<span class="material-icons-round absolute top-2 right-2 text-green-500" style="font-size:16px">check_circle</span>' : ''}
               </div>
             `;
       }).join('')}
@@ -1451,104 +1585,143 @@
         }).map(m => typeof m === 'object' ? m.path : m);
       } catch (e) { console.error(e); }
 
-      if (!medios || !medios.length) return '';
+      if (!medios || !medios.length) return '<p class="text-center py-10 text-gray-400 text-xs italic">No hay archivos multimedia en esta fase</p>';
 
       return `
-        <div class="flex gap-2 overflow-x-auto pb-2 mt-2">
-          ${medios.map(path => `<img src="${path}" class="w-24 h-24 object-cover rounded-xl shadow-sm border border-gray-100 flex-shrink-0">`).join('')}
+        <div class="space-y-4">
+          ${medios.map(path => {
+        const isVideo = path.toLowerCase().endsWith('.mp4') || path.toLowerCase().endsWith('.mov') || path.toLowerCase().endsWith('.webm');
+        if (isVideo) {
+          return `
+                <div class="media-container">
+                  <video controls playsinline preload="metadata">
+                    <source src="${path}" type="video/mp4">
+                    Tu navegador no soporta videos.
+                  </video>
+                </div>`;
+        } else {
+          return `
+                <div class="media-container">
+                  <img src="${path}" class="w-full" onclick="window.open('${path}')">
+                </div>`;
+        }
+      }).join('')}
         </div>
       `;
     }
 
-    function showClienteOrden(o) {
-      const total = (o.items || []).reduce((s, it) => s + (it.total || it.subtotal || 0), 0);
-      const phases = ['RECEPCIÓN', 'DIAGNÓSTICO', 'REPUESTOS', 'APROBACIÓN', 'REPARACIÓN', 'CONTROL', 'ENTREGA'];
-      const currentIdx = phases.indexOf(o.estado);
+    function showPhaseDetail(phaseId, o) {
+      const overlay = document.createElement('div');
+      overlay.className = 'phase-detail-overlay';
+      overlay.id = 'phase-detail';
 
+      let contentHtml = '';
+      const total = (o.items || []).reduce((s, it) => s + (it.total || it.subtotal || 0), 0);
+
+      if (phaseId === 'RECEPCIÓN') {
+        contentHtml = `
+          <p class="text-sm font-bold text-gray-700 mb-2">Motivo de Ingreso:</p>
+          <p class="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-xl border border-gray-100">${o.descripcion || o.motivo || 'Ingreso vehicular'}</p>
+          <div class="flex gap-4 mb-6">
+            <div class="flex-1 bg-gray-50 p-3 rounded-xl border border-gray-100"><p class="text-[9px] text-gray-400 font-bold uppercase">KM Entrada</p><p class="text-sm font-black text-gray-700">${o.km || '—'}</p></div>
+            <div class="flex-1 bg-gray-50 p-3 rounded-xl border border-gray-100"><p class="text-[9px] text-gray-400 font-bold uppercase">Fecha</p><p class="text-sm font-black text-gray-700">${fmtDate(o.fecha)}</p></div>
+          </div>
+        `;
+      } else if (phaseId === 'DIAGNÓSTICO') {
+        contentHtml = `
+          <p class="text-sm font-bold text-gray-700 mb-2">Resultado del Diagnóstico:</p>
+          <div class="text-sm text-gray-600 mb-6 bg-gray-50 p-3 rounded-xl border border-gray-100 whitespace-pre-wrap">${o.diagnostico || 'El técnico está evaluando el vehículo...'}</div>
+        `;
+      } else if (phaseId === 'REPUESTOS' || phaseId === 'APROBACIÓN') {
+        contentHtml = `
+          <p class="text-sm font-bold text-gray-700 mb-4">Detalle del Presupuesto:</p>
+          ${o.items && o.items.length ? `
+            <div class="space-y-3 mb-6">
+              ${o.items.map(it => `
+                <div class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
+                  <div class="flex flex-col">
+                    <span class="text-sm font-bold text-gray-800">${it.nombre || it.descripcion}</span>
+                    <span class="text-[10px] text-gray-400">Cant: ${it.cantidad || 1}</span>
+                  </div>
+                  <span class="font-black text-[#274495]">${fmtMoney(it.total || it.subtotal)}</span>
+                </div>
+              `).join('')}
+              <div class="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex justify-between items-center">
+                <span class="text-xs font-black text-blue-900">TOTAL ESTIMADO</span>
+                <span class="text-xl font-black text-[#274495]">${fmtMoney(total)}</span>
+              </div>
+            </div>
+          ` : '<p class="text-xs text-gray-400 italic mb-6">No se han cargado ítems aún.</p>'}
+          
+          ${o.estado === 'APROBACIÓN' && phaseId === 'APROBACIÓN' ? `
+            <div class="bg-amber-50 border border-amber-200 p-5 rounded-3xl mb-6 shadow-sm">
+              <p class="text-sm text-center text-amber-900 font-bold mb-4">¿Autoriza el presupuesto para iniciar reparaciones?</p>
+              <div class="flex gap-3">
+                <button onclick="document.getElementById('phase-detail').classList.remove('open'); setTimeout(()=>document.getElementById('phase-detail').remove(),400); aprobarOrden(${o.id},false)" class="flex-1 bg-white border border-red-200 text-red-600 rounded-2xl py-4 text-sm font-bold shadow-sm">Rechazar</button>
+                <button onclick="document.getElementById('phase-detail').classList.remove('open'); setTimeout(()=>document.getElementById('phase-detail').remove(),400); aprobarOrden(${o.id},true)" class="flex-1 bg-[#274495] text-white rounded-2xl py-4 text-sm font-bold shadow-md">✓ Aprobar</button>
+              </div>
+            </div>
+          ` : ''}
+        `;
+      } else if (phaseId === 'REPARACIÓN') {
+        contentHtml = `
+          <p class="text-sm font-bold text-gray-700 mb-2">Estado de la Reparación:</p>
+          <p class="text-sm text-gray-600 mb-6 bg-gray-50 p-3 rounded-xl border border-gray-100">Continuamos trabajando para dejar su vehículo en óptimas condiciones siguiendo los estándares de fábrica.</p>
+        `;
+      } else {
+        contentHtml = `<p class="text-sm text-gray-500 italic mb-6">Detalles en preparación para esta fase.</p>`;
+      }
+
+      overlay.innerHTML = `
+        <div class="flex items-center p-4 border-b bg-white sticky top-0 z-50">
+          <button onclick="this.closest('.phase-detail-overlay').classList.remove('open'); setTimeout(()=>this.closest('.phase-detail-overlay').remove(),400)" class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mr-3">
+            <span class="material-icons-round text-gray-600">arrow_back</span>
+          </button>
+          <div class="flex-1">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">${o.consecutivo}</p>
+            <p class="font-black text-gray-900 leading-tight">${phaseId}</p>
+          </div>
+        </div>
+        <div class="flex-1 overflow-y-auto p-5 pb-20">
+          ${contentHtml}
+          <p class="text-[10px] font-black text-gray-400 tracking-widest mb-3 uppercase">Evidencia Multimedia</p>
+          ${renderFaseMedia(o, phaseId)}
+        </div>
+        <div class="absolute bottom-5 left-5 right-5">
+           <button onclick="window.open('https://wa.me/51936495143')" class="w-full bg-[#25D366] text-white rounded-2xl py-4 font-black flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all">
+             <span class="material-icons-round">chat</span> Consultar sobre esta fase
+           </button>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      setTimeout(() => overlay.classList.add('open'), 10);
+    }
+
+    function showClienteOrden(o) {
       openSheet(`
     <div class="p-5">
       <!-- HEADER DETALLE -->
-      <div class="flex justify-between items-center mb-6">
+      <div class="flex justify-between items-center mb-2">
         <div>
           <p class="text-[10px] font-black text-gray-400 tracking-widest uppercase">ORDEN DE SERVICIO</p>
           <p class="text-xl font-black text-[#274495]">${o.consecutivo}</p>
         </div>
         ${chip(o.estado)}
       </div>
+      <p class="text-xs text-gray-400 mb-6">${o.vehiculo_placa} ${o.vehiculo_marca} — ${fmtDate(o.fecha)}</p>
 
-      <!-- TRACKER 7 FASES -->
-      <p class="text-[10px] font-black text-gray-400 tracking-widest mb-4">ESTADO DEL PROGRESO</p>
-      ${renderTracker(o.estado)}
+      <!-- BOTONES DE FASES (CUADRITOS) -->
+      <p class="text-[10px] font-black text-gray-400 tracking-widest mb-3 uppercase border-b pb-2">Seguimiento de 7 Fases</p>
+      <p class="text-[11px] text-gray-500 mb-4">Haz clic en cada fase para ver el detalle y evidencias (fotos/videos).</p>
+      
+      ${renderTracker(o)}
 
-      <div class="space-y-6">
-        <!-- FASE 1: RECEPCION -->
-        <div class="border-l-2 border-blue-100 pl-4 py-1">
-          <p class="text-[10px] font-black text-blue-900 tracking-widest">1. RECEPCIÓN</p>
-          <p class="text-sm text-gray-700 font-bold mt-1">${o.descripcion || o.motivo || 'Ingreso vehicular'}</p>
-          <div class="flex gap-4 mt-2">
-            <div><p class="text-[9px] text-gray-400 font-bold">KM</p><p class="text-xs font-black text-gray-700">${o.km || '—'}</p></div>
-            <div><p class="text-[9px] text-gray-400 font-bold">FECHA</p><p class="text-xs font-black text-gray-700">${fmtDate(o.fecha)}</p></div>
-          </div>
-          ${renderFaseMedia(o, 'RECEPCIÓN')}
-        </div>
-
-        <!-- FASE 2: DIAGNÓSTICO -->
-        ${currentIdx >= 1 ? `
-        <div class="border-l-2 border-blue-900 pl-4 py-1">
-          <p class="text-[10px] font-black text-blue-900 tracking-widest">2. DIAGNÓSTICO TÉCNICO</p>
-          <p class="text-sm text-gray-700 mt-1">${o.diagnostico || 'Diagnóstico en proceso...'}</p>
-          ${renderFaseMedia(o, 'DIAGNÓSTICO')}
-        </div>
-        ` : ''}
-
-        <!-- FASE 3: REPUESTOS / COTIZACION -->
-        ${currentIdx >= 2 ? `
-        <div class="border-l-2 border-purple-100 pl-4 py-1">
-          <p class="text-[10px] font-black text-blue-900 tracking-widest">3. REPUESTOS Y COSTOS</p>
-          ${o.items && o.items.length ? `
-            <div class="mt-2 space-y-2">
-              ${o.items.map(it => `
-                <div class="flex justify-between items-center bg-gray-50 p-2 rounded-lg text-xs">
-                  <span class="font-medium">${it.nombre || it.descripcion}</span>
-                  <span class="font-black">${fmtMoney(it.total || it.subtotal)}</span>
-                </div>
-              `).join('')}
-              <div class="flex justify-between items-center p-2 border-t border-gray-100">
-                <span class="text-xs font-black text-gray-400 text-uppercase">TOTAL ESTIMADO</span>
-                <span class="text-lg font-black text-[#274495]">${fmtMoney(total)}</span>
-              </div>
-            </div>
-          ` : '<p class="text-xs text-gray-400 italic mt-1">Preparando presupuesto...</p>'}
-        </div>
-        ` : ''}
-
-        <!-- ACCIONES DE APROBACION -->
-        ${o.estado === 'APROBACIÓN' ? `
-        <div class="bg-amber-50 border border-amber-100 p-4 rounded-2xl">
-          <p class="text-sm text-center text-amber-900 font-bold mb-4">¿Desea autorizar el presupuesto anterior?</p>
-          <div class="flex gap-3">
-            <button onclick="aprobarOrden(${o.id},false)" class="flex-1 bg-white border border-red-200 text-red-600 rounded-xl py-3 text-sm font-bold">Rechazar</button>
-            <button onclick="aprobarOrden(${o.id},true)" class="flex-1 bg-[#274495] text-white rounded-xl py-3 text-sm font-bold">✓ Aprobar Todo</button>
-          </div>
-        </div>
-        ` : ''}
-
-        <!-- FASE 5: REPARACION -->
-        ${currentIdx >= 4 ? `
-        <div class="border-l-2 border-orange-100 pl-4 py-1">
-          <p class="text-[10px] font-black text-blue-900 tracking-widest">5. PROCESO DE REPARACIÓN</p>
-          <p class="text-xs text-gray-500 mt-1">El vehículo se encuentra en manos de nuestros técnicos especializados.</p>
-          ${renderFaseMedia(o, 'REPARACIÓN')}
-        </div>
-        ` : ''}
-      </div>
-
-      <div class="mt-10 p-4 bg-gray-50 rounded-2xl flex items-center justify-between">
+      <div class="mt-8 p-4 bg-blue-50 rounded-2xl flex items-center justify-between border border-blue-100">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 bg-[#274495] rounded-full flex items-center justify-center text-white"><span class="material-icons-round">contact_support</span></div>
-          <div><p class="text-[10px] font-black text-gray-400 leading-none">¿DUDAS?</p><p class="text-xs font-bold text-gray-700">Contactar taller</p></div>
+          <div class="w-10 h-10 bg-[#274495] rounded-full flex items-center justify-center text-white shadow-sm"><span class="material-icons-round">support_agent</span></div>
+          <div><p class="text-[10px] font-black text-gray-400 leading-none">ASISTENCIA</p><p class="text-xs font-bold text-gray-800">Mecánica Sandoval</p></div>
         </div>
-        <button onclick="window.open('https://wa.me/51936495143')" class="bg-[#25D366] text-white p-2 rounded-xl"><span class="material-icons-round">chat</span></button>
+        <button onclick="window.open('https://wa.me/51936495143')" class="bg-white text-[#25D366] p-2 rounded-xl shadow-sm border"><span class="material-icons-round">whatsapp</span></button>
       </div>
     </div>`);
     }
