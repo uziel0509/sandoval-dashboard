@@ -62,8 +62,23 @@ try:
     # ─── REST API para la PWA móvil ───
     from utils.api_service import register_api_routes
     register_api_routes(app)
-    app.add_static_files('/app', 'sandoval-app')
+    app.add_static_files('/app/static', 'sandoval-app')
     log_boot("API REST y PWA registrados")
+
+    # Ruta explícita para servir la PWA (index.html)
+    from starlette.responses import FileResponse
+    @app.get('/app')
+    @app.get('/app/')
+    async def serve_pwa():
+        return FileResponse('sandoval-app/index.html')
+
+    @app.get('/app/sw.js')
+    async def serve_sw():
+        return FileResponse('sandoval-app/sw.js', media_type='application/javascript')
+
+    @app.get('/app/manifest.json')
+    async def serve_manifest():
+        return FileResponse('sandoval-app/manifest.json', media_type='application/json')
 
     # ─── Abrir WhatsApp en navegador externo (compatible pywebview) ───
     @app.get('/open-whatsapp')
