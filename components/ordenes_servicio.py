@@ -1948,7 +1948,8 @@ def open_repair_view_dialog(consecutivo: str):
                                     ui.label(f"{ci['label']}  ({len(photos)} foto{'s' if len(photos)!=1 else ''})").classes('rv-cat-title').style(f'color:{ci["color"]};')
                                 with ui.element('div').classes('rv-photo-grid'):
                                     for ph in photos:
-                                        ui.image(ph).classes('rv-photo')
+                                        p_path = ph.get('path') if isinstance(ph, dict) else ph
+                                        ui.image(p_path).classes('rv-photo')
                         if not any_photos:
                             with ui.element('div').classes('rv-empty'):
                                 ui.icon('photo_library', size='32px', color='grey-3')
@@ -3291,13 +3292,14 @@ def open_customer_preview(consecutivo):
                 if order.fotos_evidencia and isinstance(order.fotos_evidencia, list):
                     ui.label('EVIDENCIA FOTOGRÁFICA').classes('text-xs font-bold text-slate-400 tracking-[0.2em] mb-4 ml-2')
                     with ui.row().classes('w-full gap-4 mb-4 flex-wrap'):
-                        for path in order.fotos_evidencia:
+                        for p in order.fotos_evidencia:
+                            pic_path = p.get('path') if isinstance(p, dict) else p
                             with ui.card().classes('w-48 h-48 p-0 relative border border-slate-200 group rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow'):
                                 # Ensure correct path serving
                                 # If path stored is "/evidencia/...", main.py handles it
-                                ui.image(path).classes('w-full h-full object-cover')
+                                ui.image(pic_path).classes('w-full h-full object-cover')
                                 with ui.row().classes('absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity items-center justify-center'):
-                                    ui.button(icon='zoom_in', on_click=lambda p=path: ui.run_javascript(f'window.open("{p}", "_blank")')).props('flat round color=white size=sm')
+                                    ui.button(icon='zoom_in', on_click=lambda l=pic_path: ui.run_javascript(f'window.open("{l}", "_blank")')).props('flat round color=white size=sm')
 
                 # SECTION 5: PRESUPUESTO Y SERVICIOS (ULTRA PROFESSIONAL)
                 items = order.items_cotizacion or []
@@ -3413,10 +3415,11 @@ def open_edit_reception_dialog(consecutivo, container, state):
                             current_pics = list(o_p.fotos_evidencia or [])
                             db_p.close()
                             
-                            for path in current_pics:
+                            for p in current_pics:
+                                pic_path = p.get('path') if isinstance(p, dict) else p
                                 with ui.card().classes('w-16 h-16 p-0 relative'):
-                                    ui.image(path).classes('w-full h-full object-cover rounded')
-                                    ui.button(icon='close', on_click=lambda p=path: remove_existent_photo(p)).props('flat dense color=red round size=xs shadow-sm').classes('absolute -top-1 -right-1 bg-white z-10')
+                                    ui.image(pic_path).classes('w-full h-full object-cover rounded')
+                                    ui.button(icon='close', on_click=lambda item=p: remove_existent_photo(item)).props('flat dense color=red round size=xs shadow-sm').classes('absolute -top-1 -right-1 bg-white z-10')
 
                     def remove_existent_photo(path):
                         db_r = get_db()
