@@ -560,54 +560,145 @@
           <span class="flex items-center gap-1"><span class="material-icons-round" style="font-size:14px">directions_car</span>${o.vehiculo_placa || '—'}</span>
           <span>${fmtDate(o.fecha)}</span>
         </div>
-      </div>`).join('')}
+    <div class="flex items-center justify-between py-2 border-b border-gray-100 text-sm">
+      <span class="flex-1">${it.nombre} x${it.cantidad}</span>
+      <span class="font-bold text-green-700 mr-2">${fmtMoney(it.subtotal)}</span>
+    </div>`).join('')}
   </div>`;
     }
 
     async function showNuevaOrden() {
-      // Cargar clientes para el select
       const clientes = await apiFetch('/api/clientes?q=') || [];
       const cliOpts = clientes.map(c => `<option value="${c.id}">${c.nombre} ${c.apellidos} (${c.id})</option>`).join('');
       openSheet(`
     <div class="p-5">
       <p class="text-lg font-black text-gray-900 mb-5">Nueva Orden de Servicio</p>
+
+      <!-- CLIENTE -->
       <div class="mb-3">
-        <label class="text-xs font-bold text-gray-400 block mb-1">CLIENTE</label>
-        <select id="no-cliente" onchange="cargarVehiculos(this.value)" class="w-full">
+        <div class="flex items-center justify-between mb-1">
+          <label class="text-xs font-bold text-gray-400">CLIENTE</label>
+          <button onclick="toggleSection('form-nuevo-cli')" class="text-xs text-[#274495] font-bold flex items-center gap-1">
+            <span class="material-icons-round" style="font-size:14px">person_add</span> Nuevo cliente
+          </button>
+        </div>
+        <select id="no-cliente" onchange="cargarVehiculos(this.value)">
           <option value="">— Seleccionar cliente —</option>
           ${cliOpts}
         </select>
       </div>
+
+      <!-- FORM NUEVO CLIENTE -->
+      <div id="form-nuevo-cli" class="hidden bg-blue-50 rounded-xl p-4 mb-3 border border-blue-100">
+        <p class="text-xs font-black text-blue-700 mb-3">✦ NUEVO CLIENTE</p>
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <input id="nc2-id" placeholder="DNI/RUC *">
+          <input id="nc2-tel" type="tel" placeholder="Teléfono">
+        </div>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <input id="nc2-nom" placeholder="Nombres *">
+          <input id="nc2-ape" placeholder="Apellidos">
+        </div>
+        <button onclick="crearClienteRapido()" class="w-full bg-[#274495] text-white rounded-xl py-2.5 text-sm font-bold">
+          Guardar Cliente
+        </button>
+      </div>
+
+      <!-- VEHÍCULO -->
       <div class="mb-3">
-        <label class="text-xs font-bold text-gray-400 block mb-1">PLACA DEL VEHÍCULO</label>
-        <select id="no-placa" class="w-full">
+        <div class="flex items-center justify-between mb-1">
+          <label class="text-xs font-bold text-gray-400">VEHÍCULO</label>
+          <button onclick="toggleSection('form-nuevo-veh')" class="text-xs text-green-700 font-bold flex items-center gap-1">
+            <span class="material-icons-round" style="font-size:14px">directions_car</span> Nuevo vehículo
+          </button>
+        </div>
+        <select id="no-placa">
           <option value="">— Seleccionar cliente primero —</option>
         </select>
       </div>
-      <div class="mb-3">
-        <label class="text-xs font-bold text-gray-400 block mb-1">KILOMETRAJE</label>
-        <input id="no-km" type="number" placeholder="Ej: 45000">
+
+      <!-- FORM NUEVO VEHÍCULO -->
+      <div id="form-nuevo-veh" class="hidden bg-green-50 rounded-xl p-4 mb-3 border border-green-100">
+        <p class="text-xs font-black text-green-700 mb-3">✦ NUEVO VEHÍCULO</p>
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <input id="nv2-placa" placeholder="PLACA *" style="text-transform:uppercase">
+          <input id="nv2-color" placeholder="Color">
+        </div>
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <input id="nv2-marca" placeholder="Marca">
+          <input id="nv2-modelo" placeholder="Modelo">
+        </div>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <input id="nv2-año" type="number" placeholder="Año">
+          <select id="nv2-tipo">
+            <option>Sedán</option><option>SUV</option><option>Pick-up</option>
+            <option>Hatchback</option><option>Van</option><option>Camión</option>
+          </select>
+        </div>
+        <button onclick="crearVehiculoRapido()" class="w-full bg-green-700 text-white rounded-xl py-2.5 text-sm font-bold">
+          Guardar Vehículo
+        </button>
       </div>
-      <div class="mb-3">
-        <label class="text-xs font-bold text-gray-400 block mb-1">TIPO</label>
-        <select id="no-tipo" class="w-full">
-          <option>Express</option>
-          <option>Correctivo</option>
-          <option>Preventivo</option>
-          <option>Garantía</option>
-        </select>
+
+      <!-- DATOS ORDEN -->
+      <div class="grid grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="text-xs font-bold text-gray-400 block mb-1">KILOMETRAJE</label>
+          <input id="no-km" type="number" placeholder="Ej: 45000">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-gray-400 block mb-1">TIPO</label>
+          <select id="no-tipo">
+            <option>Express</option><option>Correctivo</option>
+            <option>Preventivo</option><option>Garantía</option>
+          </select>
+        </div>
       </div>
       <div class="mb-3">
         <label class="text-xs font-bold text-gray-400 block mb-1">TÉCNICO ASIGNADO</label>
         <input id="no-tecnico" placeholder="Nombre del técnico">
       </div>
-      <div class="mb-5">
+      <div class="mb-3">
         <label class="text-xs font-bold text-gray-400 block mb-1">MOTIVO / PROBLEMA *</label>
-        <textarea id="no-motivo" rows="3" placeholder="Describe el problema del vehículo..."></textarea>
+        <textarea id="no-motivo" rows="3" placeholder="Describa el problema informado por el cliente..."></textarea>
       </div>
-      <button onclick="guardarNuevaOrden()" class="btn-primary w-full text-center">Crear Orden de Servicio</button>
+      <div class="mb-5">
+        <label class="text-xs font-bold text-gray-400 block mb-1">OBSERVACIONES</label>
+        <textarea id="no-obs" rows="2" placeholder="Estado del vehículo, accesorios, etc..."></textarea>
+      </div>
+      <button onclick="guardarNuevaOrden()" class="btn-primary w-full text-center">
+        Crear Orden de Servicio
+      </button>
     </div>
   `);
+    }
+
+    function toggleSection(id) {
+      document.getElementById(id)?.classList.toggle('hidden');
+    }
+
+    async function crearClienteRapido() {
+      const id = document.getElementById('nc2-id').value.trim();
+      const nombre = document.getElementById('nc2-nom').value.trim();
+      if (!id || !nombre) { toastErr('DNI y nombre son obligatorios'); return; }
+      const r = await apiFetch('/api/clientes/nuevo', {
+        method: 'POST',
+        body: JSON.stringify({
+          id, nombre,
+          apellidos: document.getElementById('nc2-ape').value,
+          telefono: document.getElementById('nc2-tel').value,
+        })
+      });
+      if (r && r.ok) {
+        toastOk('Cliente creado: ' + nombre);
+        const sel = document.getElementById('no-cliente');
+        const opt = document.createElement('option');
+        opt.value = id; opt.selected = true;
+        opt.textContent = `${nombre} (${id})`;
+        sel.appendChild(opt); sel.value = id;
+        document.getElementById('form-nuevo-cli').classList.add('hidden');
+        cargarVehiculos(id);
+      } else toastErr(r?.error || 'Error al crear cliente');
     }
 
     async function cargarVehiculos(clienteId) {
@@ -617,12 +708,39 @@
       if (!sel) return;
       sel.innerHTML = veh.length
         ? veh.map(v => `<option value="${v.placa}">${v.placa} — ${v.marca} ${v.modelo}</option>`).join('')
-        : '<option value="">— Sin vehículos registrados —</option>';
+        : '<option value="">— Sin vehículos, usa "+ Nuevo vehículo" —</option>';
+    }
+
+    async function crearVehiculoRapido() {
+      const placa = (document.getElementById('nv2-placa').value || '').trim().toUpperCase();
+      if (!placa) { toastErr('Placa es obligatoria'); return; }
+      const clienteId = document.getElementById('no-cliente').value;
+      const r = await apiFetch('/api/vehiculos/nuevo', {
+        method: 'POST',
+        body: JSON.stringify({
+          placa,
+          cliente_id: clienteId || null,
+          marca: document.getElementById('nv2-marca').value,
+          modelo: document.getElementById('nv2-modelo').value,
+          año: document.getElementById('nv2-año').value,
+          color: document.getElementById('nv2-color').value,
+          tipo: document.getElementById('nv2-tipo').value,
+        })
+      });
+      if (r && r.ok) {
+        toastOk('Vehículo registrado: ' + placa);
+        const sel = document.getElementById('no-placa');
+        const opt = document.createElement('option');
+        opt.value = placa; opt.selected = true;
+        opt.textContent = `${placa} — ${document.getElementById('nv2-marca').value} ${document.getElementById('nv2-modelo').value}`;
+        sel.appendChild(opt); sel.value = placa;
+        document.getElementById('form-nuevo-veh').classList.add('hidden');
+      } else toastErr(r?.error || 'Error al crear vehículo');
     }
 
     async function guardarNuevaOrden() {
       const motivo = document.getElementById('no-motivo').value.trim();
-      if (!motivo) { toastErr('El motivo es obligatorio'); return; }
+      if (!motivo) { toastErr('El motivo del problema es obligatorio'); return; }
       const body = {
         cliente_id: document.getElementById('no-cliente').value || null,
         vehiculo_placa: document.getElementById('no-placa').value || null,
@@ -630,15 +748,73 @@
         km: document.getElementById('no-km').value,
         tecnico: document.getElementById('no-tecnico').value,
         tipo: document.getElementById('no-tipo').value,
+        observaciones: document.getElementById('no-obs').value,
       };
       const r = await apiFetch('/api/ordenes/nueva', { method: 'POST', body: JSON.stringify(body) });
-      if (r && r.ok) {
-        toastOk('Orden creada: ' + r.consecutivo);
-        closeSheet();
-        pageOrdenes();
-      } else {
-        toastErr(r?.error || 'Error al crear orden');
+      if (!r?.ok) { toastErr(r?.error || 'Error al crear orden'); return; }
+
+      const cons = r.consecutivo;
+      closeSheet();
+      // Pantalla de éxito + subir evidencia
+      openSheet(`
+    <div class="p-5">
+      <div class="text-center mb-5">
+        <div class="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+          <span class="material-icons-round text-green-600" style="font-size:32px">check_circle</span>
+        </div>
+        <p class="text-xl font-black text-gray-900">¡Orden Creada!</p>
+        <p class="text-[#274495] font-bold text-lg">${cons}</p>
+      </div>
+
+      <div class="card p-4 mb-4 border border-blue-100 bg-blue-50">
+        <p class="text-xs font-black text-blue-700 mb-3">📷 EVIDENCIA FOTOGRÁFICA</p>
+        <p class="text-xs text-gray-500 mb-3">Sube fotos del vehículo (daños, estado, etc.)</p>
+        <input type="file" id="ev-input" accept="image/*" multiple capture="environment"
+          class="hidden" onchange="subirEvidenciaInline('${cons}', this)">
+        <button onclick="document.getElementById('ev-input').click()"
+          class="w-full border-2 border-dashed border-blue-300 rounded-xl py-4 text-blue-600 font-bold text-sm flex items-center justify-center gap-2">
+          <span class="material-icons-round">add_a_photo</span>
+          Tomar / Seleccionar Fotos
+        </button>
+        <div id="ev-preview" class="grid grid-cols-3 gap-2 mt-3"></div>
+        <p id="ev-count" class="text-xs text-center text-gray-400 mt-2"></p>
+      </div>
+
+      <button onclick="closeSheet(); pageOrdenes();" class="btn-primary w-full text-center mb-3">
+        Continuar al listado
+      </button>
+    </div>
+  `);
+    }
+
+    async function subirEvidenciaInline(cons, input) {
+      const files = Array.from(input.files);
+      const preview = document.getElementById('ev-preview');
+      const countEl = document.getElementById('ev-count');
+      let subidas = 0;
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          const res = await fetch(`/api/ordenes/${cons}/evidencia`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + S.token },
+            body: fd,
+          });
+          const data = await res.json();
+          if (data.ok) {
+            subidas++;
+            if (preview) {
+              const img = document.createElement('img');
+              img.src = data.url;
+              img.className = 'w-full h-24 object-cover rounded-xl border border-gray-100';
+              preview.appendChild(img);
+            }
+          } else toastErr('Error: ' + (data.error || 'fallo al subir'));
+        } catch (e) { toastErr('Error de conexión'); }
       }
+      if (subidas > 0 && countEl) countEl.textContent = `${subidas} foto(s) subida(s)`;
+      if (subidas > 0) toastOk(`${subidas} foto(s) subida(s) correctamente`);
     }
 
     async function showOrden(cons) {

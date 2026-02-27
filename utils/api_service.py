@@ -348,9 +348,49 @@ async def api_vehiculos_cliente(request: Request) -> JSONResponse:
     db = get_db()
     try:
         vehiculos = db.query(Vehiculo).filter_by(cliente_id=cliente_id).all()
-        return json_ok([{'placa': v.placa, 'marca': v.marca, 'modelo': v.modelo, 'año': v.año} for v in vehiculos])
+        return json_ok([{
+            'placa': v.placa, 'marca': v.marca, 'modelo': v.modelo,
+            'año': getattr(v, 'áño', getattr(v, 'anio', '')),
+        } for v in vehiculos])
     finally:
         db.close()
+
+
+async def api_orden_evidencia(request: Request) -> JSONResponse:
+    """POST /api/ordenes/{id}/evidencia - sube foto de evidencia"""
+    user = _require_admin(request)
+    if isinstance(user, JSONResponse):
+        return user
+    cons = request.path_params.get('id', '')
+    import os
+    try:
+        form = await request.form()
+        file = form.get('file')
+        if not file:
+            return json_err('Sin archivo')
+        ext = 'jpg'
+        if hasattr(file, 'filename') and '.' in (file.filename or ''):
+            ext = file.filename.rsplit('.', 1)[-1].lower()
+        filename = f"{cons}_{secrets.token_hex(4)}.{ext}"
+        os.makedirs('static/evidencia', exist_ok=True)
+        path = os.path.join('static', 'evidencia', filename)
+        content = await file.read()
+        with open(path, 'wb') as f:
+            f.write(content)
+        db = get_db()
+        try:
+            o = db.query(Orden).filter_by(consecutivo=cons).first()
+            if o:
+                fotos = list(o.fotos_evidencia or [])
+                fotos.append(f"/evidencia/{filename}")
+                o.fotos_evidencia = fotos
+                db.commit()
+        finally:
+            db.close()
+        return json_ok({'ok': True, 'url': f"/evidencia/{filename}"})
+    except Exception as e:
+        return json_err(str(e))
+
 
 
 
@@ -423,12 +463,58 @@ async def api_vehiculos_list(request: Request) -> JSONResponse:
     try:
         vehiculos = db.query(Vehiculo).order_by(Vehiculo.placa).limit(100).all()
         return json_ok([{
-            'id': v.id, 'placa': v.placa, 'marca': v.marca,
-            'modelo': v.modelo, 'año': v.anio,
+            'placa': v.placa, 'marca': v.marca,
+            'modelo': v.modelo, 'año': getattr(v, 'áño', getattr(v, 'anio', '')),
             'cliente_id': v.cliente_id,
         } for v in vehiculos])
     finally:
         db.close()
+
+
+async def api_vehiculo_create(request: Request) -> JSONResponse:
+    """POST /api/vehiculos/nuevo"""
+    user = _require_admin(request)
+    if isinstance(user, JSONResponse):
+        return user
+    try:
+        body = await request.json()
+    except Exception:
+        return json_err('Body inválido')
+    db = get_db()
+    try:
+        placa = (body.get('placa') or '').strip().upper()
+        if not placa:
+            return json_err('Placa es obligatoria')
+        if db.query(Vehiculo).filter_by(placa=placa).first():
+            return json_err('Placa ya registrada')
+        kw = dict(
+            placa=placa,
+            cliente_id=body.get('cliente_id') or None,
+            marca=body.get('marca', ''),
+            modelo=body.get('modelo', ''),
+            color=body.get('color', ''),
+            tipo=body.get('tipo', 'Sedán'),
+        )
+        # Soporte para campo año con o sin tilde
+        año_val = str(body.get('año', body.get('anio', '')))
+        try:
+            setattr(Vehiculo, '__test__', None)  # dummy
+            v = Vehiculo(**kw)
+            try: v.año = año_val
+            except Exception: pass
+            try: v.anio = año_val
+            except Exception: pass
+        except Exception:
+            v = Vehiculo(**kw)
+        db.add(v)
+        db.commit()
+        return json_ok({'ok': True, 'placa': placa}, 201)
+    except Exception as e:
+        db.rollback()
+        return json_err(str(e))
+    finally:
+        db.close()
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -581,17 +667,23 @@ async def api_cliente_mis_ordenes(request: Request) -> JSONResponse:
         ordenes = db.query(Orden).filter_by(
             cliente_id=user['id']
         ).order_by(Orden.fecha.desc()).all()
-        return json_ok([{
-            'id': o.id, 'consecutivo': o.consecutivo,
-            'fecha': str(o.fecha or ''), 'estado': o.estado,
-            'vehiculo_placa': o.vehiculo_placa or '',
-            'vehiculo_marca': o.vehiculo_marca or '',
-            'descripcion': o.descripcion_problema or '',
-            'items': o.items_cotizacion or [],
-            'report_token': o.report_token or '',
-        } for o in ordenes])
+        result = []
+        for o in ordenes:
+            veh = db.query(Vehiculo).filter_by(placa=o.vehiculo_placa).first() if o.vehiculo_placa else None
+            result.append({
+                'id': o.consecutivo,
+                'consecutivo': o.consecutivo,
+                'fecha': str(o.fecha or ''), 'estado': o.estado,
+                'vehiculo_placa': o.vehiculo_placa or '',
+                'vehiculo_marca': veh.marca if veh else '',
+                'descripcion': o.motivo or '',
+                'items': o.items_cotizacion or [],
+                'report_token': o.report_token or '',
+            })
+        return json_ok(result)
     finally:
         db.close()
+
 
 
 async def api_cliente_mis_citas(request: Request) -> JSONResponse:
@@ -614,7 +706,7 @@ async def api_cliente_mis_citas(request: Request) -> JSONResponse:
 
 
 async def api_cliente_aprobar(request: Request) -> JSONResponse:
-    """POST /api/cliente/aprobar  {orden_id, aprobado: true|false}"""
+    """POST /api/cliente/aprobar  {consecutivo, aprobado: true|false}"""
     user = _require_auth(request)
     if isinstance(user, JSONResponse):
         return user
@@ -624,13 +716,16 @@ async def api_cliente_aprobar(request: Request) -> JSONResponse:
         return json_err('Body inválido')
     db = get_db()
     try:
-        o = db.query(Orden).filter_by(id=body.get('orden_id')).first()
+        cons = body.get('consecutivo') or body.get('orden_id', '')
+        o = db.query(Orden).filter_by(consecutivo=str(cons)).first()
         if not o:
             return json_err('Orden no encontrada', 404)
         if o.cliente_id != user['id']:
             return json_err('No autorizado', 403)
         aprobado = body.get('aprobado', True)
         o.estado = 'REPARACIÓN' if aprobado else 'ARCHIVADO'
+        o.approval_status = 'aprobado' if aprobado else 'rechazado'
+        o.approval_date = datetime.now().strftime('%Y-%m-%d %H:%M')
         db.commit()
         return json_ok({'ok': True, 'estado': o.estado})
     except Exception as e:
@@ -638,6 +733,7 @@ async def api_cliente_aprobar(request: Request) -> JSONResponse:
         return json_err(str(e))
     finally:
         db.close()
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -652,12 +748,14 @@ def register_api_routes(app):
     app.add_api_route('/api/dashboard',               api_dashboard,           methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/ordenes',                 api_ordenes_list,        methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/ordenes/nueva',           api_orden_create,        methods=['POST', 'OPTIONS'])
-    app.add_api_route('/api/ordenes/{id}',            api_orden_get,           methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/ordenes/{id}/estado',     api_orden_estado,        methods=['PUT',  'OPTIONS'])
+    app.add_api_route('/api/ordenes/{id}/evidencia',  api_orden_evidencia,     methods=['POST', 'OPTIONS'])
+    app.add_api_route('/api/ordenes/{id}',            api_orden_get,           methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/clientes',                api_clientes_list,       methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/clientes/nuevo',          api_cliente_create,      methods=['POST', 'OPTIONS'])
     app.add_api_route('/api/clientes/{id}/vehiculos', api_vehiculos_cliente,   methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/vehiculos',               api_vehiculos_list,      methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/vehiculos/nuevo',         api_vehiculo_create,     methods=['POST', 'OPTIONS'])
     app.add_api_route('/api/inventario',              api_inventario_list,     methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/notas-venta',             api_notas_list,          methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/notas-venta/nueva',       api_nota_create,         methods=['POST', 'OPTIONS'])
@@ -666,4 +764,5 @@ def register_api_routes(app):
     app.add_api_route('/api/cliente/mis-ordenes',     api_cliente_mis_ordenes, methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/cliente/mis-citas',       api_cliente_mis_citas,   methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/cliente/aprobar',         api_cliente_aprobar,     methods=['POST', 'OPTIONS'])
+
 
