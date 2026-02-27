@@ -665,6 +665,203 @@ def show_portal(container):
                         ''')
 
                 # ════════════════════════════════════════════════
+                # 2b. RECEPCIÓN DEL VEHÍCULO — Solo Lectura para el cliente
+                # ════════════════════════════════════════════════
+                if active_order and active_dict:
+                    # Extraer nivel de combustible de observaciones
+                    obs_recv = active_dict.get('observaciones', '') or ''
+                    comb_val = '—'
+                    if 'Combustible: ' in obs_recv:
+                        try:
+                            comb_val = obs_recv.split('Combustible: ')[1].split('\n')[0].strip()
+                        except Exception:
+                            comb_val = '—'
+
+                    recv_km        = active_dict.get('km', '') or '—'
+                    recv_tec       = active_dict.get('tecnico', '') or '—'
+                    recv_motivo    = active_dict.get('motivo', '') or '—'
+                    recv_tipo      = active_dict.get('tipo', '') or '—'
+                    recv_fecha     = active_dict.get('fecha', '') or ''
+                    recv_consec    = active_dict.get('consecutivo', '') or ''
+                    recv_fotos_raw = active_dict.get('fotos_evidencia') or []
+                    recv_fotos_raw = recv_fotos_raw if isinstance(recv_fotos_raw, list) else []
+
+                    # Clasificar medios
+                    _VID_R = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.ogg'}
+                    def _is_vid_r(p): return os.path.splitext((p or '').lower())[1] in _VID_R
+                    recv_fotos  = [p for p in recv_fotos_raw if isinstance(p, str) and not _is_vid_r(p)]
+                    recv_videos = [p for p in recv_fotos_raw if isinstance(p, str) and _is_vid_r(p)]
+
+                    try:
+                        fd_r = datetime.strptime(recv_fecha[:10], '%Y-%m-%d')
+                        recv_fecha_fmt = f'{fd_r.day} {_mes(fd_r.month)} {fd_r.year}'
+                    except Exception:
+                        recv_fecha_fmt = recv_fecha[:10] if recv_fecha else '—'
+
+                    with ui.element('div').classes('p-card').style('border-left:4px solid #1a3a6b;'):
+                        # Encabezado
+                        ui.html(f'''
+                        <div style="display:flex;align-items:flex-start;justify-content:space-between;
+                                    flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+                            <div>
+                                <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+                                    <div style="width:36px;height:36px;background:#e8f0fb;border-radius:10px;
+                                                display:flex;align-items:center;justify-content:center;font-size:18px;">
+                                        📥
+                                    </div>
+                                    <div>
+                                        <div style="font-size:11px;font-weight:900;color:#1a3a6b;
+                                                    text-transform:uppercase;letter-spacing:1.5px;">
+                                            Recepción de mi Vehículo
+                                        </div>
+                                        <div style="font-size:11px;color:var(--gris-texto);margin-top:1px;">
+                                            Solo lectura — información registrada al ingreso al taller
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="font-size:15px;font-weight:800;color:var(--texto);margin-top:4px;">
+                                    {recv_motivo}
+                                </div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="font-size:11px;font-family:monospace;background:#e8f0fb;
+                                            color:#1a3a6b;padding:4px 10px;border-radius:6px;
+                                            font-weight:700;margin-bottom:4px;">
+                                    #{recv_consec}
+                                </div>
+                                <div style="font-size:11px;color:var(--gris-texto);">
+                                    📅 {recv_fecha_fmt}
+                                </div>
+                                <div style="font-size:10px;color:var(--gris-texto);margin-top:2px;">
+                                    Tipo: {recv_tipo}
+                                </div>
+                            </div>
+                        </div>
+                        ''')
+
+                        # Grid de datos de recepción
+                        ui.html(f'''
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+                                    gap:10px;margin-bottom:20px;">
+                            <div style="background:#f8fafc;border:1.5px solid #dde4f0;border-radius:12px;
+                                        padding:12px;text-align:center;">
+                                <div style="font-size:20px;margin-bottom:4px;">🛣️</div>
+                                <div style="font-size:10px;font-weight:800;color:#6b7a99;
+                                            text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">
+                                    Kilometraje
+                                </div>
+                                <div style="font-size:16px;font-weight:800;color:var(--azul);">
+                                    {recv_km} km
+                                </div>
+                            </div>
+                            <div style="background:#f8fafc;border:1.5px solid #dde4f0;border-radius:12px;
+                                        padding:12px;text-align:center;">
+                                <div style="font-size:20px;margin-bottom:4px;">⛽</div>
+                                <div style="font-size:10px;font-weight:800;color:#6b7a99;
+                                            text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">
+                                    Combustible
+                                </div>
+                                <div style="font-size:16px;font-weight:800;color:var(--azul);">
+                                    {comb_val}
+                                </div>
+                            </div>
+                            <div style="background:#f8fafc;border:1.5px solid #dde4f0;border-radius:12px;
+                                        padding:12px;text-align:center;">
+                                <div style="font-size:20px;margin-bottom:4px;">🧑‍🔧</div>
+                                <div style="font-size:10px;font-weight:800;color:#6b7a99;
+                                            text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">
+                                    Técnico
+                                </div>
+                                <div style="font-size:14px;font-weight:800;color:var(--azul);">
+                                    {recv_tec}
+                                </div>
+                            </div>
+                            <div style="background:#f4f7fc;border:1.5px solid #dde4f0;border-radius:12px;
+                                        padding:12px;text-align:center;
+                                        border-style:dashed;">
+                                <div style="font-size:20px;margin-bottom:4px;">🔒</div>
+                                <div style="font-size:10px;font-weight:800;color:#6b7a99;
+                                            text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">
+                                    Modo
+                                </div>
+                                <div style="font-size:12px;font-weight:700;color:#94a3b8;">
+                                    Solo lectura
+                                </div>
+                            </div>
+                        </div>
+                        ''')
+
+                        # Evidencia fotográfica de recepción
+                        if recv_fotos or recv_videos:
+                            ui.html(f'''
+                            <div style="font-size:10px;font-weight:900;color:#1a3a6b;
+                                        text-transform:uppercase;letter-spacing:1.5px;
+                                        margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                                📸 Evidencia de Ingreso al Taller
+                                <span style="background:#e8f0fb;color:#1a3a6b;font-size:9px;
+                                             font-weight:700;padding:2px 8px;border-radius:100px;">
+                                    {len(recv_fotos_raw)} archivo{"s" if len(recv_fotos_raw)!=1 else ""}
+                                </span>
+                            </div>
+                            ''')
+
+                            # Galería de fotos
+                            if recv_fotos:
+                                gallery_html = ''
+                                for fp in recv_fotos:
+                                    gallery_html += f'''
+                                    <a href="{fp}" target="_blank"
+                                       style="display:block;width:110px;height:110px;
+                                              border-radius:12px;overflow:hidden;flex-shrink:0;
+                                              border:2px solid var(--gris-borde);background:#f3f4f6;
+                                              transition:transform .18s;cursor:pointer;"
+                                       onmouseover="this.style.transform='scale(1.05)'"
+                                       onmouseout="this.style.transform='scale(1)'">
+                                        <img src="{fp}" style="width:100%;height:100%;object-fit:cover;"
+                                             onerror="this.style.display='none'"/>
+                                    </a>'''
+                                ui.html(f'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">'
+                                        f'{gallery_html}</div>')
+
+                            # Videos de recepción
+                            if recv_videos:
+                                ui.html(f'<div style="font-size:11px;font-weight:700;color:#2356a8;'
+                                        f'margin-bottom:8px;margin-top:4px;">'
+                                        f'📹 Videos de ingreso ({len(recv_videos)})</div>')
+                                for vp in recv_videos:
+                                    vfn = vp.split('/')[-1]
+                                    ui.html(f'''
+                                    <div style="background:#0f172a;border-radius:12px;overflow:hidden;
+                                                border:1.5px solid #3b82f6;margin-bottom:10px;">
+                                        <video src="{vp}" controls preload="metadata" playsinline
+                                            style="width:100%;max-height:300px;display:block;">
+                                            Tu navegador no soporta reproducción de video.
+                                        </video>
+                                        <div style="padding:8px 14px;display:flex;align-items:center;gap:8px;">
+                                            <span style="font-size:16px;">🎥</span>
+                                            <span style="font-size:11px;color:#94a3b8;flex:1;
+                                                         font-family:monospace;overflow:hidden;
+                                                         white-space:nowrap;text-overflow:ellipsis;">{vfn}</span>
+                                            <a href="{vp}" target="_blank"
+                                               style="color:#60a5fa;font-size:11px;font-weight:700;
+                                                      text-decoration:none;white-space:nowrap;">
+                                                Abrir →
+                                            </a>
+                                        </div>
+                                    </div>
+                                    ''')
+                        else:
+                            ui.html('''
+                            <div style="text-align:center;padding:20px;background:#f8fafc;
+                                        border-radius:12px;border:1.5px dashed #dde4f0;color:#94a3b8;">
+                                <div style="font-size:28px;margin-bottom:6px;">📷</div>
+                                <div style="font-size:12px;font-weight:600;">
+                                    El técnico aún no ha subido evidencia fotográfica de ingreso.
+                                </div>
+                            </div>
+                            ''')
+
+                # ════════════════════════════════════════════════
                 # 3. GRID: Estado vehículo + Repuestos/Cotización
                 # ════════════════════════════════════════════════
                 with ui.element('div').classes('p-grid-2'):
