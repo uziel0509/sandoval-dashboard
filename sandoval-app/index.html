@@ -15,6 +15,8 @@
     rel="stylesheet">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;900&display=swap');
+
     * {
       font-family: 'Outfit', sans-serif;
       -webkit-tap-highlight-color: transparent
@@ -235,27 +237,297 @@
       padding-bottom: env(safe-area-inset-bottom)
     }
 
+    /* ── SPLASH 3D (idéntico al desktop) ── */
     #loading {
       position: fixed;
       inset: 0;
-      background: #274495;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #274495 100%);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       z-index: 9999;
-      transition: opacity .4s
+      transition: opacity .5s
+    }
+
+    .splash-logo-wrapper {
+      position: relative;
+      perspective: 1000px;
+      margin-bottom: 32px
+    }
+
+    .splash-logo {
+      width: 130px;
+      height: 130px;
+      border-radius: 24px;
+      box-shadow: 0 25px 60px rgba(39, 68, 149, .4), 0 0 80px rgba(39, 68, 149, .3);
+      animation: logo3DFloat 2s ease-in-out infinite;
+      border: 3px solid rgba(255, 255, 255, .1);
+      object-fit: contain;
+      background: white;
+      padding: 6px
+    }
+
+    @keyframes logo3DFloat {
+
+      0%,
+      100% {
+        transform: translateY(0) rotateY(0deg) rotateX(0deg)
+      }
+
+      25% {
+        transform: translateY(-10px) rotateY(5deg) rotateX(5deg)
+      }
+
+      50% {
+        transform: translateY(0)
+      }
+
+      75% {
+        transform: translateY(-10px) rotateY(-5deg) rotateX(-5deg)
+      }
+    }
+
+    .splash-gears {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 240px;
+      height: 240px;
+      pointer-events: none
+    }
+
+    .gear {
+      position: absolute;
+      font-size: 70px;
+      opacity: .15;
+      filter: drop-shadow(0 0 20px rgba(39, 68, 149, .6))
+    }
+
+    .gear-1 {
+      top: -15px;
+      left: 50%;
+      transform: translateX(-50%);
+      animation: rotGear 3s linear infinite
+    }
+
+    .gear-2 {
+      bottom: -15px;
+      right: 15px;
+      animation: rotGearR 4s linear infinite
+    }
+
+    .gear-3 {
+      bottom: -15px;
+      left: 15px;
+      animation: rotGear 3.5s linear infinite
+    }
+
+    @keyframes rotGear {
+      from {
+        transform: translateX(-50%) rotate(0)
+      }
+
+      to {
+        transform: translateX(-50%) rotate(360deg)
+      }
+    }
+
+    @keyframes rotGearR {
+      from {
+        transform: rotate(0)
+      }
+
+      to {
+        transform: rotate(-360deg)
+      }
+    }
+
+    .splash-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 22px;
+      font-weight: 900;
+      color: white;
+      text-align: center;
+      margin-bottom: 6px;
+      letter-spacing: -.5px;
+      text-shadow: 0 4px 20px rgba(0, 0, 0, .3);
+      animation: titleUp .8s ease .3s both
+    }
+
+    .splash-subtitle {
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, .7);
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      margin-bottom: 40px;
+      animation: titleUp .8s ease .5s both
+    }
+
+    @keyframes titleUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px)
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0)
+      }
+    }
+
+    .splash-loader {
+      width: 180px;
+      height: 4px;
+      background: rgba(255, 255, 255, .1);
+      border-radius: 10px;
+      overflow: hidden;
+      animation: titleUp .8s ease .7s both
+    }
+
+    .splash-loader-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #274495, #60a5fa);
+      background-size: 200% 100%;
+      border-radius: 10px;
+      animation: loaderProg 2.5s ease forwards, loaderShine 1.5s infinite;
+      box-shadow: 0 0 20px rgba(39, 68, 149, .8)
+    }
+
+    @keyframes loaderProg {
+      from {
+        width: 0%
+      }
+
+      to {
+        width: 100%
+      }
+    }
+
+    @keyframes loaderShine {
+
+      0%,
+      100% {
+        background-position: 0% 50%
+      }
+
+      50% {
+        background-position: 100% 50%
+      }
+    }
+
+    .splash-tools {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      opacity: .08;
+      pointer-events: none
+    }
+
+    .tool-icon {
+      position: absolute;
+      font-size: 36px;
+      animation: toolFloat 20s linear infinite
+    }
+
+    .tool-1 {
+      top: 10%;
+      left: 10%;
+      animation-delay: 0s
+    }
+
+    .tool-2 {
+      top: 20%;
+      right: 15%;
+      animation-delay: 2s
+    }
+
+    .tool-3 {
+      bottom: 15%;
+      left: 20%;
+      animation-delay: 4s
+    }
+
+    .tool-4 {
+      bottom: 20%;
+      right: 10%;
+      animation-delay: 6s
+    }
+
+    .tool-5 {
+      top: 50%;
+      left: 5%;
+      animation-delay: 1s
+    }
+
+    .tool-6 {
+      top: 50%;
+      right: 5%;
+      animation-delay: 3s
+    }
+
+    @keyframes toolFloat {
+
+      0%,
+      100% {
+        transform: translateY(0) rotate(0)
+      }
+
+      25% {
+        transform: translateY(-30px) rotate(5deg)
+      }
+
+      50% {
+        transform: translateY(0)
+      }
+
+      75% {
+        transform: translateY(30px) rotate(-5deg)
+      }
+    }
+
+    .splash-version {
+      position: absolute;
+      bottom: 24px;
+      font-size: 10px;
+      color: rgba(255, 255, 255, .4);
+      letter-spacing: 2px;
+      font-weight: 600
     }
   </style>
 </head>
 
 <body>
 
-  <!-- SPLASH -->
+  <!-- SPLASH 3D (mismo que desktop) -->
   <div id="loading">
-    <img src="/assets/logo_sandoval.jpg" class="w-24 h-24 rounded-2xl shadow-2xl mb-6 object-contain bg-white p-2">
-    <p class="text-white text-2xl font-black tracking-tight">SANDOVAL</p>
-    <p class="text-blue-200 text-sm font-medium mt-1">Cargando sistema...</p>
+    <div class="splash-tools">
+      <div class="tool-icon tool-1">🔧</div>
+      <div class="tool-icon tool-2">🔩</div>
+      <div class="tool-icon tool-3">⚙️</div>
+      <div class="tool-icon tool-4">🛠️</div>
+      <div class="tool-icon tool-5">🚗</div>
+      <div class="tool-icon tool-6">🔩</div>
+    </div>
+    <div class="splash-logo-wrapper">
+      <div class="splash-gears">
+        <div class="gear gear-1">⚙️</div>
+        <div class="gear gear-2">⚙️</div>
+        <div class="gear gear-3">⚙️</div>
+      </div>
+      <img src="/assets/logo_sandoval.jpg" class="splash-logo">
+    </div>
+    <div class="splash-title">MECÁNICA Y REPUESTOS<br>SANDOVAL EIRL</div>
+    <div class="splash-subtitle">Sistema Profesional de Gestión</div>
+    <div class="splash-loader">
+      <div class="splash-loader-bar"></div>
+    </div>
+    <div class="splash-version">v2.0 PRO · 2026</div>
   </div>
 
   <!-- APP ROOT -->
@@ -339,6 +611,21 @@
   </div>
 
   <script>
+    // ─── REDIRECT AUTOMÁTICO ──────────────────────────────
+    // Si se abre desde PC/desktop → redirigir al dashboard NiceGUI
+    (function () {
+      var ua = navigator.userAgent || '';
+      var isMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini|BlackBerry|Mobile/i.test(ua);
+      var isDesktop = !isMobile && window.innerWidth >= 1024;
+      if (isDesktop) {
+        // Solo redirigir si no hay sesión activa guardada
+        var hasSession = localStorage.getItem('s_token');
+        if (!hasSession) {
+          window.location.replace('/login');
+        }
+      }
+    })();
+
     // ─── ESTADO GLOBAL ────────────────────────────────────
     const S = {
       token: localStorage.getItem('s_token'),
