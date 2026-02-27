@@ -582,33 +582,23 @@ async def api_cliente_aprobar(request: Request) -> JSONResponse:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def register_api_routes(app):
-    """Registra todas las rutas /api/* en la app NiceGUI/Starlette"""
-    from starlette.routing import Route
+    """Registra todas las rutas /api/* en la app NiceGUI/FastAPI"""
+    app.add_api_route('/api/auth/login',              api_login,               methods=['POST', 'OPTIONS'])
+    app.add_api_route('/api/auth/me',                 api_me,                  methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/auth/logout',             api_logout,              methods=['POST', 'OPTIONS'])
+    app.add_api_route('/api/dashboard',               api_dashboard,           methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/ordenes',                 api_ordenes_list,        methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/ordenes/{id}',            api_orden_get,           methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/ordenes/{id}/estado',     api_orden_estado,        methods=['PUT',  'OPTIONS'])
+    app.add_api_route('/api/clientes',                api_clientes_list,       methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/clientes/nuevo',          api_cliente_create,      methods=['POST', 'OPTIONS'])
+    app.add_api_route('/api/vehiculos',               api_vehiculos_list,      methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/inventario',              api_inventario_list,     methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/notas-venta',             api_notas_list,          methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/notas-venta/nueva',       api_nota_create,         methods=['POST', 'OPTIONS'])
+    app.add_api_route('/api/citas',                   api_citas_list,          methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/citas/nueva',             api_cita_create,         methods=['POST', 'OPTIONS'])
+    app.add_api_route('/api/cliente/mis-ordenes',     api_cliente_mis_ordenes, methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/cliente/mis-citas',       api_cliente_mis_citas,   methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/cliente/aprobar',         api_cliente_aprobar,     methods=['POST', 'OPTIONS'])
 
-    routes = [
-        Route('/api/auth/login',           api_login,              methods=['POST', 'OPTIONS']),
-        Route('/api/auth/me',              api_me,                 methods=['GET',  'OPTIONS']),
-        Route('/api/auth/logout',          api_logout,             methods=['POST', 'OPTIONS']),
-        Route('/api/dashboard',            api_dashboard,          methods=['GET',  'OPTIONS']),
-        Route('/api/ordenes',              api_ordenes_list,       methods=['GET',  'OPTIONS']),
-        Route('/api/ordenes/{id:int}',     api_orden_get,          methods=['GET',  'OPTIONS']),
-        Route('/api/ordenes/{id:int}/estado', api_orden_estado,    methods=['PUT',  'OPTIONS']),
-        Route('/api/clientes',             api_clientes_list,      methods=['GET',  'OPTIONS']),
-        Route('/api/clientes/nuevo',       api_cliente_create,     methods=['POST', 'OPTIONS']),
-        Route('/api/vehiculos',            api_vehiculos_list,     methods=['GET',  'OPTIONS']),
-        Route('/api/inventario',           api_inventario_list,    methods=['GET',  'OPTIONS']),
-        Route('/api/notas-venta',          api_notas_list,         methods=['GET',  'OPTIONS']),
-        Route('/api/notas-venta/nueva',    api_nota_create,        methods=['POST', 'OPTIONS']),
-        Route('/api/citas',                api_citas_list,         methods=['GET',  'OPTIONS']),
-        Route('/api/citas/nueva',          api_cita_create,        methods=['POST', 'OPTIONS']),
-        Route('/api/cliente/mis-ordenes',  api_cliente_mis_ordenes,methods=['GET',  'OPTIONS']),
-        Route('/api/cliente/mis-citas',    api_cliente_mis_citas,  methods=['GET',  'OPTIONS']),
-        Route('/api/cliente/aprobar',      api_cliente_aprobar,    methods=['POST', 'OPTIONS']),
-    ]
-
-    # Agregar manejador de preflight CORS (OPTIONS) global
-    async def cors_handler(request: Request):
-        return _cors(JSONResponse({'ok': True}))
-
-    for route in routes:
-        app.routes.insert(0, route)
