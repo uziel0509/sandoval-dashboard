@@ -350,9 +350,16 @@ def open_new_diagnostic_modal(consecutivo, container, state, stats_container=Non
                             def refresh_evidence():
                                 ev_container.clear()
                                 with ev_container:
-                                    # Filtrar solo evidencias de DIAGNÓSTICO
-                                    existing = [p for p in (order.fotos_evidencia or []) 
-                                               if isinstance(p, dict) and p.get('fase') == 'DIAGNÓSTICO']
+                                    # Filtrar evidencias de DIAGNÓSTICO (procedimiento robusto)
+                                    existing = []
+                                    for p in (order.fotos_evidencia or []):
+                                        if isinstance(p, dict):
+                                            fase = str(p.get('fase', '')).upper()
+                                            if 'DIAG' in fase:
+                                                existing.append(p)
+                                        # Si es string, no es de diagnóstico a menos que el path lo diga
+                                        elif isinstance(p, str) and 'DIAG' in p.upper():
+                                            existing.append(p)
                                     
                                     if not existing and not new_evidence_files:
                                         ui.label('Sin fotos de diagnóstico').classes('text-gray-400 italic text-xs py-4 mx-auto')
@@ -383,10 +390,18 @@ def open_new_diagnostic_modal(consecutivo, container, state, stats_container=Non
 
                             def remove_evidence(path):
                                 current = list(order.fotos_evidencia or [])
-                                if path in current:
-                                    current.remove(path)
-                                    order.fotos_evidencia = current
-                                    db.commit()
+                                # Eliminar por path sea string o dict
+                                new_list = []
+                                for itm in current:
+                                    itm_path = itm.get('path') if isinstance(itm, dict) else itm
+                                    if itm_path != path:
+                                        new_list.append(itm)
+                                
+                                order.fotos_evidencia = new_list
+                                from sqlalchemy.orm.attributes import flag_modified
+                                flag_modified(order, "fotos_evidencia")
+                                db.commit()
+                                theme.notify_success('Foto eliminada')
                                 refresh_evidence()
                             
                             refresh_evidence()
@@ -2605,14 +2620,24 @@ def open_order_detail(consecutivo, container, state):
                                         ui.icon('check_circle', color='emerald-500') if is_past else ui.icon('pending', color='indigo-500')
 
                             with ui.column().classes('w-full p-4 gap-4 bg-slate-50/30'):
+                                # Phase-based filtering robusto
                                 phase_pics = []
                                 if o.get('fotos_evidencia'):
+                                    def norm(t): return str(t or '').upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip()
+                                    target_p = norm(est_name)
                                     for p in o['fotos_evidencia']:
+                                        p_fase = ''
+                                        p_path = ''
                                         if isinstance(p, dict):
-                                            if p.get('fase', 'RECEPCIÓN').strip().upper() == est_name.upper():
-                                                phase_pics.append(p)
-                                        elif est_name.upper() == 'RECEPCIÓN':
-                                            phase_pics.append(p)
+                                            p_path = p.get('path', '')
+                                            p_fase = norm(p.get('fase', 'RECEPCIÓN'))
+                                        else:
+                                            p_path = p
+                                            if 'DIAG' in p_path.upper(): p_fase = 'DIAGNOSTICO'
+                                            elif 'REP' in p_path.upper(): p_fase = 'REPARACION'
+                                            else: p_fase = 'RECEPCION'
+                                        if p_fase == target_p:
+                                            phase_pics.append(p_path)
 
                                 if est_name.upper() == 'RECEPCIÓN':
                                     with ui.row().classes('w-full gap-4'):
@@ -2639,8 +2664,7 @@ def open_order_detail(consecutivo, container, state):
                                 if phase_pics:
                                     ui.label('EVIDENCIAS').classes('text-[9px] font-bold text-indigo-400 mt-2')
                                     with ui.row().classes('w-full gap-2 flex-wrap'):
-                                        for p in phase_pics:
-                                            path = p.get('path') if isinstance(p, dict) else p
+                                        for path in phase_pics:
                                             ui.image(path).classes('w-20 h-20 border rounded-lg cursor-pointer').on('click', lambda l=path: ui.run_javascript(f'window.open("{l}", "_blank")'))
 
                                 if is_current:
@@ -3255,15 +3279,24 @@ def open_customer_preview(consecutivo):
                 cur_fase = (order.estado or 'RECEPCIÓN').strip().upper()
                 if order.fotos_evidencia and isinstance(order.fotos_evidencia, list):
                     # Filtrar evidencias que correspondan a la fase actual
-                    # Si la evidencia no tiene fase (formato antiguo), asumimos RECEPCIÓN
+                    def norm(t): return str(t or '').upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip()
+                    cur_fase_norm = norm(order.estado or 'RECEPCIÓN')
+                    
                     fase_pics = []
                     for p in order.fotos_evidencia:
+                        p_fase = ''
+                        p_path = ''
                         if isinstance(p, dict):
-                            if p.get('fase', 'RECEPCIÓN').strip().upper() == cur_fase:
-                                fase_pics.append(p)
+                            p_path = p.get('path', '')
+                            p_fase = norm(p.get('fase', 'RECEPCIÓN'))
                         else:
-                            if cur_fase == 'RECEPCIÓN':
-                                fase_pics.append(p)
+                            p_path = p
+                            if 'DIAG' in p_path.upper(): p_fase = 'DIAGNOSTICO'
+                            elif 'REP' in p_path.upper(): p_fase = 'REPARACION'
+                            else: p_fase = 'RECEPCION'
+                        
+                        if p_fase == cur_fase_norm:
+                            fase_pics.append(p_path)
                     
                     if fase_pics:
                         ui.label(f'EVIDENCIA FOTOGRÁFICA - {cur_fase}').classes('text-xs font-bold text-slate-400 tracking-[0.2em] mb-4 ml-2')

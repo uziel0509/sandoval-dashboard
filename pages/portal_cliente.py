@@ -476,18 +476,60 @@ def _view_order_details(o):
         d.open()
 
 def _render_fase_media(order, fase_nombre):
-    """Filtra y renderiza la evidencia de una fase específica"""
-    medios_raw = _safe_json(order.fotos_evidencia)
-    # Filtrar solo los que pertenecen a esta fase (o los que no tienen fase si es RECEPCIÓN - retrocompatibilidad)
+    """
+    Filtra y renderiza la evidencia de una fase específica de forma robusta.
+    Soporta: Formato dict, formato str (retrocompatibilidad), y variaciones de acentos/mayúsculas.
+    """
+    import json
+    medios_raw = []
+    if not order.fotos_evidencia:
+        medios_raw = []
+    elif isinstance(order.fotos_evidencia, list):
+        medios_raw = order.fotos_evidencia
+    else:
+        try:
+            medios_raw = json.loads(order.fotos_evidencia)
+        except:
+            medios_raw = []
+
+    # Normalizar nombre de fase buscado para comparación segura
+    def normalize(text):
+        if not text: return ""
+        t = text.upper().strip()
+        # Eliminar acentos comunes para evitar fallos de matching
+        replacements = {'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U'}
+        for k, v in replacements.items():
+            t = t.replace(k, v)
+        return t
+
+    fase_buscada = normalize(fase_nombre)
     medios = []
+
     for m in medios_raw:
+        path = None
+        fase_item = None
+        
         if isinstance(m, dict):
-            if m.get('fase') == fase_nombre:
-                medios.append(m.get('path'))
-        elif isinstance(m, str) and fase_nombre == 'RECEPCIÓN':
-            medios.append(m)
+            path = m.get('path')
+            fase_item = normalize(m.get('fase', 'RECEPCIÓN'))
+        elif isinstance(m, str):
+            path = m
+            # Por defecto las fotos sin fase van a RECEPCION, 
+            # pero intentamos adivinar por nombre de archivo si es posible
+            if 'DIAG' in path.upper():
+                fase_item = 'DIAGNOSTICO'
+            elif 'REP' in path.upper() or 'FIX' in path.upper():
+                fase_item = 'REPARACION'
+            else:
+                fase_item = 'RECEPCION'
+        
+        if path and fase_item == fase_buscada:
+            medios.append(path)
     
     if medios:
         with ui.row().classes('w-full gap-2 mt-2 overflow-x-auto no-wrap p-1'):
             for path in medios:
-                ui.image(path).classes('w-24 h-24 rounded-lg shadow-md object-cover border-2 border-white')
+                ui.image(path).classes('w-32 h-32 rounded-lg shadow-md object-cover border-2 border-white hover:scale-105 transition-transform cursor-pointer').on('click', lambda p=path: ui.open(p, '_blank'))
+    else:
+        with ui.row().classes('w-full items-center justify-center py-6 opacity-30 border-2 border-dashed border-gray-100 rounded-xl'):
+            ui.label(f'Sin fotos en {fase_nombre}').classes('text-[10px] uppercase font-bold text-gray-400')

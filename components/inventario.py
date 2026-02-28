@@ -110,9 +110,17 @@ def refresh_table(container, state):
                     </div>
                 </q-td>
             ''')
-            table.on('edit', lambda e: open_item_dialog(container, state, e.args['codigo'] if isinstance(e.args, dict) else e.args[0]['codigo']))
-            table.on('delete', lambda e: theme.confirm_dialog('Eliminar', f'¿Eliminar {e.args["codigo"] if isinstance(e.args, dict) else e.args[0]["codigo"]}?',
-                on_confirm=lambda c=(e.args['codigo'] if isinstance(e.args, dict) else e.args[0]['codigo']): (delete_item(c), refresh_table(container, state))))
+            def _get_code(e):
+                args = e.args
+                if isinstance(args, dict): return args.get('codigo')
+                if isinstance(args, list) and len(args) > 0:
+                    first = args[0]
+                    return first.get('codigo') if isinstance(first, dict) else first
+                return None
+
+            table.on('edit', lambda e: open_item_dialog(container, state, _get_code(e)))
+            table.on('delete', lambda e: theme.confirm_dialog('Eliminar', f'¿Eliminar {_get_code(e)}?',
+                on_confirm=lambda c=_get_code(e): (delete_item(c), refresh_table(container, state))))
     finally:
         db.close()
 
@@ -149,10 +157,18 @@ def open_item_dialog(table_container, state, edit_code=None, on_success=None):
             ui.button(icon='close', on_click=dialog.close).props('flat round color=grey-8 size=sm')
         
         with ui.column().classes('w-full p-6 gap-3'):
-            tipo = ui.select(TIPOS_ITEM, value=existing.get('tipo', 'Repuesto') if existing else 'Repuesto', label='Tipo *').props('outlined dense bg-color=white').classes('w-full')
+            # Garantizar que el valor actual esté en las opciones para evitar ValueError
+            curr_tipo = existing.get('tipo', 'Repuesto') if existing else 'Repuesto'
+            if curr_tipo not in TIPOS_ITEM: TIPOS_ITEM.append(curr_tipo)
+            
+            tipo = ui.select(TIPOS_ITEM, value=curr_tipo, label='Tipo *').props('outlined dense bg-color=white').classes('w-full')
+            
             with ui.row().classes('w-full gap-4'):
                 codigo_input = ui.input('Código *', value=existing['codigo'] if existing else '').props('outlined dense bg-color=white' + (' readonly' if existing else '')).classes('flex-1')
-                cat_select = ui.select(CATEGORIAS, value=existing.get('categoria', 'Repuestos') if existing else 'Repuestos', label='Categoría').props('outlined dense bg-color=white').classes('flex-1')
+                
+                curr_cat = existing.get('categoria', 'Repuestos') if existing else 'Repuestos'
+                if curr_cat not in CATEGORIAS: CATEGORIAS.append(curr_cat)
+                cat_select = ui.select(CATEGORIAS, value=curr_cat, label='Categoría').props('outlined dense bg-color=white').classes('flex-1')
             nombre_input = ui.input('Nombre *', value=existing.get('nombre', '') if existing else '').props('outlined dense bg-color=white').classes('w-full')
             desc_input = ui.textarea('Descripción', value=existing.get('descripcion', '') if existing else '').props('outlined dense rows=2 bg-color=white').classes('w-full')
             with ui.row().classes('w-full gap-4'):
