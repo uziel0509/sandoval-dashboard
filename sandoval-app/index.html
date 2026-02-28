@@ -182,8 +182,25 @@
     }
 
     .estado-ARCHIVADO {
-      background: #f1f5f9;
-      color: #64748b
+      background: #ecfdf5;
+      color: #059669;
+      border: 1px solid #10b98144;
+      font-weight: 800;
+      animation: pulse-green 2s infinite
+    }
+
+    @keyframes pulse-green {
+      0% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+      }
+
+      70% {
+        box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+      }
     }
 
     .estado-pagada {
@@ -959,7 +976,9 @@
     function toastErr(m) { toast('✗ ' + m, '#991b1b'); }
 
     function chip(estado) {
-      return `<span class="chip estado-${estado}">${estado}</span>`;
+      let label = estado;
+      if (estado === 'ARCHIVADO') label = '✅ FINALIZADO';
+      return `<span class="chip estado-${estado}">${label}</span>`;
     }
 
     function fmtDate(d) {
@@ -1725,18 +1744,26 @@
 
     function renderFaseMedia(o, faseNombre) {
       let medios = [];
+      let seen = new Set();
       try {
         // Fuente A: fotos_evidencia
         let raw = o.fotos_evidencia;
         if (typeof raw === 'string' && raw.trim().startsWith('[')) raw = JSON.parse(raw);
         if (!Array.isArray(raw)) raw = raw ? [raw] : [];
         raw.forEach(m => {
-          if (typeof m === 'object' && m.path) medios.push(m);
-          else if (typeof m === 'string') {
-            let f = 'RECEPCIÓN';
-            if (m.toUpperCase().includes('DIAG')) f = 'DIAGNÓSTICO';
-            if (m.toUpperCase().includes('REP') || m.toUpperCase().includes('FIX')) f = 'REPARACIÓN';
-            medios.push({ path: m, fase: f });
+          let path = '';
+          let fase = 'RECEPCIÓN';
+          if (typeof m === 'object' && m.path) {
+            path = m.path;
+            fase = m.fase || 'RECEPCIÓN';
+          } else if (typeof m === 'string') {
+            path = m;
+            if (path.toUpperCase().includes('DIAG')) fase = 'DIAGNÓSTICO';
+            if (path.toUpperCase().includes('REP') || path.toUpperCase().includes('FIX')) fase = 'REPARACIÓN';
+          }
+          if (path && !seen.has(path)) {
+            medios.push({ path, fase });
+            seen.add(path);
           }
         });
 
@@ -1745,8 +1772,12 @@
         let ev_cats = chk.evidence_cats || {};
         for (let cat in ev_cats) {
           (ev_cats[cat] || []).forEach(m => {
-            if (typeof m === 'string') medios.push({ path: m, fase: cat });
-            else if (typeof m === 'object' && m.path) medios.push(m);
+            let path = typeof m === 'string' ? m : (m.path || '');
+            let fase = cat;
+            if (path && !seen.has(path)) {
+              medios.push({ path, fase });
+              seen.add(path);
+            }
           });
         }
       } catch (e) { console.error("Error en renderFaseMedia:", e); }
@@ -1964,7 +1995,38 @@
         contentHtml = `
           <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-6">
             <p class="text-[9px] text-blue-600 font-black uppercase tracking-widest mb-2">Estado del Vehículo</p>
-            <p class="text-sm text-gray-700 leading-relaxed">Su vehículo se encuentra en manos de nuestros técnicos. Estamos ejecutando los trabajos aprobados con la máxima precisión técnica.</p>
+            <p class="text-sm text-gray-700 leading-relaxed">Su vehículo se encuentra en manos de nuestros técnicos especializados. Estamos ejecutando todos los trabajos aprobados bajo estándares de equipo original.</p>
+          </div>
+        `;
+      } else if (phaseId === 'CONTROL') {
+        const quality = chk.quality_control || {};
+        const items = Object.entries(quality).filter(([k]) => k !== 'general_obs');
+        contentHtml = `
+          <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-6">
+            <p class="text-[9px] text-emerald-600 font-black uppercase tracking-widest mb-4">Inspección de Calidad</p>
+            ${items.length ? `
+              <div class="space-y-3">
+                ${items.map(([k, v]) => `
+                  <div class="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
+                    <span class="text-xs font-bold text-gray-700 uppercase">${k.replace(/_/g, ' ')}</span>
+                    <span class="material-icons-round ${v === 'ok' ? 'text-emerald-500' : 'text-amber-500'}">${v === 'ok' ? 'check_circle' : 'error'}</span>
+                  </div>
+                `).join('')}
+              </div>
+            ` : '<p class="text-sm text-gray-500 italic">Pruebas de ruta y verificación final en curso...</p>'}
+          </div>
+        `;
+      } else if (phaseId === 'ENTREGA') {
+        const isArchived = o.estado === 'ARCHIVADO';
+        contentHtml = `
+          <div class="text-center py-10">
+            <div class="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <span class="material-icons-round text-emerald-600 text-4xl">${isArchived ? 'task_alt' : 'local_shipping'}</span>
+            </div>
+            <h3 class="text-2xl font-black text-gray-900 mb-2">${isArchived ? '¡SERVICIO FINALIZADO!' : 'LISTO PARA ENTREGA'}</h3>
+            <p class="text-sm text-gray-600 px-6 font-medium leading-relaxed">
+              ${isArchived ? 'Su vehículo ha sido entregado correctamente conforme a los trabajos realizados. ¡Gracias por confiar en el Taller Sandoval!' : 'Los trabajos han concluido satisfactoriamente. Puede pasar a recoger su unidad en el horario establecido.'}
+            </p>
           </div>
         `;
       } else {
