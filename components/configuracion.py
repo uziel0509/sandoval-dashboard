@@ -133,8 +133,12 @@ def _qr_portal_section():
                     ui.button('Guardar URL', icon='save', on_click=lambda: (set_config('dominio_taller', url_i.value), theme.notify_success('URL Guardada'))).props('unelevated rounded color=primary shadow-sm')
 
             def update_qr():
-                base = url_i.value.strip().rstrip('/')
-                if not base: return
+                raw_val = url_i.value.strip().lower()
+                if not raw_val: return
+                
+                # Limpiar la URL si el usuario pegó el link del navegador por error
+                base = raw_val.split('/login')[0].split('/app')[0].rstrip('/')
+                
                 final_target = f"{base}/app/"
                 qr_display.source = f"https://api.qrserver.com/v1/create-qr-code/?size=400x400&data={final_target}"
                 url_display.set_text(final_target)
