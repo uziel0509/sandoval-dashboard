@@ -7,7 +7,7 @@ from nicegui import ui
 from utils.models import get_db, ItemInventario, log_actividad
 import theme
 
-CATEGORIAS = ['Repuestos', 'Filtros', 'Aceites', 'Frenos', 'Suspensión', 'Eléctrico', 'Motor', 'Transmisión', 'Servicios', 'Otros']
+CATEGORIAS = ['General', 'Repuestos', 'Filtros', 'Aceites', 'Frenos', 'Suspensión', 'Eléctrico', 'Motor', 'Transmisión', 'Servicios', 'Otros']
 TIPOS_ITEM = ['Repuesto', 'Mano de Obra', 'Servicio']
 
 def show_inventario(container):
