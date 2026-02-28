@@ -1719,7 +1719,8 @@
         { id: 'ENTREGA', label: 'Entrega', icon: 'local_shipping' }
       ];
       const ESTADOS_PLANOS = ['RECEPCIÓN', 'DIAGNÓSTICO', 'REPUESTOS', 'APROBACIÓN', 'REPARACIÓN', 'CONTROL', 'ENTREGA'];
-      const currentIdx = ESTADOS_PLANOS.indexOf(o.estado);
+      let currentIdx = ESTADOS_PLANOS.indexOf(o.estado);
+      if (o.estado === 'ARCHIVADO') currentIdx = ESTADOS_PLANOS.length;
 
       return `
         <div class="phase-grid">
@@ -2000,18 +2001,43 @@
         `;
       } else if (phaseId === 'CONTROL') {
         const quality = chk.quality_control || {};
+        const QC_LABELS = {
+          'repair_done': 'Reparación completada',
+          'parts_ok': 'Repuestos instalados',
+          'no_leaks': 'Sin fugas ni escapes',
+          'fluids_level': 'Niveles de fluidos',
+          'engine_start': 'Motor arranca correctamente',
+          'brakes_test': 'Prueba de frenos',
+          'bodywork_ok': 'Carrocería impecable',
+          'interior_ok': 'Cabina limpia / ordenada',
+          'glass_ok': 'Vidrios y lunas ok',
+          'lights_ok': 'Alumbrado funcional',
+          'tires_ok': 'Presión de neumáticos',
+          'tools_removed': 'Limpieza de herramientas',
+          'evidence_ok': 'Evidencia registrada',
+          'order_signed': 'Documentación conforme',
+          'warranty_given': 'Garantía explicada',
+          'payment_ok': 'Liquidación de pago'
+        };
         const items = Object.entries(quality).filter(([k]) => k !== 'general_obs');
         contentHtml = `
           <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-6">
-            <p class="text-[9px] text-emerald-600 font-black uppercase tracking-widest mb-4">Inspección de Calidad</p>
+            <p class="text-[9px] text-emerald-600 font-black uppercase tracking-widest mb-4">Inspección de Calidad Final</p>
             ${items.length ? `
               <div class="space-y-3">
-                ${items.map(([k, v]) => `
-                  <div class="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                    <span class="text-xs font-bold text-gray-700 uppercase">${k.replace(/_/g, ' ')}</span>
-                    <span class="material-icons-round ${v === 'ok' ? 'text-emerald-500' : 'text-amber-500'}">${v === 'ok' ? 'check_circle' : 'error'}</span>
-                  </div>
-                `).join('')}
+                ${items.map(([k, v]) => {
+          const label = QC_LABELS[k] || k.replace(/_/g, ' ');
+          const isOk = (v && (v === 'ok' || v.status === 'ok'));
+          const icon = isOk ? 'check_circle' : 'error_outline';
+          const color = isOk ? 'text-emerald-500' : 'text-rose-600 font-black';
+          const bg = isOk ? 'bg-gray-50' : 'bg-red-50';
+          return `
+                    <div class="flex items-center justify-between p-3 ${bg} rounded-2xl border border-white">
+                      <span class="text-xs font-bold text-gray-700 uppercase">${label}</span>
+                      <span class="material-icons-round ${color} ${!isOk ? 'animate-pulse' : ''}" style="font-size:20px">${icon}</span>
+                    </div>
+                  `;
+        }).join('')}
               </div>
             ` : '<p class="text-sm text-gray-500 italic">Pruebas de ruta y verificación final en curso...</p>'}
           </div>
