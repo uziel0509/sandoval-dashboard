@@ -613,10 +613,10 @@ async def api_citas_list(request: Request) -> JSONResponse:
         return user
     db = get_db()
     try:
-        citas = db.query(Cita).order_by(Cita.fecha_pnt.desc()).limit(50).all()
+        citas = db.query(Cita).order_by(Cita.id.desc()).limit(50).all()
         return json_ok([{
-            'id': c.id, 'fecha': str(c.fecha_pnt or ''),
-            'descripcion': c.descripcion or '',
+            'id': c.id, 'fecha': c.fecha_cita,
+            'descripcion': c.motivo or '',
             'estado': c.estado or '', 'placa': c.vehiculo_placa or '',
             'cliente_id': c.cliente_id or '',
         } for c in citas])
@@ -642,9 +642,10 @@ async def api_cita_create(request: Request) -> JSONResponse:
         c = Cita(
             cliente_id=body.get('cliente_id', user.get('id')),
             vehiculo_placa=body.get('placa', ''),
-            fecha_pnt=fecha,
-            descripcion=body.get('descripcion', ''),
-            estado='Pendiente',
+            fecha_cita=fecha_str,
+            hora=fecha.strftime('%H:%M'),
+            motivo=body.get('descripcion', ''),
+            estado='programada',
         )
         db.add(c)
         db.commit()
@@ -704,10 +705,10 @@ async def api_cliente_mis_citas(request: Request) -> JSONResponse:
         placa = user.get('placa', '')
         citas = db.query(Cita).filter_by(
             cliente_id=user['id']
-        ).order_by(Cita.fecha_pnt.desc()).limit(20).all()
+        ).order_by(Cita.id.desc()).limit(20).all()
         return json_ok([{
-            'id': c.id, 'fecha': str(c.fecha_pnt or ''),
-            'descripcion': c.descripcion or '',
+            'id': c.id, 'fecha': c.fecha_cita,
+            'descripcion': c.motivo or '',
             'estado': c.estado or '',
         } for c in citas])
     finally:
