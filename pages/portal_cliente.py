@@ -387,10 +387,12 @@ def _render_tracker(current_state):
                 ui.label(name).classes('text-[9px] font-black text-center whitespace-pre-wrap w-16')
 
 def _safe_json(data):
-    if not data: return []
-    if isinstance(data, list): return data
-    try: return json.loads(data)
-    except: return []
+    if not data: return {}
+    if isinstance(data, (list, dict)): return data
+    if isinstance(data, str):
+        try: return json.loads(data)
+        except: return {}
+    return {}
 
 def _view_order_details(o):
     with ui.dialog() as d, ui.card().classes('w-full max-w-lg p-0 bg-slate-50 overflow-hidden shadow-2xl rounded-t-3xl'):
@@ -481,62 +483,69 @@ def _view_order_details(o):
 
 def _render_fase_media(order, fase_nombre):
     """
-    Filtra y renderiza la evidencia de una fase específica de forma robusta.
-    Soporta: Formato dict, formato str (retrocompatibilidad), y variaciones de acentos/mayúsculas.
+    Filtra y renderiza la evidencia de una fase específica (RECEPCIÓN, DIAGNÓSTICO, REPARACIÓN).
+    Unifica fotos de order.fotos_evidencia y order.checklist_reparacion['evidence_cats'].
     """
-    import json
-    medios_raw = []
-    if not order.fotos_evidencia:
-        medios_raw = []
-    elif isinstance(order.fotos_evidencia, list):
-        medios_raw = order.fotos_evidencia
-    else:
-        try:
-            medios_raw = json.loads(order.fotos_evidencia)
-        except:
-            medios_raw = []
+    import os
+    # 1. Recoger todos los medios posibles
+    medios_sources = []
+    
+    # Fuente A: fotos_evidencia (Legacy/Recepción/Carga simple)
+    fev = order.fotos_evidencia
+    if fev:
+        if isinstance(fev, str):
+            try: fev = json.loads(fev)
+            except: fev = []
+        if isinstance(fev, list):
+            medios_sources.extend(fev)
 
-    # Normalizar nombre de fase buscado para comparación segura
+    # Fuente B: checklist_reparacion (Advanced Repair)
+    chk = _safe_json(order.checklist_reparacion)
+    ev_cats = chk.get('evidence_cats', {})
+    for cat, list_med in ev_cats.items():
+        if isinstance(list_med, list):
+            for m in list_med:
+                if isinstance(m, str): medios_sources.append({'path': m, 'fase': cat})
+                elif isinstance(m, dict): medios_sources.append(m)
+
+    # 2. Normalizar y Filtrar
     def normalize(text):
         if not text: return ""
-        t = text.upper().strip()
-        # Eliminar acentos comunes para evitar fallos de matching
+        t = str(text).upper().strip()
         replacements = {'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U'}
-        for k, v in replacements.items():
-            t = t.replace(k, v)
+        for k, v in replacements.items(): t = t.replace(k, v)
         return t
 
     fase_buscada = normalize(fase_nombre)
-    medios = []
+    final_medios = []
 
-    for m in medios_raw:
-        path = None
-        fase_item = None
+    for m in medios_sources:
+        path = m.get('path') if isinstance(m, dict) else m
+        fase_item = normalize(m.get('fase', 'RECEPCIÓN') if isinstance(m, dict) else 'RECEPCIÓN')
         
-        if isinstance(m, dict):
-            path = m.get('path')
-            fase_item = normalize(m.get('fase', 'RECEPCIÓN'))
-        elif isinstance(m, str):
-            path = m
-            # Por defecto las fotos sin fase van a RECEPCION, 
-            # pero intentamos adivinar por nombre de archivo si es posible
-            if 'DIAG' in path.upper():
-                fase_item = 'DIAGNOSTICO'
-            elif 'REP' in path.upper() or 'FIX' in path.upper():
-                fase_item = 'REPARACION'
-            else:
-                fase_item = 'RECEPCION'
+        # Heurística para strings puros
+        if isinstance(m, str):
+            if 'DIAG' in m.upper(): fase_item = 'DIAGNOSTICO'
+            elif 'REP' in m.upper() or 'FIX' in m.upper(): fase_item = 'REPARACION'
         
         if path and fase_item == fase_buscada:
-            medios.append(path)
+            final_medios.append(path)
     
-    if medios:
-        with ui.row().classes('w-full gap-2 mt-2 overflow-x-auto no-wrap p-1'):
-            for path in medios:
-                ui.image(path).classes('w-32 h-32 rounded-lg shadow-md object-cover border-2 border-white hover:scale-105 transition-transform cursor-pointer').on('click', lambda p=path: ui.open(p, '_blank'))
+    # 3. Renderizar (Imagen o Video)
+    if final_medios:
+        with ui.row().classes('w-full gap-3 mt-2 overflow-x-auto no-wrap p-2'):
+            for path in final_medios:
+                ext = os.path.splitext(path)[1].lower()
+                is_video = ext in ['.mp4', '.mov', '.avi', '.webm']
+                
+                with ui.element('div').classes('flex-shrink-0 relative'):
+                    if is_video:
+                        ui.video(path).classes('w-48 h-32 rounded-xl shadow-lg border-2 border-white')
+                    else:
+                        ui.image(path).classes('w-32 h-32 rounded-lg shadow-md object-cover border-2 border-white hover:scale-105 transition-transform cursor-pointer').on('click', lambda p=path: ui.open(p, '_blank'))
     else:
         with ui.row().classes('w-full items-center justify-center py-6 opacity-30 border-2 border-dashed border-gray-100 rounded-xl'):
-            ui.label(f'Sin fotos en {fase_nombre}').classes('text-[10px] uppercase font-bold text-gray-400')
+            ui.label(f'Sin archivos en {fase_nombre}').classes('text-[10px] uppercase font-bold text-gray-400')
 
 def _render_approval_module(order):
     """Módulo premium para que el cliente apruebe el diagnóstico y presupuesto desde su celular"""
@@ -552,11 +561,11 @@ def _render_approval_module(order):
             # --- 1. DIAGNÓSTICO ---
             ui.label('📝 INFORME DE DIAGNÓSTICO').classes('text-[10px] font-black text-gray-400 tracking-[0.2em] mb-2')
             with ui.element('div').classes('p-5 bg-white border border-gray-100 rounded-xl shadow-sm mb-4'):
-                ui.label(order.diagnostico or 'Diagnóstico técnico detallado pendiente de redacción...').classes('text-sm text-gray-700 leading-relaxed font-medium')
+                ui.label(order.diagnostico or 'Diagnóstico técnico detallado pendiente...').classes('text-sm text-gray-700 leading-relaxed font-medium whitespace-pre-wrap')
             
             # Botón Escáner si existe
             chk_data = _safe_json(order.checklist_reparacion)
-            details = chk_data.get('diagnostic_details', {}) if isinstance(chk_data, dict) else {}
+            details = chk_data.get('diagnostic_details', {})
             scanner_pdf = details.get('scanner_path')
             
             if scanner_pdf:
