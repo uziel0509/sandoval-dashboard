@@ -1855,18 +1855,37 @@
             </div>
           </div>
 
-          <!-- 3. PRESUPUESTO RESUMEN -->
+          <!-- 3. PRESUPUESTO DETALLADO -->
           <div class="premium-card p-6 mb-8 border-t-4 border-emerald-500">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">🔩 Resumen de Inversión</p>
-            <div class="total-pill bg-gradient-to-br from-emerald-600 to-emerald-800 shadow-emerald-200">
-                <div class="flex justify-between items-center">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">🔩 Desglose de Presupuesto</p>
+            
+            ${o.items && o.items.length ? `
+              <div class="space-y-3 mb-6">
+                ${o.items.map(it => `
+                  <div class="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-white">
+                    <div class="flex flex-col">
+                      <span class="text-sm font-black text-gray-800">${it.nombre || it.descripcion}</span>
+                      <span class="text-[10px] text-gray-400 font-bold">Cant: ${it.cantidad || 1} &nbsp;|&nbsp; ${it.categoria || 'Repuesto'}</span>
+                    </div>
+                    <span class="font-black text-[#274495] text-base">${fmtMoney(it.total || it.subtotal)}</span>
+                  </div>
+                `).join('')}
+                
+                <div class="total-pill bg-gradient-to-br from-emerald-600 to-emerald-800 shadow-emerald-200 mt-6">
+                  <div class="flex justify-between items-center">
                     <div>
-                        <p class="text-[9px] font-black text-white/50 tracking-widest uppercase">Importe a Autorizar</p>
-                        <p class="text-4xl font-black tracking-tighter italic">${fmtMoney(total)}</p>
+                      <p class="text-[9px] font-black text-white/50 tracking-widest uppercase">Inversión Final a Autorizar</p>
+                      <p class="text-4xl font-black tracking-tighter italic">${fmtMoney(total)}</p>
                     </div>
                     <span class="material-icons-round text-white/20" style="font-size:40px">check_circle</span>
+                  </div>
                 </div>
-            </div>
+              </div>
+            ` : `
+              <div class="text-center py-10 opacity-30">
+                <p class="text-sm font-bold text-emerald-800">Cargando presupuesto...</p>
+              </div>
+            `}
           </div>
           
           <!-- 4. GARANTÍA Y POLÍTICA -->
