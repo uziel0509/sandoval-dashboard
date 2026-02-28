@@ -108,9 +108,41 @@ def _render_header():
                 ui.icon('calendar_today', size='16px').classes('text-[#274495]')
                 ui.label(fecha).classes('text-sm font-bold text-gray-700')
             with ui.element('div').classes(
-                    'flex items-center gap-2 px-4 py-2 rounded-xl').style('background:#274495'):
-                ui.element('div').classes('w-2 h-2 rounded-full bg-green-400')
-                ui.label('Sistema activo').classes('text-xs font-bold text-white')
+                    'flex items-center gap-2 px-4 py-2 rounded-xl cursor-pointer hover:bg-blue-800 transition-colors').style('background:#274495').on('click', _show_qr_dialog):
+                ui.icon('qr_code', size='16px').classes('text-white')
+                ui.label('Portal Cliente').classes('text-xs font-bold text-white')
+
+def _show_qr_dialog():
+    from utils.models import get_config
+    import socket
+    try: host = socket.gethostbyname(socket.gethostname())
+    except: host = 'localhost'
+    
+    base_url = get_config('dominio_taller', f'http://{host}:3000').rstrip('/')
+    final_url = f"{base_url}/app/"
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=400x400&data={final_url}"
+    
+    with ui.dialog() as dlg, ui.card().classes('w-full max-w-sm bg-white p-0 rounded-[40px] overflow-hidden shadow-2xl'):
+        # Header Blue
+        with ui.column().classes('w-full bg-[#274495] p-8 items-center text-center gap-2'):
+            ui.icon('qr_code_2', size='56px', color='white')
+            ui.label('Acceso Portal Móvil').classes('text-2xl font-black text-white tracking-tighter')
+            ui.label('Mecánica Sandoval').classes('text-white/60 text-[10px] font-bold uppercase tracking-[0.2em]')
+        
+        # QR Area
+        with ui.column().classes('w-full items-center p-10 gap-6'):
+            with ui.element('div').classes('p-6 bg-slate-50 rounded-[32px] border-2 border-dashed border-gray-200'):
+                ui.image(qr_url).classes('w-44 h-44 shadow-xl border-8 border-white rounded-2xl')
+            
+            ui.label(final_url).classes('text-[9px] font-black text-blue-500 tracking-widest uppercase text-center')
+            
+            with ui.row().classes('w-full gap-2'):
+                ui.button('Imprimir', icon='print', on_click=lambda: ui.run_javascript('window.print()')).props('unelevated rounded color=gray-2 text-color=gray-8').classes('flex-1')
+                ui.button('Descargar', icon='download', on_click=lambda: ui.download(qr_url)).props('unelevated rounded color=green-6').classes('flex-1')
+        
+        ui.button('Cerrar', on_click=dlg.close).props('flat color=grey-6').classes('w-full py-4 text-[10px] font-black uppercase tracking-widest')
+    
+    dlg.open()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
