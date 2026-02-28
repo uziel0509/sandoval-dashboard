@@ -132,14 +132,18 @@ def show_portal(container):
                     
                     _render_tracker(active_order.estado)
                     
-                    # Evidencia de la fase actual (NUEVO: Se ve directo en el dashboard)
-                    with ui.column().classes('w-full mt-6 gap-2'):
-                        ui.label(f'EVIDENCIA DE {active_order.estado}').classes('text-[9px] font-black text-blue-900 tracking-widest opacity-60')
-                        _render_fase_media(active_order, active_order.estado)
+                    # ─── MÓDULO ESPECIAL DE APROBACIÓN (Fase 4) ───
+                    if active_order.estado == 'APROBACIÓN':
+                        _render_approval_module(active_order)
+                    else:
+                        # Evidencia de la fase actual (Para otras fases)
+                        with ui.column().classes('w-full mt-6 gap-2'):
+                            ui.label(f'EVIDENCIA DE {active_order.estado}').classes('text-[9px] font-black text-blue-900 tracking-widest opacity-60')
+                            _render_fase_media(active_order, active_order.estado)
 
-                    with ui.element('div').classes('mt-4 p-4 bg-gray-50 rounded-xl border border-gray-100 flex items-center gap-4'):
-                        ui.icon('info', color='blue-900', size='sm')
-                        ui.label(f'Estado: {active_order.estado} — {active_order.motivo or "Procesando vehiculo..."}').classes('text-sm text-gray-600')
+                        with ui.element('div').classes('mt-4 p-4 bg-gray-50 rounded-xl border border-gray-100 flex items-center gap-4'):
+                            ui.icon('info', color='blue-900', size='sm')
+                            ui.label(f'Estado: {active_order.estado} — {active_order.motivo or "Procesando vehiculo..."}').classes('text-sm text-gray-600')
 
             # 4. GRID CENTRAL: DATOS VEHÍCULO + COTIZACIÓN (Vertical Stack)
             with ui.column().classes('w-full gap-6 mt-4'):
@@ -533,3 +537,90 @@ def _render_fase_media(order, fase_nombre):
     else:
         with ui.row().classes('w-full items-center justify-center py-6 opacity-30 border-2 border-dashed border-gray-100 rounded-xl'):
             ui.label(f'Sin fotos en {fase_nombre}').classes('text-[10px] uppercase font-bold text-gray-400')
+
+def _render_approval_module(order):
+    """Módulo premium para que el cliente apruebe el diagnóstico y presupuesto desde su celular"""
+    with ui.column().classes('w-full mt-8 gap-6'):
+        with ui.element('div').classes('p-6 rounded-2xl border-2 border-orange-200 bg-orange-50/20 shadow-sm'):
+            with ui.row().classes('w-full items-center gap-3 mb-6'):
+                with ui.element('div').classes('w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-orange-600 shadow-sm'):
+                    ui.icon('how_to_reg', size='md')
+                with ui.column().classes('gap-0'):
+                    ui.label('CENTRO DE APROBACIÓN').classes('text-blue-900 font-black tracking-tighter text-lg')
+                    ui.label('REPORTE TÉCNICO Y PRESUPUESTO').classes('text-[9px] text-orange-700 font-bold opacity-70')
+
+            # --- 1. DIAGNÓSTICO ---
+            ui.label('📝 INFORME DE DIAGNÓSTICO').classes('text-[10px] font-black text-gray-400 tracking-[0.2em] mb-2')
+            with ui.element('div').classes('p-5 bg-white border border-gray-100 rounded-xl shadow-sm mb-4'):
+                ui.label(order.diagnostico or 'Diagnóstico técnico detallado pendiente de redacción...').classes('text-sm text-gray-700 leading-relaxed font-medium')
+            
+            # Botón Escáner si existe
+            chk_data = _safe_json(order.checklist_reparacion)
+            details = chk_data.get('diagnostic_details', {}) if isinstance(chk_data, dict) else {}
+            scanner_pdf = details.get('scanner_path')
+            
+            if scanner_pdf:
+                with ui.row().classes('w-full mb-6'):
+                    ui.button('VER REPORTE DE ESCÁNER (PDF)', icon='picture_as_pdf', 
+                              on_click=lambda: ui.open(scanner_pdf, '_blank')).classes('w-full h-14 bg-[#1a3a6b] text-white rounded-xl font-bold shadow-lg')
+
+            # Evidencia Visual (Fotos de Diagnóstico)
+            ui.label('📸 EVIDENCIA DEL DIAGNÓSTICO').classes('text-[10px] font-black text-gray-400 tracking-[0.2em] mb-2')
+            _render_fase_media(order, 'DIAGNÓSTICO')
+
+            # --- 2. COTIZACIÓN ---
+            ui.label('🔩 DETALLE DE REPUESTOS Y SERVICIOS').classes('text-[10px] font-black text-gray-400 tracking-[0.2em] mt-8 mb-2')
+            items = _safe_json(order.items_cotizacion)
+            if items:
+                total_val = 0
+                with ui.column().classes('w-full gap-2 mb-6'):
+                    for it in items:
+                        sub_v = float(it.get('total', 0) or 0)
+                        total_val += sub_v
+                        with ui.row().classes('w-full justify-between items-center p-4 bg-white border border-gray-50 rounded-xl'):
+                            with ui.column().classes('gap-0'):
+                                ui.label(it.get('nombre', it.get('item', 'Repuesto'))).classes('text-xs font-bold text-gray-800')
+                                ui.label(f"Cantidad: {it.get('cantidad', 1)}").classes('text-[9px] text-gray-400 font-bold')
+                            ui.label(f"S/ {sub_v:,.2f}").classes('text-sm font-bold text-blue-900')
+                
+                with ui.row().classes('w-full justify-between items-center p-6 bg-blue-900 text-white rounded-2xl shadow-xl mt-4'):
+                    ui.label('TOTAL A INVERTIR').classes('text-xs font-black tracking-widest')
+                    ui.label(f"S/ {total_val:,.2f}").classes('text-3xl font-black italic tracking-tighter')
+
+            # --- 3. NOTA PROFESIONAL SOBRE ADELANTO ---
+            with ui.row().classes('w-full p-5 bg-white border border-blue-100 rounded-2xl gap-4 items-start mt-8'):
+                ui.icon('info', color='blue-600', size='md')
+                with ui.column().classes('gap-1 flex-1'):
+                    ui.label('POLÍTICA DE INICIO DE TRABAJOS').classes('text-xs font-black text-blue-900')
+                    ui.label('Para dar inicio formal a la reparación, se requiere su aprobación digital en este portal. Una vez otorgada la autorización, le invitamos a comunicarse con nuestra administración para coordinar el pago del anticipo correspondiente, lo cual nos permitirá asegurar la disponibilidad de repuestos y cumplir con los plazos de entrega proyectados.').classes('text-[11px] text-gray-600 leading-relaxed font-medium')
+
+            # --- 4. ACCIÓN DE APROBACIÓN ---
+            if order.approval_status == 'aprobado':
+                with ui.row().classes('w-full p-6 bg-green-50 rounded-2xl border-2 border-green-200 items-center justify-center gap-3 mt-8'):
+                    ui.icon('check_circle', color='green-6', size='md')
+                    ui.label('PRESUPUESTO APROBADO — TRABAJOS EN CURSO').classes('text-green-700 font-black tracking-widest text-xs')
+            else:
+                async def approve_order():
+                    db_app = get_db()
+                    try:
+                        o_app = db_app.query(Orden).filter_by(consecutivo=order.consecutivo).first()
+                        if o_app:
+                            o_app.approval_status = 'aprobado'
+                            o_app.estado = 'REPARACIÓN'
+                            # Historial
+                            h_list = list(o_app.historial or [])
+                            h_list.append({
+                                'fecha': datetime.now().strftime('%Y-%m-%d %H:%M'),
+                                'accion': 'Aprobación confirmada por cliente desde móvil',
+                                'usuario': 'Cliente'
+                            })
+                            o_app.historial = h_list
+                            db_app.commit()
+                            ui.notify('PRESUPUESTO APROBADO CORRECTAMENTE', type='positive', icon='verified', position='center')
+                            ui.run_javascript('setTimeout(() => window.location.reload(), 2000)')
+                    except Exception as ex:
+                        ui.notify(f'Error al procesar: {ex}', type='negative')
+                    finally:
+                        db_app.close()
+
+                ui.button('APROBAR Y PROCEDER CON LA REPARACIÓN', icon='check_circle', on_click=approve_order).classes('w-full mt-8 bg-[#1db97a] text-white py-8 rounded-2xl shadow-2xl hover:translate-y-[-2px] transition-all font-black tracking-widest text-sm')
