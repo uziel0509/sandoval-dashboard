@@ -5,11 +5,13 @@ Programación y seguimiento de citas
 
 from nicegui import ui
 from utils.models import get_db, Cita, Cliente, log_actividad
+from utils.notifications import marcar_citas_vistas_admin
 from datetime import datetime
 import theme
 
 
 def show_citas(container):
+    marcar_citas_vistas_admin()
     with container:
         state = {'filter': 'todas'}
         

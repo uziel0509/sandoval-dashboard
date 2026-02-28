@@ -250,6 +250,22 @@ def get_client_notifications(cliente_id, placa: str) -> list:
                         'desc': 'Tu cotización está lista. Por favor revisa y aprueba el presupuesto.',
                         'tiempo': 'Pendiente de acción',
                     })
+
+        # Citas canceladas del cliente (Rechazadas por el taller)
+        citas_canceladas = db.query(Cita).filter_by(
+            cliente_id=cliente_id, estado='cancelada'
+        ).order_by(Cita.id.desc()).limit(3).all()
+        for cita in citas_canceladas:
+            notif_id = f'cita_canc_{cita.id}'
+            notifs.append({
+                'id': notif_id,
+                'nueva': notif_id not in leidas,
+                'icon_cls': 'rojo',
+                'icon': '❌',
+                'titulo': 'Cita cancelada por el taller',
+                'desc': f'El taller canceló su cita para el {cita.fecha_cita} debido a una alta demanda de reparaciones. Por favor, pruebe agendando para otro día.',
+                'tiempo': cita.fecha_cita,
+            })
     except Exception as e:
         print(f'[NOTIF_CLIENT] Error: {e}')
     finally:

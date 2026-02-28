@@ -1988,14 +1988,22 @@
   <div class="slide-up">
     <h2 class="text-xl font-black text-gray-900 mb-4">Mis Citas</h2>
     ${data.length === 0 ? '<div class="card p-10 text-center text-gray-400">Sin citas agendadas</div>' :
-          data.map(c => `
-        <div class="card p-4 mb-3">
+          data.map(c => {
+            let cancelMsg = "";
+            let cardCls = "card p-4 mb-3";
+            if (c.estado === 'cancelada') {
+              cardCls += " bg-red-50 border-red-100 opacity-80";
+              cancelMsg = `<div class="mt-2 p-2 bg-white rounded-lg border border-red-100 text-[10px] text-red-600 font-bold uppercase leading-tight tracking-tighter">⚠️ Cancelada por alta demanda en taller. Por favor, intente con otra fecha u horario.</div>`;
+            }
+            return `
+        <div class="${cardCls}">
           <div class="flex items-center justify-between mb-1">
             <p class="font-bold text-gray-800">${fmtDate(c.fecha)}</p>
             ${chip(c.estado)}
           </div>
           <p class="text-sm text-gray-500">${c.descripcion || 'Sin descripción'}</p>
-        </div>`).join('')}
+          ${cancelMsg}
+        </div>`}).join('')}
   </div>`;
     }
 
@@ -2022,7 +2030,10 @@
       const desc = document.getElementById('ag-desc').value.trim();
       if (!fecha) { toastErr('Selecciona fecha y hora'); return; }
       const r = await apiFetch('/api/citas/nueva', { method: 'POST', body: JSON.stringify({ fecha, placa, descripcion: desc, cliente_id: S.user?.id }) });
-      if (r && r.ok) { toastOk('Cita agendada exitosamente'); setPage('mis-citas'); }
+      if (r && r.ok) {
+        toastOk('¡Cita solicitada exitosamente! Por favor, espere a que administración la confirme en breve.');
+        setPage('mis-citas');
+      }
       else toastErr(r?.error || 'Error al agendar');
     }
 

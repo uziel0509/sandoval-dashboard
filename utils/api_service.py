@@ -649,6 +649,13 @@ async def api_cita_create(request: Request) -> JSONResponse:
         )
         db.add(c)
         db.commit()
+
+        # Notificar al administrador
+        try:
+            cli = db.query(Cliente).get(c.cliente_id)
+            nom = f"{cli.nombre} {cli.apellidos}".strip() if cli else "Cliente"
+            log_actividad(f"Nueva cita agendada por {nom} para el {c.fecha_cita}. Confirmar.", 'citas')
+        except: pass
         return json_ok({'ok': True, 'id': c.id}, 201)
     except Exception as e:
         db.rollback()
