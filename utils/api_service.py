@@ -752,6 +752,30 @@ async def api_cliente_aprobar(request: Request) -> JSONResponse:
         db.close()
 
 
+async def api_portal_notificaciones(request: Request) -> JSONResponse:
+    """GET /api/portal/notificaciones"""
+    user = _require_auth(request)
+    if isinstance(user, JSONResponse): return user
+    
+    from utils.notifications import get_client_notifications
+    # Nota: la placa ya no es estrictamente necesaria si buscamos por cliente_id
+    notifs = get_client_notifications(user['id'], '')
+    return json_ok(notifs)
+
+
+async def api_portal_marcar_leidas(request: Request) -> JSONResponse:
+    """POST /api/portal/notificaciones/marcar-leidas {ids: []}"""
+    user = _require_auth(request)
+    if isinstance(user, JSONResponse): return user
+    try:
+        body = await request.json()
+        ids = body.get('ids', [])
+    except: return json_err('Body inválido')
+    
+    from utils.notifications import marcar_notifs_leidas_cliente
+    marcar_notifs_leidas_cliente(user['id'], ids)
+    return json_ok({'ok': True})
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # REGISTRO DE RUTAS
@@ -781,5 +805,7 @@ def register_api_routes(app):
     app.add_api_route('/api/cliente/mis-ordenes',     api_cliente_mis_ordenes, methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/cliente/mis-citas',       api_cliente_mis_citas,   methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/cliente/aprobar',         api_cliente_aprobar,     methods=['POST', 'OPTIONS'])
+    app.add_api_route('/api/portal/notificaciones', api_portal_notificaciones, methods=['GET', 'OPTIONS'])
+    app.add_api_route('/api/portal/notificaciones/marcar-leidas', api_portal_marcar_leidas, methods=['POST', 'OPTIONS'])
 
 

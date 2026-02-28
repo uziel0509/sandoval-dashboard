@@ -218,16 +218,31 @@ def get_client_notifications(cliente_id, placa: str) -> list:
             ).order_by(Orden.fecha.desc()).first()
 
             if active_order:
+                # 1. Notificación General de Estado de Fase
                 nid_orden = f'orden_estado_{active_order.consecutivo}_{active_order.estado}'
+                
+                # Mensajes dinámicos según fase (FLORO)
+                fase_msg = {
+                    'RECEPCIÓN': 'Su vehículo ha ingresado a nuestras instalaciones y está listo para ser evaluado.',
+                    'DIAGNÓSTICO': 'Nuestros técnicos especializados están analizando el estado de su vehículo.',
+                    'REPUESTOS': 'Estamos cotizando los repuestos necesarios y verificando stock en almacén.',
+                    'APROBACIÓN': '¡Atención! Su vehículo está a la espera de su verificación del presupuesto para poder proseguir.',
+                    'REPARACIÓN': '¡Buenas noticias! Estamos ejecutando los trabajos técnicos en su vehículo.',
+                    'CONTROL': 'Estamos realizando las pruebas finales para garantizar la máxima calidad del servicio.',
+                    'ENTREGA': 'Su vehículo está listo. Puede pasar a recogerlo en nuestras instalaciones.'
+                }
+                
                 notifs.append({
                     'id': nid_orden,
                     'nueva': nid_orden not in leidas,
-                    'icon_cls': 'azul',
-                    'icon': '🔧',
-                    'titulo': f'Tu vehículo está en: {active_order.estado}',
-                    'desc': f'Orden #{active_order.consecutivo} · {active_order.motivo or ""}',
-                    'tiempo': f'Hoy · {datetime.now().strftime("%I:%M %p")}',
+                    'icon_cls': 'azul' if active_order.estado != 'APROBACIÓN' else 'naranja',
+                    'icon': '🔧' if active_order.estado != 'APROBACIÓN' else '⚠️',
+                    'titulo': f'Estado: {active_order.estado}',
+                    'desc': fase_msg.get(active_order.estado, f'Su vehículo se encuentra en fase de {active_order.estado}.'),
+                    'tiempo': f'Orden #{active_order.consecutivo} · Hoy',
                 })
+
+                # 2. Notificaciones Específicas de Aprobación
                 if active_order.approval_status == 'aprobado':
                     nid_apr = f'aprobado_{active_order.consecutivo}'
                     notifs.append({
@@ -235,20 +250,20 @@ def get_client_notifications(cliente_id, placa: str) -> list:
                         'nueva': nid_apr not in leidas,
                         'icon_cls': 'verde',
                         'icon': '✅',
-                        'titulo': 'Aprobación confirmada',
-                        'desc': 'Tu presupuesto fue aprobado y se procedió a los trabajos.',
+                        'titulo': 'Presupuesto Aceptado',
+                        'desc': 'Se ha registrado su autorización. El taller ha procedido con la reparación inmediata.',
                         'tiempo': active_order.approval_date or 'Reciente',
                     })
                 elif active_order.approval_status == 'pendiente' and active_order.estado == 'APROBACIÓN':
-                    nid_pend = f'pendiente_{active_order.consecutivo}'
+                    nid_pend = f'pendiente_det_{active_order.consecutivo}'
                     notifs.append({
                         'id': nid_pend,
                         'nueva': nid_pend not in leidas,
                         'icon_cls': 'naranja',
-                        'icon': '⚠️',
-                        'titulo': 'Aprobación pendiente',
-                        'desc': 'Tu cotización está lista. Por favor revisa y aprueba el presupuesto.',
-                        'tiempo': 'Pendiente de acción',
+                        'icon': '💰',
+                        'titulo': 'Acción Requerida: Aprobación',
+                        'desc': 'Su cotización está lista. Ingrese a ver el detalle y autorice los trabajos para continuar.',
+                        'tiempo': 'Esperando respuesta',
                     })
 
         # Citas canceladas del cliente (Rechazadas por el taller)

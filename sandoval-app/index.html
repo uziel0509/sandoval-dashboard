@@ -1077,7 +1077,53 @@
       buildNav(nav);
       const firstPage = isAdmin() ? 'dashboard' : 'mis-ordenes';
       setPage(firstPage);
+
       if ('serviceWorker' in navigator) navigator.serviceWorker.register('/app/sw.js').catch(() => { });
+
+      // Solicitar permisos de notificación si es cliente
+      if (!isAdmin() && 'Notification' in window) {
+        Notification.requestPermission();
+        // Polling de notificaciones cada 45s
+        if (window._notifTimer) clearInterval(window._notifTimer);
+        window._notifTimer = setInterval(checkNotifications, 45000);
+        setTimeout(checkNotifications, 3000); // Check inicial
+      }
+    }
+
+    async function checkNotifications() {
+      if (!S.token || !S.user || isAdmin()) return;
+      try {
+        const notifs = await apiFetch('/api/portal/notificaciones');
+        if (!notifs || !notifs.length) return;
+
+        const nuevas = notifs.filter(n => n.nueva);
+        if (nuevas.length > 0) {
+          // Mostrar notificación nativa si hay permiso
+          if (Notification.permission === 'granted') {
+            nuevas.forEach(n => {
+              const bNotif = new Notification(n.titulo, {
+                body: n.desc,
+                icon: '/assets/logo_sandoval.jpg', // Ajustar si existe logo
+                badge: '/assets/logo_sandoval.jpg',
+                vibrate: [200, 100, 200]
+              });
+              bNotif.onclick = () => { window.focus(); setPage('mis-ordenes'); };
+            });
+          }
+
+          // Marcar como leídas solo las que acabamos de "notificar" visualmente
+          const ids = nuevas.map(n => n.id);
+          await apiFetch('/api/portal/notificaciones/marcar-leidas', {
+            method: 'POST',
+            body: JSON.stringify({ ids })
+          });
+
+          // Refrescar UI si estamos en campana o lista
+          if (S.page === 'notificaciones' || S.page === 'mis-ordenes') setPage(S.page);
+        }
+      } catch (e) {
+        console.error("Notif error:", e);
+      }
     }
 
     // ─── PÁGINAS ADMIN ────────────────────────────────────
