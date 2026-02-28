@@ -510,7 +510,22 @@ def _render_approval(order, client, vehicle, token):
             </div>
             """)
 
-        # ══════════════════ 7. DECISIÓN ══════════════════
+        # ══════════════════ 7. MENSAJE PROFESIONAL (ADELANTO) ══════════════════
+        ui.html("""
+        <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
+            <div style="display: flex; gap: 12px; align-items: flex-start;">
+                <div style="font-size: 20px;">ℹ️</div>
+                <div style="flex: 1;">
+                    <div style="font-size: 11px; font-weight: 900; color: #1e40af; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">Política de Inicio de Servicios</div>
+                    <div style="font-size: 13px; color: #1e3a8a; line-height: 1.5; font-weight: 500;">
+                        Estimado cliente, una vez autorizada la reparación, le solicitamos ponerse en contacto con nuestra administración para gestionar el adelanto correspondiente. Esto nos permite el aseguramiento inmediato de los repuestos y el cumplimiento de los tiempos de entrega pactados.
+                    </div>
+                </div>
+            </div>
+        </div>
+        """)
+
+        # ══════════════════ 8. DECISIÓN ══════════════════
         with ui.element('div').classes('decision-card'):
             ui.html(f"""
             <div style="font-size:11px;font-weight:900;color:#16a34a;text-transform:uppercase;

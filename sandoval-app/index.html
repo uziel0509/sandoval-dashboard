@@ -1577,38 +1577,48 @@
     function renderFaseMedia(o, faseNombre) {
       let medios = [];
       try {
+        // Fuente A: fotos_evidencia
         let raw = o.fotos_evidencia;
         if (typeof raw === 'string' && raw.trim().startsWith('[')) raw = JSON.parse(raw);
         if (!Array.isArray(raw)) raw = raw ? [raw] : [];
+        raw.forEach(m => {
+          if (typeof m === 'object' && m.path) medios.push(m);
+          else if (typeof m === 'string') {
+            let f = 'RECEPCIÓN';
+            if (m.toUpperCase().includes('DIAG')) f = 'DIAGNÓSTICO';
+            if (m.toUpperCase().includes('REP') || m.toUpperCase().includes('FIX')) f = 'REPARACIÓN';
+            medios.push({ path: m, fase: f });
+          }
+        });
 
-        medios = raw.filter(m => {
-          if (!m) return false;
-          // Si es un objeto estructurado, comparar fase exacta
-          if (typeof m === 'object' && m.path) {
-            return m.fase === faseNombre;
-          }
-          // Si es un string (formato antiguo o carga inicial app), va solo a RECEPCIÓN
-          if (typeof m === 'string') {
-            return faseNombre === 'RECEPCIÓN';
-          }
-          return false;
-        }).map(m => (typeof m === 'object') ? m.path : m);
+        // Fuente B: checklist_reparacion
+        let chk = (typeof o.checklist_reparacion === 'string') ? JSON.parse(o.checklist_reparacion || '{}') : (o.checklist_reparacion || {});
+        let ev_cats = chk.evidence_cats || {};
+        for (let cat in ev_cats) {
+          (ev_cats[cat] || []).forEach(m => {
+            if (typeof m === 'string') medios.push({ path: m, fase: cat });
+            else if (typeof m === 'object' && m.path) medios.push(m);
+          });
+        }
       } catch (e) { console.error("Error en renderFaseMedia:", e); }
 
-      if (!medios || !medios.length) return '<div class="bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center text-gray-400 text-[10px] font-black italic uppercase tracking-widest opacity-60">Sin evidencias en esta fase</div>';
+      const normalize = (t) => (t || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      const fn = normalize(faseNombre);
+
+      const filtered = medios.filter(m => normalize(m.fase) === fn).map(m => m.path);
+
+      if (!filtered.length) return '<div class="bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center text-gray-400 text-[10px] font-black italic uppercase tracking-widest opacity-60">Sin archivos en esta fase</div>';
 
       return `
         <div class="space-y-4">
-          ${medios.map(path => {
-        if (!path) return '';
+          ${filtered.map(path => {
         const isVideo = path.toLowerCase().endsWith('.mp4') || path.toLowerCase().endsWith('.mov') || path.toLowerCase().endsWith('.webm');
         if (isVideo) {
           return `
                 <div class="media-container shadow-lg">
                   <video controls playsinline preload="metadata" class="rounded-2xl">
-                    <source src="${path}" type="video/mp4">
+                    <source src="${path}">
                   </video>
-                  <p class="text-[9px] text-white/50 absolute bottom-3 right-3 font-black tracking-widest bg-black/20 p-1 px-2 rounded-lg">VIDEO</p>
                 </div>`;
         } else {
           return `
@@ -1628,60 +1638,67 @@
 
       let contentHtml = '';
       const total = (o.items || []).reduce((s, it) => s + (it.total || it.subtotal || 0), 0);
+      const chk = (typeof o.checklist_reparacion === 'string') ? JSON.parse(o.checklist_reparacion || '{}') : (o.checklist_reparacion || {});
 
       if (phaseId === 'RECEPCIÓN') {
         const obs = o.observaciones || '';
-        let combustible = 'No especificado';
-        if (obs.toLowerCase().includes('combustible:')) {
-          const parts = obs.split(/combustible:/i);
-          combustible = parts[1].split('.')[0].split('\n')[0].trim();
+        let combustible = '—';
+        if (obs.toLowerCase().includes('combustible')) {
+          combustible = obs.split('\n').find(l => l.toLowerCase().includes('combustible')) || '—';
         }
 
         contentHtml = `
-          <p class="text-[10px] font-black text-gray-400 tracking-widest mb-3 uppercase opacity-80">Información de Entrada</p>
           <div class="space-y-4 mb-8">
              <div class="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
                <p class="text-[9px] text-[#274495] font-black uppercase tracking-widest mb-1 opacity-70">Motivo / Problema</p>
                <p class="text-base text-gray-800 font-bold leading-tight">${o.descripcion || o.motivo || 'Ingreso vehicular'}</p>
              </div>
-             
              <div class="grid grid-cols-2 gap-4">
                <div class="bg-gray-50/50 p-4 rounded-3xl border border-gray-100">
                  <p class="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Kilometraje</p>
-                 <p class="text-base font-black text-gray-900">${o.km || '—'} <span class="text-[10px] text-gray-400">KM</span></p>
+                 <p class="text-base font-black text-gray-900">${o.km || '—'} KM</p>
                </div>
                <div class="bg-gray-50/50 p-4 rounded-3xl border border-gray-100">
-                 <p class="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Combustible</p>
-                 <p class="text-base font-black text-gray-900">${combustible}</p>
+                 <p class="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Entrada</p>
+                 <p class="text-sm font-bold text-gray-800">${fmtDate(o.fecha)}</p>
                </div>
-             </div>
-             
-             <div class="bg-gray-50/50 p-4 rounded-3xl border border-gray-100 flex items-center justify-between">
-                <div>
-                  <p class="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Fecha de Ingreso</p>
-                  <p class="text-sm font-bold text-gray-800">${fmtDate(o.fecha)}</p>
-                </div>
-                <span class="material-icons-round text-blue-100" style="font-size:32px">calendar_today</span>
              </div>
           </div>
         `;
       } else if (phaseId === 'DIAGNÓSTICO') {
-        const diag = o.diagnostico || '';
+        const diagText = o.diagnostico || '';
         contentHtml = `
-          <p class="text-[10px] font-black text-gray-400 tracking-widest mb-3 uppercase opacity-80">Informe Técnico</p>
           <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-8">
             <p class="text-[9px] text-[#274495] font-black uppercase tracking-widest mb-3 opacity-70">Resultado del Diagnóstico</p>
-            <div class="text-sm text-gray-700 leading-relaxed font-medium whitespace-pre-wrap">${diag || 'El equipo técnico está finalizando la evaluación de su vehículo.'}</div>
-            ${!diag ? '<div class="mt-4 flex items-center gap-2 text-amber-600 font-bold text-[10px] uppercase"><span class="material-icons-round animate-spin text-sm">sync</span> Análisis en curso</div>' : ''}
+            <div class="text-sm text-gray-700 leading-relaxed font-medium whitespace-pre-wrap">${diagText || 'Análisis técnico en proceso...'}</div>
           </div>
         `;
       } else if (phaseId === 'REPUESTOS' || phaseId === 'APROBACIÓN') {
+        const diagText = o.diagnostico || '';
+        const sc_path = chk.diagnostic_details?.scanner_path || '';
+
         contentHtml = `
-          <p class="text-sm font-bold text-gray-700 mb-4">Detalle del Presupuesto:</p>
+          <!-- 1. DIAGNÓSTICO (Dentro de Aprobación) -->
+          <div class="bg-white p-6 rounded-3xl border-2 border-orange-50 mb-6 shadow-sm">
+            <p class="text-[9px] text-orange-600 font-black uppercase tracking-widest mb-2">✦ INFORME TÉCNICO</p>
+            <div class="text-sm text-gray-800 leading-relaxed font-bold mb-4 whitespace-pre-wrap">${diagText || 'Diagnóstico detallado registrado.'}</div>
+            
+            ${sc_path ? `
+              <button onclick="window.open('${sc_path}')" class="w-full bg-[#1a3a6b] text-white py-3.5 rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-lg mb-4">
+                <span class="material-icons-round">picture_as_pdf</span> VER REPORTE DE ESCÁNER (PDF)
+              </button>
+            ` : ''}
+
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">📸 EVIDENCIA DEL DIAGNÓSTICO</p>
+            ${renderFaseMedia(o, 'DIAGNÓSTICO')}
+          </div>
+
+          <!-- 2. PRESUPUESTO -->
+          <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 opacity-80">🔩 Detalle del Presupuesto</p>
           ${o.items && o.items.length ? `
             <div class="space-y-3 mb-6">
               ${o.items.map(it => `
-                <div class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
+                <div class="flex justify-between items-center bg-gray-50 p-3 rounded-2xl border border-gray-50">
                   <div class="flex flex-col">
                     <span class="text-sm font-bold text-gray-800">${it.nombre || it.descripcion}</span>
                     <span class="text-[10px] text-gray-400">Cant: ${it.cantidad || 1}</span>
@@ -1689,35 +1706,50 @@
                   <span class="font-black text-[#274495]">${fmtMoney(it.total || it.subtotal)}</span>
                 </div>
               `).join('')}
-              <div class="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex justify-between items-center">
-                <span class="text-xs font-black text-blue-900">TOTAL ESTIMADO</span>
-                <span class="text-xl font-black text-[#274495]">${fmtMoney(total)}</span>
+              <div class="p-5 bg-blue-900 text-white rounded-3xl flex justify-between items-center shadow-xl">
+                <div class="flex flex-col">
+                  <span class="text-[9px] font-black tracking-widest opacity-60">TOTAL INVERSIÓN</span>
+                  <span class="text-2xl font-black italic tracking-tighter">${fmtMoney(total)}</span>
+                </div>
+                <span class="material-icons-round opacity-40" style="font-size:32px">payments</span>
               </div>
             </div>
-          ` : '<p class="text-xs text-gray-400 italic mb-6">No se han cargado ítems aún.</p>'}
+          ` : '<p class="text-xs text-gray-400 italic mb-6">Cotización detallada en camino...</p>'}
           
+          <!-- 3. POLÍTICA DE ADELANTO -->
+          <div class="bg-blue-50 border border-blue-100 p-5 rounded-3xl mb-8 flex gap-3">
+             <span class="material-icons-round text-blue-600">info</span>
+             <div>
+                <p class="text-[10px] font-black text-blue-900 uppercase mb-1">Política de Inicio de Trabajos</p>
+                <p class="text-[10px] text-gray-600 leading-tight font-medium">Una vez otorgada su aprobación digital, le agradeceremos comunicarse con administración para gestionar el adelanto correspondiente, lo cual nos permitirá asegurar los repuestos y cumplir con los plazos proyectados.</p>
+             </div>
+          </div>
+
+          <!-- 4. BOTONES DE ACCIÓN (Si el estado global es APROBACIÓN) -->
           ${o.estado === 'APROBACIÓN' && phaseId === 'APROBACIÓN' ? `
-            <div class="bg-amber-50 border border-amber-200 p-5 rounded-3xl mb-6 shadow-sm">
-              <p class="text-sm text-center text-amber-900 font-bold mb-4">¿Autoriza el presupuesto para iniciar reparaciones?</p>
-              <div class="flex gap-3">
-                <button onclick="document.getElementById('phase-detail').classList.remove('open'); setTimeout(()=>document.getElementById('phase-detail').remove(),400); aprobarOrden(${o.id},false)" class="flex-1 bg-white border border-red-200 text-red-600 rounded-2xl py-4 text-sm font-bold shadow-sm">Rechazar</button>
-                <button onclick="document.getElementById('phase-detail').classList.remove('open'); setTimeout(()=>document.getElementById('phase-detail').remove(),400); aprobarOrden(${o.id},true)" class="flex-1 bg-[#274495] text-white rounded-2xl py-4 text-sm font-bold shadow-md">✓ Aprobar</button>
+            <div id="approval-box" class="bg-white border-2 border-[#1db97a33] p-6 rounded-[32px] mb-6 shadow-2xl">
+              <p class="text-base text-center text-gray-900 font-bold mb-5 italic">¿Desea autorizar esta reparación?</p>
+              <div class="flex gap-4">
+                <button onclick="aprobarOrden(${o.id},false)" class="flex-1 bg-gray-50 text-gray-400 rounded-2xl py-4 text-xs font-black uppercase">Rechazar</button>
+                <button onclick="aprobarOrden(${o.id},true)" class="flex-1 bg-[#1db97a] text-white rounded-2xl py-5 text-sm font-black shadow-xl tracking-widest active:scale-95 transition-all">✓ APROBAR</button>
               </div>
             </div>
           ` : ''}
         `;
       } else if (phaseId === 'REPARACIÓN') {
         contentHtml = `
-          <p class="text-sm font-bold text-gray-700 mb-2">Estado de la Reparación:</p>
-          <p class="text-sm text-gray-600 mb-6 bg-gray-50 p-3 rounded-xl border border-gray-100">Continuamos trabajando para dejar su vehículo en óptimas condiciones siguiendo los estándares de fábrica.</p>
+          <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-6">
+            <p class="text-[9px] text-blue-600 font-black uppercase tracking-widest mb-2">Estado del Vehículo</p>
+            <p class="text-sm text-gray-700 leading-relaxed">Su vehículo se encuentra en manos de nuestros técnicos. Estamos ejecutando los trabajos aprobados con la máxima precisión técnica.</p>
+          </div>
         `;
       } else {
-        contentHtml = `<p class="text-sm text-gray-500 italic mb-6">Detalles en preparación para esta fase.</p>`;
+        contentHtml = `<p class="text-sm text-gray-500 italic mb-6 text-center">Información en proceso para esta fase.</p>`;
       }
 
       overlay.innerHTML = `
         <div class="flex items-center p-4 border-b bg-white sticky top-0 z-50">
-          <button onclick="this.closest('.phase-detail-overlay').classList.remove('open'); setTimeout(()=>this.closest('.phase-detail-overlay').remove(),400)" class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mr-3">
+          <button onclick="this.closest('.phase-detail-overlay').classList.remove('open'); setTimeout(()=>this.closest('.phase-detail-overlay').remove(),400)" class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center mr-3 border">
             <span class="material-icons-round text-gray-600">arrow_back</span>
           </button>
           <div class="flex-1">
@@ -1725,20 +1757,23 @@
             <p class="font-black text-gray-900 leading-tight">${phaseId}</p>
           </div>
         </div>
-        <div class="flex-1 overflow-y-auto p-5 pb-20">
+        <div class="flex-1 overflow-y-auto p-5 pb-28">
           ${contentHtml}
-          <p class="text-[10px] font-black text-gray-400 tracking-widest mb-3 uppercase">Evidencia Multimedia</p>
-          ${renderFaseMedia(o, phaseId)}
+          ${phaseId !== 'APROBACIÓN' && phaseId !== 'REPUESTOS' ? `
+             <p class="text-[10px] font-black text-gray-400 tracking-widest mb-3 uppercase">Evidencia Multimedia</p>
+             ${renderFaseMedia(o, phaseId)}
+          ` : ''}
         </div>
-        <div class="absolute bottom-5 left-5 right-5">
-           <button onclick="window.open('https://wa.me/51936495143')" class="w-full bg-[#25D366] text-white rounded-2xl py-4 font-black flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all">
-             <span class="material-icons-round">chat</span> Consultar sobre esta fase
+        <div class="fixed bottom-6 left-6 right-6 z-[2100]">
+           <button onclick="window.open('https://wa.me/51936495143')" class="w-full bg-[#1db97a] text-white rounded-2xl py-4 font-black flex items-center justify-center gap-2 shadow-2xl active:scale-95 transition-all">
+             <span class="material-icons-round">chat</span> CONSULTAR SOBRE ESTA FASE
            </button>
         </div>
       `;
       document.body.appendChild(overlay);
       setTimeout(() => overlay.classList.add('open'), 10);
     }
+
 
     function showClienteOrden(o) {
       openSheet(`
