@@ -297,6 +297,94 @@
       color: white;
     }
 
+    /* ── PREMIUM APPROVAL STYLES ── */
+    .premium-card {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      border-radius: 28px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .technical-report {
+      background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+      border-left: 5px solid #274495;
+      padding: 24px;
+      position: relative;
+    }
+
+    .technical-report::after {
+      content: 'CONFIDENTIAL';
+      position: absolute;
+      top: 10px;
+      right: -20px;
+      font-size: 40px;
+      font-weight: 900;
+      color: rgba(39, 68, 149, 0.03);
+      transform: rotate(-15deg);
+      pointer-events: none;
+    }
+
+    .budget-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0 8px;
+    }
+
+    .budget-row {
+      background: #f8fafc;
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+
+    .budget-row:hover {
+      background: #f1f5f9;
+      transform: translateY(-2px);
+    }
+
+    .total-pill {
+      background: linear-gradient(135deg, #274495 0%, #1e3a8a 100%);
+      color: white;
+      padding: 24px;
+      border-radius: 24px;
+      box-shadow: 0 15px 30px -10px rgba(39, 68, 149, 0.3);
+    }
+
+    .approval-pulse {
+      animation: pulse-green 2s infinite;
+    }
+
+    @keyframes pulse-green {
+      0% {
+        box-shadow: 0 0 0 0 rgba(29, 185, 122, 0.4);
+      }
+
+      70% {
+        box-shadow: 0 0 0 15px rgba(29, 185, 122, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(29, 185, 122, 0);
+      }
+    }
+
+    .phase-detail-overlay {
+      position: fixed;
+      inset: 0;
+      background: #f1f5f9;
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .phase-detail-overlay.open {
+      transform: translateX(0);
+    }
+
     .step-label {
       font-size: 8px;
       font-weight: 800;
@@ -1678,61 +1766,104 @@
         const sc_path = chk.diagnostic_details?.scanner_path || '';
 
         contentHtml = `
-          <!-- 1. DIAGNÓSTICO (Dentro de Aprobación) -->
-          <div class="bg-white p-6 rounded-3xl border-2 border-orange-50 mb-6 shadow-sm">
-            <p class="text-[9px] text-orange-600 font-black uppercase tracking-widest mb-2">✦ INFORME TÉCNICO</p>
-            <div class="text-sm text-gray-800 leading-relaxed font-bold mb-4 whitespace-pre-wrap">${diagText || 'Diagnóstico detallado registrado.'}</div>
-            
-            ${sc_path ? `
-              <button onclick="window.open('${sc_path}')" class="w-full bg-[#1a3a6b] text-white py-3.5 rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-lg mb-4">
-                <span class="material-icons-round">picture_as_pdf</span> VER REPORTE DE ESCÁNER (PDF)
-              </button>
-            ` : ''}
-
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">📸 EVIDENCIA DEL DIAGNÓSTICO</p>
-            ${renderFaseMedia(o, 'DIAGNÓSTICO')}
+          <!-- 1. HEADER SECCIÓN -->
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-700 shadow-sm">
+              <span class="material-icons-round">verified_user</span>
+            </div>
+            <div>
+              <h3 class="text-lg font-black text-gray-900 leading-none">Aprobación de Servicio</h3>
+              <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Revisión Técnica y de Presupuesto</p>
+            </div>
           </div>
 
-          <!-- 2. PRESUPUESTO -->
-          <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 opacity-80">🔩 Detalle del Presupuesto</p>
-          ${o.items && o.items.length ? `
-            <div class="space-y-3 mb-6">
-              ${o.items.map(it => `
-                <div class="flex justify-between items-center bg-gray-50 p-3 rounded-2xl border border-gray-50">
-                  <div class="flex flex-col">
-                    <span class="text-sm font-bold text-gray-800">${it.nombre || it.descripcion}</span>
-                    <span class="text-[10px] text-gray-400">Cant: ${it.cantidad || 1}</span>
-                  </div>
-                  <span class="font-black text-[#274495]">${fmtMoney(it.total || it.subtotal)}</span>
-                </div>
-              `).join('')}
-              <div class="p-5 bg-blue-900 text-white rounded-3xl flex justify-between items-center shadow-xl">
-                <div class="flex flex-col">
-                  <span class="text-[9px] font-black tracking-widest opacity-60">TOTAL INVERSIÓN</span>
-                  <span class="text-2xl font-black italic tracking-tighter">${fmtMoney(total)}</span>
-                </div>
-                <span class="material-icons-round opacity-40" style="font-size:32px">payments</span>
+          <!-- 2. INFORME TÉCNICO PROFESIONAL -->
+          <div class="premium-card mb-8">
+            <div class="technical-report">
+              <div class="flex items-center justify-between mb-4">
+                <p class="text-[9px] text-[#274495] font-black uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full border border-blue-100 inline-block">Informe del Especialista</p>
+                <span class="material-icons-round text-blue-900 opacity-20" style="font-size:32px">engineering</span>
               </div>
+              <div class="text-base text-gray-800 leading-relaxed font-semibold italic whitespace-pre-wrap mb-4">"${diagText || 'Se ha completado la inspección detallada del vehículo.'}"</div>
+              
+              ${sc_path ? `
+                <button onclick="window.open('${sc_path}')" class="w-full bg-[#1e293b] text-white py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-xl hover:bg-black transition-all mb-4">
+                  <span class="material-icons-round">analytics</span> DESCARGAR REPORTE ELECTRÓNICO (PDF)
+                </button>
+              ` : ''}
+
+              <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 border-t pt-4">📸 Evidencia del Hallazgo</p>
+              ${renderFaseMedia(o, 'DIAGNÓSTICO')}
             </div>
-          ` : '<p class="text-xs text-gray-400 italic mb-6">Cotización detallada en camino...</p>'}
+          </div>
+
+          <!-- 3. PRESUPUESTO DETALLADO -->
+          <div class="premium-card p-6 mb-8 border-t-4 border-blue-900">
+            <div class="flex items-center justify-between mb-2">
+              <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">🔩 Presupuesto Detallado</p>
+              <p class="text-[10px] font-black text-blue-900 bg-blue-50 px-2 py-1 rounded">Válido por 3 días</p>
+            </div>
+            
+            ${o.items && o.items.length ? `
+              <div class="space-y-3 mb-6">
+                ${o.items.map(it => `
+                  <div class="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-white hover:border-blue-100 transition-all">
+                    <div class="flex flex-col">
+                      <span class="text-sm font-black text-gray-800">${it.nombre || it.descripcion}</span>
+                      <span class="text-[10px] text-gray-400 font-bold">Unidades: ${it.cantidad || 1} &nbsp;|&nbsp; Cat: ${it.categoria || 'Repuesto'}</span>
+                    </div>
+                    <span class="font-black text-[#274495] text-base">${fmtMoney(it.total || it.subtotal)}</span>
+                  </div>
+                `).join('')}
+                
+                <div class="total-pill mt-8">
+                  <div class="flex justify-between items-end">
+                    <div>
+                      <p class="text-[10px] font-black text-white/60 tracking-widest uppercase mb-1">Inversión Total Autorizada</p>
+                      <p class="text-3xl font-black tracking-tighter italic">${fmtMoney(total)}</p>
+                      <p class="text-[9px] text-white/40 mt-1 uppercase font-bold tracking-widest">Incluye IGV 18% y Mano de Obra</p>
+                    </div>
+                    <div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-md">
+                      <span class="material-icons-round">shopping_cart_checkout</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ` : `
+              <div class="text-center py-10 opacity-40">
+                <span class="material-icons-round text-5xl mb-2">receipt_long</span>
+                <p class="text-xs font-bold">Consolidando cotización de repuestos...</p>
+              </div>
+            `}
+          </div>
           
-          <!-- 3. POLÍTICA DE ADELANTO -->
-          <div class="bg-blue-50 border border-blue-100 p-5 rounded-3xl mb-8 flex gap-3">
-             <span class="material-icons-round text-blue-600">info</span>
-             <div>
-                <p class="text-[10px] font-black text-blue-900 uppercase mb-1">Política de Inicio de Trabajos</p>
-                <p class="text-[10px] text-gray-600 leading-tight font-medium">Una vez otorgada su aprobación digital, le agradeceremos comunicarse con administración para gestionar el adelanto correspondiente, lo cual nos permitirá asegurar los repuestos y cumplir con los plazos proyectados.</p>
+          <!-- 4. GARANTÍA Y POLÍTICA -->
+          <div class="bg-blue-50/50 border border-blue-100/50 p-6 rounded-[32px] mb-8 relative overflow-hidden">
+             <div class="absolute -right-4 -bottom-4 opacity-5 rotate-12">
+               <span class="material-icons-round" style="font-size:120px">verified_user</span>
+             </div>
+             <div class="flex gap-4 relative z-10">
+                <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0 shadow-sm">
+                  <span class="material-icons-round" style="font-size:20px">info</span>
+                </div>
+                <div>
+                  <p class="text-xs font-black text-blue-900 uppercase tracking-widest mb-1">Compromiso Sandoval</p>
+                  <p class="text-[11px] text-gray-600 leading-relaxed font-medium">Trabajamos bajo estándares de fábrica para asegurar la durabilidad de su vehículo. Para proceder con la orden de compra de repuestos y asignación de turno técnico, se requiere la autorización digital y la coordinación previa del adelanto con nuestra administración.</p>
+                </div>
              </div>
           </div>
 
-          <!-- 4. BOTONES DE ACCIÓN (Si el estado global es APROBACIÓN) -->
+          <!-- 5. PANEL DE ACCIÓN (Si el estado global es APROBACIÓN) -->
           ${o.estado === 'APROBACIÓN' && phaseId === 'APROBACIÓN' ? `
-            <div id="approval-box" class="bg-white border-2 border-[#1db97a33] p-6 rounded-[32px] mb-6 shadow-2xl">
-              <p class="text-base text-center text-gray-900 font-bold mb-5 italic">¿Desea autorizar esta reparación?</p>
+            <div id="approval-box" class="premium-card p-8 mb-10 border-t-4 border-emerald-500 shadow-2xl scale-105 transform origin-top">
+              <h4 class="text-center text-gray-900 font-black text-base italic mb-6">¿Desea formalizar la orden de servicio?</h4>
               <div class="flex gap-4">
-                <button onclick="aprobarOrden(${o.id},false)" class="flex-1 bg-gray-50 text-gray-400 rounded-2xl py-4 text-xs font-black uppercase">Rechazar</button>
-                <button onclick="aprobarOrden(${o.id},true)" class="flex-1 bg-[#1db97a] text-white rounded-2xl py-5 text-sm font-black shadow-xl tracking-widest active:scale-95 transition-all">✓ APROBAR</button>
+                <button onclick="aprobarOrden(${o.id},false)" class="flex-1 bg-gray-100 text-gray-400 rounded-2xl py-4 text-[10px] font-black uppercase tracking-widest active:bg-gray-200 transition-all">Posponer</button>
+                <button onclick="aprobarOrden(${o.id},true)" class="flex-1 bg-[#1db97a] text-white rounded-2xl py-5 text-sm font-black shadow-xl tracking-widest active:scale-95 transition-all approval-pulse">
+                  APROBAR AHORA
+                </button>
               </div>
+              <p class="text-[9px] text-gray-400 text-center mt-6 font-bold uppercase tracking-tighter opacity-70">Al aprobar, usted acepta los términos y la cotización adjunta</p>
             </div>
           ` : ''}
         `;
