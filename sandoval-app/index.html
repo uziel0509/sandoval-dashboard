@@ -1761,7 +1761,51 @@
             <div class="text-sm text-gray-700 leading-relaxed font-medium whitespace-pre-wrap">${diagText || 'Análisis técnico en proceso...'}</div>
           </div>
         `;
-      } else if (phaseId === 'REPUESTOS' || phaseId === 'APROBACIÓN') {
+      } else if (phaseId === 'REPUESTOS') {
+        contentHtml = `
+          <!-- HEADER REPUESTOS -->
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 shadow-sm">
+              <span class="material-icons-round">inventory_2</span>
+            </div>
+            <div>
+              <h3 class="text-lg font-black text-gray-900 leading-none">Presupuesto Estimado</h3>
+              <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Desglose de Repuestos y Servicios</p>
+            </div>
+          </div>
+
+          <!-- TABLA DE ITEMS -->
+          <div class="premium-card p-6 mb-8 border-t-4 border-blue-900">
+            ${o.items && o.items.length ? `
+              <div class="space-y-3 mb-6">
+                ${o.items.map(it => `
+                  <div class="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-white">
+                    <div class="flex flex-col">
+                      <span class="text-sm font-black text-gray-800">${it.nombre || it.descripcion}</span>
+                      <span class="text-[10px] text-gray-400 font-bold">Cant: ${it.cantidad || 1} &nbsp;|&nbsp; ${it.categoria || 'Servicio'}</span>
+                    </div>
+                    <span class="font-black text-[#274495] text-base">${fmtMoney(it.total || it.subtotal)}</span>
+                  </div>
+                `).join('')}
+                
+                <div class="total-pill mt-8">
+                  <div class="flex justify-between items-end">
+                    <div>
+                      <p class="text-[10px] font-black text-white/60 tracking-widest uppercase mb-1">Total Presupuestado</p>
+                      <p class="text-3xl font-black tracking-tighter italic">${fmtMoney(total)}</p>
+                    </div>
+                    <span class="material-icons-round text-white/20" style="font-size:48px">payments</span>
+                  </div>
+                </div>
+              </div>
+            ` : `
+              <div class="text-center py-10 opacity-30">
+                <p class="text-sm font-bold">Consolidando presupuesto...</p>
+              </div>
+            `}
+          </div>
+        `;
+      } else if (phaseId === 'APROBACIÓN') {
         const diagText = o.diagnostico || '';
         const sc_path = chk.diagnostic_details?.scanner_path || '';
 
@@ -1772,8 +1816,8 @@
               <span class="material-icons-round">verified_user</span>
             </div>
             <div>
-              <h3 class="text-lg font-black text-gray-900 leading-none">Aprobación de Servicio</h3>
-              <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Revisión Técnica y de Presupuesto</p>
+              <h3 class="text-lg font-black text-gray-900 leading-none">Centro de Aprobación</h3>
+              <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Informe Técnico y Financiero</p>
             </div>
           </div>
 
@@ -1781,89 +1825,58 @@
           <div class="premium-card mb-8">
             <div class="technical-report">
               <div class="flex items-center justify-between mb-4">
-                <p class="text-[9px] text-[#274495] font-black uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full border border-blue-100 inline-block">Informe del Especialista</p>
-                <span class="material-icons-round text-blue-900 opacity-20" style="font-size:32px">engineering</span>
+                <p class="text-[9px] text-[#274495] font-black uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full border border-blue-100 inline-block">Diagnóstico Final</p>
               </div>
-              <div class="text-base text-gray-800 leading-relaxed font-semibold italic whitespace-pre-wrap mb-4">"${diagText || 'Se ha completado la inspección detallada del vehículo.'}"</div>
+              <div class="text-base text-gray-800 leading-relaxed font-semibold italic whitespace-pre-wrap mb-4">"${diagText || 'Se ha completado la inspección detallada.'}"</div>
               
               ${sc_path ? `
                 <button onclick="window.open('${sc_path}')" class="w-full bg-[#1e293b] text-white py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-xl hover:bg-black transition-all mb-4">
-                  <span class="material-icons-round">analytics</span> DESCARGAR REPORTE ELECTRÓNICO (PDF)
+                  <span class="material-icons-round">analytics</span> VER REPORTE ELECTRÓNICO
                 </button>
               ` : ''}
 
-              <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 border-t pt-4">📸 Evidencia del Hallazgo</p>
+              <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 border-t pt-4">📸 Evidencia Multimedia</p>
               ${renderFaseMedia(o, 'DIAGNÓSTICO')}
             </div>
           </div>
 
-          <!-- 3. PRESUPUESTO DETALLADO -->
-          <div class="premium-card p-6 mb-8 border-t-4 border-blue-900">
-            <div class="flex items-center justify-between mb-2">
-              <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">🔩 Presupuesto Detallado</p>
-              <p class="text-[10px] font-black text-blue-900 bg-blue-50 px-2 py-1 rounded">Válido por 3 días</p>
-            </div>
-            
-            ${o.items && o.items.length ? `
-              <div class="space-y-3 mb-6">
-                ${o.items.map(it => `
-                  <div class="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-white hover:border-blue-100 transition-all">
-                    <div class="flex flex-col">
-                      <span class="text-sm font-black text-gray-800">${it.nombre || it.descripcion}</span>
-                      <span class="text-[10px] text-gray-400 font-bold">Unidades: ${it.cantidad || 1} &nbsp;|&nbsp; Cat: ${it.categoria || 'Repuesto'}</span>
-                    </div>
-                    <span class="font-black text-[#274495] text-base">${fmtMoney(it.total || it.subtotal)}</span>
-                  </div>
-                `).join('')}
-                
-                <div class="total-pill mt-8">
-                  <div class="flex justify-between items-end">
+          <!-- 3. PRESUPUESTO RESUMEN -->
+          <div class="premium-card p-6 mb-8 border-t-4 border-emerald-500">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">🔩 Resumen de Inversión</p>
+            <div class="total-pill bg-gradient-to-br from-emerald-600 to-emerald-800 shadow-emerald-200">
+                <div class="flex justify-between items-center">
                     <div>
-                      <p class="text-[10px] font-black text-white/60 tracking-widest uppercase mb-1">Inversión Total Autorizada</p>
-                      <p class="text-3xl font-black tracking-tighter italic">${fmtMoney(total)}</p>
-                      <p class="text-[9px] text-white/40 mt-1 uppercase font-bold tracking-widest">Incluye IGV 18% y Mano de Obra</p>
+                        <p class="text-[9px] font-black text-white/50 tracking-widest uppercase">Importe a Autorizar</p>
+                        <p class="text-4xl font-black tracking-tighter italic">${fmtMoney(total)}</p>
                     </div>
-                    <div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-md">
-                      <span class="material-icons-round">shopping_cart_checkout</span>
-                    </div>
-                  </div>
+                    <span class="material-icons-round text-white/20" style="font-size:40px">check_circle</span>
                 </div>
-              </div>
-            ` : `
-              <div class="text-center py-10 opacity-40">
-                <span class="material-icons-round text-5xl mb-2">receipt_long</span>
-                <p class="text-xs font-bold">Consolidando cotización de repuestos...</p>
-              </div>
-            `}
+            </div>
           </div>
           
           <!-- 4. GARANTÍA Y POLÍTICA -->
-          <div class="bg-blue-50/50 border border-blue-100/50 p-6 rounded-[32px] mb-8 relative overflow-hidden">
-             <div class="absolute -right-4 -bottom-4 opacity-5 rotate-12">
-               <span class="material-icons-round" style="font-size:120px">verified_user</span>
-             </div>
-             <div class="flex gap-4 relative z-10">
-                <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0 shadow-sm">
+          <div class="bg-blue-50/50 border border-blue-100/50 p-6 rounded-[32px] mb-8 relative">
+             <div class="flex gap-4">
+                <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
                   <span class="material-icons-round" style="font-size:20px">info</span>
                 </div>
                 <div>
-                  <p class="text-xs font-black text-blue-900 uppercase tracking-widest mb-1">Compromiso Sandoval</p>
-                  <p class="text-[11px] text-gray-600 leading-relaxed font-medium">Trabajamos bajo estándares de fábrica para asegurar la durabilidad de su vehículo. Para proceder con la orden de compra de repuestos y asignación de turno técnico, se requiere la autorización digital y la coordinación previa del adelanto con nuestra administración.</p>
+                  <p class="text-xs font-black text-blue-900 uppercase tracking-widest mb-1">Nota Importante</p>
+                  <p class="text-[11px] text-gray-600 leading-relaxed font-medium">Una vez otorgada la autorización, coordine el adelanto con administración al 924980586 para iniciar los trabajos.</p>
                 </div>
              </div>
           </div>
 
-          <!-- 5. PANEL DE ACCIÓN (Si el estado global es APROBACIÓN) -->
-          ${o.estado === 'APROBACIÓN' && phaseId === 'APROBACIÓN' ? `
+          <!-- 5. PANEL DE ACCIÓN -->
+          ${o.estado === 'APROBACIÓN' ? `
             <div id="approval-box" class="premium-card p-8 mb-10 border-t-4 border-emerald-500 shadow-2xl scale-105 transform origin-top">
-              <h4 class="text-center text-gray-900 font-black text-base italic mb-6">¿Desea formalizar la orden de servicio?</h4>
+              <h4 class="text-center text-gray-900 font-black text-base italic mb-6">¿Autoriza el inicio de los trabajos?</h4>
               <div class="flex gap-4">
-                <button onclick="aprobarOrden('${o.consecutivo}',false)" class="flex-1 bg-gray-100 text-gray-400 rounded-2xl py-4 text-[10px] font-black uppercase tracking-widest active:bg-gray-200 transition-all">Posponer</button>
-                <button onclick="aprobarOrden('${o.consecutivo}',true)" class="flex-1 bg-[#1db97a] text-white rounded-2xl py-5 text-sm font-black shadow-xl tracking-widest active:scale-95 transition-all approval-pulse">
-                  APROBAR AHORA
+                <button onclick="aprobarOrden('${o.consecutivo}',false)" class="flex-1 bg-gray-100 text-gray-400 rounded-2xl py-4 text-[10px] font-black uppercase tracking-widest">Posponer</button>
+                <button onclick="aprobarOrden('${o.consecutivo}',true)" class="flex-1 bg-emerald-500 text-white rounded-2xl py-5 text-sm font-black shadow-xl tracking-widest active:scale-95 transition-all">
+                  AUTORIZAR AHORA
                 </button>
               </div>
-              <p class="text-[9px] text-gray-400 text-center mt-6 font-bold uppercase tracking-tighter opacity-70">Al aprobar, usted acepta los términos y la cotización adjunta</p>
             </div>
           ` : ''}
         `;
