@@ -41,8 +41,8 @@ try:
     init_db()
     log_boot("Base de datos SQLite inicializada")
     
-    migrate_json_to_db()
-    log_boot("Migración JSON completada")
+    # migrate_json_to_db()
+    # log_boot("Migración JSON completada")
     
     import theme
     log_boot("Theme importado")
