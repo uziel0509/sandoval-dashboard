@@ -97,6 +97,9 @@ def _sistema_form():
             ui.label('Auth: Login con roles (Admin/Técnico/Recepcionista)').classes('text-gray-600')
             ui.label('© 2026 MECÁNICA Y REPUESTOS SANDOVAL EIRL').classes('text-gray-400 text-sm mt-4')
 
+from utils.pdf_generator import generate_pdf
+import os
+
 def _qr_portal_section():
     # Intentar detectar la URL actual de forma inteligente
     import socket
@@ -128,8 +131,16 @@ def _qr_portal_section():
                 qr_display = ui.image().classes('w-48 h-48 shadow-2xl border-8 border-white rounded-2xl cursor-pointer hover:scale-105 transition-transform').style('background:white;')
                 url_display = ui.label().classes('text-[10px] font-black text-blue-500 mt-6 tracking-widest uppercase')
                 
+                async def download_flyer():
+                    base = url_i.value.strip().rstrip('/')
+                    pdf_path = f"pdfs/flyer_qr_portal.pdf"
+                    # Llamamos a generate_pdf con tipo qr_flyer
+                    generate_pdf({'qr_url': qr_display.source}, {}, {}, 'qr_flyer', pdf_path)
+                    ui.download(pdf_path)
+                    theme.notify_success('Flyer PDF generado con éxito')
+
                 with ui.row().classes('mt-8 gap-3'):
-                    ui.button('Descargar QR', icon='download', on_click=lambda: ui.download(qr_display.source)).props('unelevated rounded color=green-6 shadow-sm')
+                    ui.button('Descargar Flyer PDF', icon='picture_as_pdf', on_click=download_flyer).props('unelevated rounded color=red-7 shadow-sm')
                     ui.button('Guardar URL', icon='save', on_click=lambda: (set_config('dominio_taller', url_i.value), theme.notify_success('URL Guardada'))).props('unelevated rounded color=primary shadow-sm')
 
             def update_qr():

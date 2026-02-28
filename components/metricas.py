@@ -138,7 +138,14 @@ def _show_qr_dialog():
             
             with ui.row().classes('w-full gap-2'):
                 ui.button('Imprimir', icon='print', on_click=lambda: ui.run_javascript('window.print()')).props('unelevated rounded color=gray-2 text-color=gray-8').classes('flex-1')
-                ui.button('Descargar', icon='download', on_click=lambda: ui.download(qr_url)).props('unelevated rounded color=green-6').classes('flex-1')
+                
+                async def download_flyer():
+                    from utils.pdf_generator import generate_pdf
+                    pdf_path = f"pdfs/flyer_qr_dashboard.pdf"
+                    generate_pdf({'qr_url': qr_url}, {}, {}, 'qr_flyer', pdf_path)
+                    ui.download(pdf_path)
+                
+                ui.button('Flyer PDF', icon='picture_as_pdf', on_click=download_flyer).props('unelevated rounded color=red-7').classes('flex-1')
         
         ui.button('Cerrar', on_click=dlg.close).props('flat color=grey-6').classes('w-full py-4 text-[10px] font-black uppercase tracking-widest')
     

@@ -640,6 +640,130 @@ def generate_list_report(title: str, headers: list, data: list, filepath: str):
     return filepath
 
 
+def generate_qr_flyer(qr_data_url: str, filepath: str):
+    """
+    Genera un PDF 'Flyer' ultra profesional con el código QR para el portal del cliente.
+    """
+    import urllib.request
+    from reportlab.lib.pagesizes import A4
+    
+    styles = _get_styles()
+    doc = SimpleDocTemplate(
+        filepath, pagesize=A4,
+        leftMargin=20*mm, rightMargin=20*mm,
+        topMargin=20*mm, bottomMargin=20*mm
+    )
+
+    elements = []
+    
+    # 1. LOGO PRINCIPAL (Grande y centrado)
+    logo_path = 'assets/logo_sandoval.jpg'
+    if os.path.exists(logo_path):
+        elements.append(Image(logo_path, width=60*mm, height=60*mm))
+        elements.append(Spacer(1, 10*mm))
+    
+    # 2. TÍTULO DE BIENVENIDA
+    title_style = ParagraphStyle(
+        'FlyerTitle',
+        parent=styles['SandovalTitle'],
+        fontSize=28,
+        alignment=TA_CENTER,
+        leading=34,
+        textColor=SANDOVAL_BLUE
+    )
+    elements.append(Paragraph('BIENVENIDOS A<br/>MECÁNICA Y REPUESTOS SANDOVAL', title_style))
+    elements.append(Spacer(1, 8*mm))
+    
+    # 3. MENSAJE DE MARKETING (FLORO)
+    body_style = ParagraphStyle(
+        'FlyerBody',
+        parent=styles['SandovalBody'],
+        fontSize=14,
+        alignment=TA_CENTER,
+        leading=18,
+        textColor=SANDOVAL_DARK
+    )
+    marketing_text = (
+        "Su confianza es nuestro motor. En nuestro taller, la <b>transparencia</b> es primordial. "
+        "Hemos diseñado un sistema exclusivo para que usted tenga el control total de su servicio."
+    )
+    elements.append(Paragraph(marketing_text, body_style))
+    elements.append(Spacer(1, 10*mm))
+    
+    # 4. INSTRUCCIONES
+    inst_style = ParagraphStyle(
+        'FlyerInst',
+        parent=styles['SandovalBody'],
+        fontSize=12,
+        alignment=TA_CENTER,
+        textColor=SANDOVAL_GRAY
+    )
+    elements.append(Paragraph("Escanee este código QR para acceder a nuestro <b>Portal de Clientes</b> y visualice en tiempo real:", inst_style))
+    elements.append(Spacer(1, 6*mm))
+    
+    # 5. BENEFICIOS (Lista)
+    benefit_style = ParagraphStyle(
+        'FlyerBenefit',
+        parent=styles['SandovalBody'],
+        fontSize=11,
+        alignment=TA_LEFT,
+        leftIndent=40*mm,
+        leading=14
+    )
+    benefits = [
+        "✅ Diagnóstico detallado con reporte de escáner.",
+        "📸 Evidencia fotográfica de los trabajos realizados.",
+        "💰 Presupuestos claros y aprobaciones inmediatas.",
+        "🚀 Seguimiento de las 7 fases de su reparación."
+    ]
+    for b in benefits:
+        elements.append(Paragraph(b, benefit_style))
+        elements.append(Spacer(1, 2*mm))
+    
+    elements.append(Spacer(1, 12*mm))
+    
+    # 6. EL CÓDIGO QR (Centrado y de buen tamaño)
+    # Descargar la imagen del QR temporalmente
+    temp_qr = "pdfs/temp_qr.png"
+    try:
+        urllib.request.urlretrieve(qr_data_url, temp_qr)
+        qr_img = Image(temp_qr, width=85*mm, height=85*mm)
+        
+        # Tabla para centrar el QR
+        qr_table = Table([[qr_img]], colWidths=[170*mm])
+        qr_table.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            # Borde elegante alrededor del QR
+            ('BOX', (0,0), (-1,-1), 2, SANDOVAL_BLUE),
+            ('TOPPADDING', (0,0), (-1,-1), 5*mm),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5*mm),
+        ]))
+        elements.append(qr_table)
+    except Exception as e:
+        elements.append(Paragraph(f"Error al cargar QR: {str(e)}", styles['SandovalBody']))
+    
+    elements.append(Spacer(1, 10*mm))
+    elements.append(Paragraph("¡Llevamos la tecnología al cuidado de su vehículo!", body_style))
+    
+    # 7. FOOTER
+    elements.append(Spacer(1, 15*mm))
+    line = HRFlowable(width="100%", thickness=1, color=SANDOVAL_BLUE, spaceBefore=1, spaceAfter=5)
+    elements.append(line)
+    
+    footer_text = "<b>SANDOVAL Dashboard v2.0</b>  |  Atención: +51 924 980 586  |  Piura, Perú"
+    elements.append(Paragraph(footer_text, styles['SandovalFooter']))
+
+    doc.build(elements)
+    
+    # Limpiar temporal
+    if os.path.exists(temp_qr):
+        try: os.remove(temp_qr)
+        except: pass
+        
+    return filepath
+
+
 def generate_pdf(order: dict, client: dict, vehicle: dict, pdf_type: str, filepath: str):
     """
     Controlador central para generar diferentes tipos de PDF (Ingreso, Cotización, Factura)
@@ -657,5 +781,9 @@ def generate_pdf(order: dict, client: dict, vehicle: dict, pdf_type: str, filepa
     elif pdf_type == 'factura':
         items = (order.get('items_cotizacion', []) or [])
         return generate_factura(order, client, items, filepath, 'BOLETA DE VENTA')
+    elif pdf_type == 'qr_flyer':
+        # En este caso, order se usa para pasar la URL del QR
+        url = order.get('qr_url')
+        return generate_qr_flyer(url, filepath)
     else:
         raise ValueError(f"Tipo de PDF no reconocido: {pdf_type}")
