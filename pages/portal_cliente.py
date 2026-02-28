@@ -477,7 +477,7 @@ def _view_order_details(o):
 
             # Botón de contactar si está en etapas avanzadas
             with ui.row().classes('w-full mt-4'):
-                ui.button('CONSULTAR POR WHATSAPP', icon='chat').props('unelevated color=green-6').classes('w-full h-14 rounded-2xl font-black text-sm')
+                ui.button('CONSULTAR POR WHATSAPP', icon='chat', on_click=lambda: ui.open('https://wa.me/51924980586')).props('unelevated color=green-6').classes('w-full h-14 rounded-2xl font-black text-sm')
 
         d.open()
 
@@ -635,7 +635,8 @@ def _render_approval_module(order):
                             o_app.historial = h_list
                             db_app.commit()
                             ui.notify('PRESUPUESTO AUTORIZADO CORRECTAMENTE', type='positive', icon='verified', position='center')
-                            ui.run_javascript('setTimeout(() => window.location.reload(), 2000)')
+                            # Redirigir a WhatsApp
+                            ui.run_javascript(f'setTimeout(() => window.location.href = "https://wa.me/51924980586?text=Hola,%20acabo%20de%20aprobar%20mi%20presupuesto%20desde%20el%20portal%20móvil%20(Orden%20{order.consecutivo.replace("#","%23")})", 2000)')
                     except Exception as ex:
                         ui.notify(f'Error al procesar: {ex}', type='negative')
                     finally:

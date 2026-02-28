@@ -176,7 +176,7 @@ def _render_already_responded(order, client, vehicle):
             with ui.row().classes('w-full justify-center gap-4'):
                 if order.approval_status == 'aprobado' and order.pdf_cotizacion:
                     ui.button('DESCARGAR PRESUPUESTO PDF', on_click=lambda: ui.download(order.pdf_cotizacion)).classes('bg-emerald-500 text-white font-black px-8 py-4 rounded-2xl shadow-lg')
-                ui.button('CONTACTAR POR WHATSAPP', on_click=lambda: ui.open('https://wa.me/51936495143')).classes('bg-slate-900 text-white font-black px-8 py-4 rounded-2xl')
+                ui.button('CONTACTAR POR WHATSAPP', on_click=lambda: ui.open('https://wa.me/51924980586')).classes('bg-slate-900 text-white font-black px-8 py-4 rounded-2xl')
 
 
 def _render_approval(order, client, vehicle, token):
@@ -314,7 +314,7 @@ def _render_approval(order, client, vehicle, token):
         ui.html('<div style="text-align:center;opacity:0.3;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:40px;">Mecánica y Repuestos Sandoval EIRL &nbsp;|&nbsp; RUC 20601234567</div>')
 
     # Float Support
-    ui.html('<a href="https://wa.me/51936495143" class="support-float"><span class="material-icons-round">whatsapp</span> APOYO EN LÍNEA</a>')
+    ui.html('<a href="https://wa.me/51924980586" class="support-float"><span class="material-icons-round">whatsapp</span> APOYO EN LÍNEA</a>')
 
 
 def _ifield_premium(label, value):
@@ -360,7 +360,13 @@ def _process_response(token: str, status: str, comentario: str = ''):
 
         log_actividad(f'Orden {o.consecutivo} {status} via web', 'ordenes')
         db.commit()
-        ui.notify('Su respuesta ha sido registrada. Muchas gracias.', type='positive')
-        ui.run_javascript('location.reload()')
+        
+        if status == 'aprobado':
+            ui.notify('PRESUPUESTO AUTORIZADO. Redirigiendo a WhatsApp para coordinar adelanto...', type='positive')
+            # Redirigir a WhatsApp de la empresa 924980586 despues de la aprobación
+            ui.run_javascript('setTimeout(() => window.location.href = "https://wa.me/51924980586?text=Hola,%20acabo%20de%20aprobar%20mi%20presupuesto%20de%20la%20Orden%20' + o.consecutivo.replace('#','%23') + '", 2000)')
+        else:
+            ui.notify('Su respuesta ha sido registrada. Muchas gracias.', type='positive')
+            ui.run_javascript('location.reload()')
     finally:
         db.close()

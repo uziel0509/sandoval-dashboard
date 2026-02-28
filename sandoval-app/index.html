@@ -1896,7 +1896,7 @@
           ` : ''}
         </div>
         <div class="fixed bottom-6 left-6 right-6 z-[2100]">
-           <button onclick="window.open('https://wa.me/51936495143')" class="w-full bg-[#1db97a] text-white rounded-2xl py-4 font-black flex items-center justify-center gap-2 shadow-2xl active:scale-95 transition-all">
+           <button onclick="window.open('https://wa.me/51924980586')" class="w-full bg-[#1db97a] text-white rounded-2xl py-4 font-black flex items-center justify-center gap-2 shadow-2xl active:scale-95 transition-all">
              <span class="material-icons-round">chat</span> CONSULTAR SOBRE ESTA FASE
            </button>
         </div>
@@ -1930,15 +1930,39 @@
           <div class="w-10 h-10 bg-[#274495] rounded-full flex items-center justify-center text-white shadow-sm"><span class="material-icons-round">support_agent</span></div>
           <div><p class="text-[10px] font-black text-gray-400 leading-none">ASISTENCIA</p><p class="text-xs font-bold text-gray-800">Mecánica Sandoval</p></div>
         </div>
-        <button onclick="window.open('https://wa.me/51936495143')" class="bg-white text-[#25D366] p-2 rounded-xl shadow-sm border"><span class="material-icons-round">whatsapp</span></button>
+        <button onclick="window.open('https://wa.me/51924980586')" class="bg-white text-[#25D366] p-2 rounded-xl shadow-sm border"><span class="material-icons-round">whatsapp</span></button>
       </div>
     </div>`);
     }
 
     async function aprobarOrden(id, aprobado) {
-      const r = await apiFetch('/api/cliente/aprobar', { method: 'POST', body: JSON.stringify({ orden_id: id, aprobado }) });
-      if (r && r.ok) { toastOk(aprobado ? 'Cotización aprobada ✓' : 'Cotización rechazada'); closeSheet(); pageMisOrdenes(); }
-      else toastErr(r?.error || 'Error');
+      if (!aprobado) {
+        const r = await apiFetch('/api/cliente/aprobar', { method: 'POST', body: JSON.stringify({ orden_id: id, aprobado: false }) });
+        if (r && r.ok) { toastOk('Cotización pospuesta'); closeSheet(); pageMisOrdenes(); }
+        else toastErr(r?.error || 'Error');
+        return;
+      }
+
+      const r = await apiFetch('/api/cliente/aprobar', { method: 'POST', body: JSON.stringify({ orden_id: id, aprobado: true }) });
+      if (r && r.ok) {
+        toastOk('¡ORDEN AUTORIZADA!');
+        const overlay = document.getElementById('phase-detail');
+        if (overlay) {
+          overlay.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-full p-8 text-center animate-pulse">
+              <span class="material-icons-round text-emerald-500 text-8xl mb-6">verified</span>
+              <h2 class="text-3xl font-black text-gray-900 leading-tight">¡TRABAJOS AUTORIZADOS!</h2>
+              <p class="text-sm text-gray-500 mt-4 font-bold uppercase tracking-widest leading-relaxed">Redirigiendo a WhatsApp para coordinar el inicio de la reparación...</p>
+            </div>
+          `;
+        }
+        setTimeout(() => {
+          const msg = `Hola, acabo de aprobar mi presupuesto desde el aplicativo móvil.`;
+          window.location.href = `https://wa.me/51924980586?text=${encodeURIComponent(msg)}`;
+        }, 2500);
+      } else {
+        toastErr(r?.error || 'Error al autorizar');
+      }
     }
 
     // ─── CLIENTE: CITAS ───────────────────────────────────
