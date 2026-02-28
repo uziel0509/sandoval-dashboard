@@ -3391,6 +3391,16 @@ def open_edit_reception_dialog(consecutivo, container, state):
             db.close()
 
         tecnicos = _get_tecnicos()
+        if curr_tecnico and curr_tecnico not in tecnicos:
+            tecnicos.append(curr_tecnico)
+        
+        tipo_opts = ['Express', 'Estándar']
+        if curr_tipo and curr_tipo not in tipo_opts:
+            tipo_opts.append(curr_tipo)
+            
+        comb_opts = ['Reserva', '1/4', '1/2', '3/4', 'Full']
+        if combustible_val and combustible_val not in comb_opts:
+            comb_opts.append(combustible_val)
 
         with ui.dialog() as dialog, ui.card().classes('w-full max-w-4xl bg-white p-0 border border-gray-200 shadow-xl'):
             with ui.row().classes('w-full items-center justify-between p-4 border-b border-gray-200'):
@@ -3400,11 +3410,11 @@ def open_edit_reception_dialog(consecutivo, container, state):
             with ui.scroll_area().classes('w-full').style('height: 65vh'):
                 with ui.row().classes('w-full p-6 gap-6'):
                     with ui.column().classes('flex-1 gap-4'):
-                        tipo_input = ui.toggle(['Express', 'Estándar'], value=curr_tipo).props('color=lime-13 toggle-color=black text-color=black')
+                        tipo_input = ui.toggle(tipo_opts, value=curr_tipo).props('color=lime-13 toggle-color=black text-color=black')
                         tecnico_input = ui.select(tecnicos, value=curr_tecnico, label='Técnico').props('outlined dense bg-color=white').classes('w-full')
                         with ui.row().classes('w-full gap-4'):
                             km_input = ui.input('Kilometraje', value=curr_km).props('outlined dense bg-color=white').classes('flex-1')
-                            comb_input = ui.select(['Reserva', '1/4', '1/2', '3/4', 'Full'], value=combustible_val, label='Nivel Combustible').props('outlined dense bg-color=white').classes('flex-1')
+                            comb_input = ui.select(comb_opts, value=combustible_val, label='Nivel Combustible').props('outlined dense bg-color=white').classes('flex-1')
                 
                     with ui.column().classes('flex-1 gap-4'):
                         ui.label('GESTIÓN DE FOTOS (RECEPCIÓN)').classes('text-xs font-bold text-blue-600 border-b w-full pb-1')
