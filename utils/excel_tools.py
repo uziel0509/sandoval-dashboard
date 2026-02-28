@@ -227,7 +227,11 @@ def export_generic_excel(title: str, headers: list, data: list, filename_prefix:
         filepath = os.path.join('exports', filename)
 
     # Crear el libro y la hoja directamente para máximo control
-    import xlsxwriter
+    try:
+        import xlsxwriter
+    except ImportError:
+        raise ImportError("El módulo 'xlsxwriter' no está instalado en el servidor. Por favor, ejecuta 'pip install xlsxwriter' en la terminal del VPS.")
+
     workbook = xlsxwriter.Workbook(filepath)
     worksheet = workbook.add_worksheet('Reporte')
     

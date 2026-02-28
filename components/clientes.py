@@ -114,11 +114,11 @@ def refresh_table(container, state):
                 </q-td>
             ''')
 
-            table.on('edit', lambda e: open_client_dialog(container, state, e.args['id']))
-            table.on('pin',  lambda e: open_pin_dialog(e.args['id'], e.args['nombre']))
+            table.on('edit', lambda e: open_client_dialog(container, state, (e.args['id'] if isinstance(e.args, dict) else e.args[0]['id'])))
+            table.on('pin',  lambda e: open_pin_dialog((e.args['id'] if isinstance(e.args, dict) else e.args[0]['id']), (e.args['nombre'] if isinstance(e.args, dict) else e.args[0]['nombre'])))
             table.on('delete', lambda e: theme.confirm_dialog(
-                'Eliminar Cliente', f'¿Eliminar al cliente {e.args["nombre"]}?',
-                on_confirm=lambda cid=e.args['id']: (delete_client(cid), refresh_table(container, state))
+                'Eliminar Cliente', f'¿Eliminar al cliente {e.args["nombre"] if isinstance(e.args, dict) else e.args[0]["nombre"]}?',
+                on_confirm=lambda cid=(e.args['id'] if isinstance(e.args, dict) else e.args[0]['id']): (delete_client(cid), refresh_table(container, state))
             ))
     finally:
         db.close()

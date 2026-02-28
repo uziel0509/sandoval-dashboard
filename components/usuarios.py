@@ -95,7 +95,7 @@ def refresh_users_table(container):
                 </q-td>
             ''')
             
-            table.on('edit', lambda e: open_user_dialog(container, e.args.get('id')))
+            table.on('edit', lambda e: open_user_dialog(container, (e.args['id'] if isinstance(e.args, dict) else e.args[0]['id'])))
     finally:
         db.close()
 

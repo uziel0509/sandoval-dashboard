@@ -110,9 +110,9 @@ def refresh_table(container, state):
                     </div>
                 </q-td>
             ''')
-            table.on('edit', lambda e: open_item_dialog(container, state, e.args['codigo']))
-            table.on('delete', lambda e: theme.confirm_dialog('Eliminar', f'¿Eliminar {e.args["codigo"]}?',
-                on_confirm=lambda c=e.args['codigo']: (delete_item(c), refresh_table(container, state))))
+            table.on('edit', lambda e: open_item_dialog(container, state, e.args['codigo'] if isinstance(e.args, dict) else e.args[0]['codigo']))
+            table.on('delete', lambda e: theme.confirm_dialog('Eliminar', f'¿Eliminar {e.args["codigo"] if isinstance(e.args, dict) else e.args[0]["codigo"]}?',
+                on_confirm=lambda c=(e.args['codigo'] if isinstance(e.args, dict) else e.args[0]['codigo']): (delete_item(c), refresh_table(container, state))))
     finally:
         db.close()
 

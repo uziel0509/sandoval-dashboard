@@ -1147,7 +1147,7 @@ def _render_order_card(order, clients, vehicles, container, state, stats_contain
 
                 with ui.column().classes('gap-1 flex-1'):
                     with ui.row().classes('items-center gap-2'):
-                        ui.label(order.consecutivo).classes('text-indigo-900 font-bold text-lg')
+                        ui.label(order.consecutivo).classes('text-indigo-900 font-bold text-lg cursor-pointer hover:underline underline-offset-4 decoration-indigo-300').on('click', lambda: open_order_detail(order.consecutivo, container, state))
                         ui.label(order.estado).classes(f'text-[10px] px-2 py-0.5 rounded-full bg-{cfg["color"]}-100 text-{cfg["color"]} font-bold uppercase tracking-wider')
                     
                     if client:
@@ -2541,167 +2541,130 @@ def open_order_detail(consecutivo, container, state):
     estado = o['estado']
     cfg = theme.ESTADOS_CONFIG.get(estado, {'icon': 'build', 'color': 'grey-6'})
     
-    with ui.dialog() as dialog, ui.card().classes('w-full max-w-5xl bg-white p-6 shadow-xl'):
-        with ui.row().classes('w-full items-center justify-between mb-4'):
-            with ui.row().classes('items-center gap-3'):
-                ui.icon(cfg['icon'], size='32px').classes(f'text-{cfg["color"]}')
-                ui.label(consecutivo).classes('text-2xl font-bold text-gray-800')
-                ui.badge(estado, color=cfg['color']).classes('ml-2 text-white font-bold')
-                if o.get('approval_status') == 'aprobado':
-                    ui.badge('APROBADO POR CLIENTE', color='green-6').classes('font-bold')
-                elif o.get('approval_status') == 'rechazado':
-                    ui.badge('RECHAZADO POR CLIENTE', color='red-6').classes('font-bold')
-            ui.button(icon='close', on_click=dialog.close).props('flat round color=grey-8')
-        
-        # Stepper
-        with ui.row().classes('w-full gap-1 mb-4 overflow-x-auto'):
-            for est_name, est_cfg in theme.ESTADOS_CONFIG.items():
-                is_current = est_name == estado
-                is_past = ESTADOS.index(est_name) < ESTADOS.index(estado)
-                bg = f'bg-{est_cfg["color"]}' if is_current else ('bg-gray-300' if is_past else 'bg-gray-100')
-                text_cls = 'text-black font-bold' if is_current else ('text-gray-700 font-medium' if is_past else 'text-gray-400')
-                with ui.element('div').classes(f'{bg} rounded px-3 py-2 text-center min-w-[80px] transition-colors'):
-                    ui.icon(est_cfg['icon'], size='18px').classes(text_cls)
-                    ui.label(est_name).classes(f'text-[8px] {text_cls}')
-        
-        with ui.scroll_area().classes('w-full').style('max-height: 420px'):
-            with ui.row().classes('w-full gap-6'):
-                with ui.column().classes('flex-1 gap-3'):
-                    # Cliente
-                    with ui.card().classes('bg-gray-50 border border-gray-200 p-4 w-full shadow-sm'):
-                        ui.label('CLIENTE').classes('text-xs text-gray-500 uppercase font-bold mb-2')
-                        if c:
-                            ui.label(f"{c['nombre']} {c.get('apellidos', '')}").classes('text-gray-900 font-bold')
-                            ui.label(f"Doc: {c['id']} | Tel: {c.get('telefono', '')}").classes('text-gray-600 text-sm')
-                            ui.label(f"Email: {c.get('email', '')}").classes('text-gray-600 text-sm')
-                        else:
-                            ui.label('N/A').classes('text-gray-500')
-                    
-                    # Vehículo
-                    with ui.card().classes('bg-gray-50 border border-gray-200 p-4 w-full shadow-sm'):
-                        ui.label('VEHÍCULO').classes('text-xs text-gray-500 uppercase font-bold mb-2')
-                        if v:
-                            ui.label(f"{v.get('marca', '')} {v.get('modelo', '')} {v.get('año', '')}").classes('text-gray-900 font-bold')
-                            ui.label(f"Placa: {v.get('placa', '')} | VIN: {v.get('vin', '-')}").classes('text-gray-600 text-sm')
-                        ui.label(f"KM: {o.get('km', '-')}").classes('text-amber-600 text-sm font-bold')
-                    
-                    # Motivo
-                    with ui.card().classes('bg-gray-50 border border-gray-200 p-4 w-full shadow-sm'):
-                        ui.label('MOTIVO').classes('text-xs text-gray-500 uppercase font-bold mb-2')
-                        ui.label(o.get('motivo', 'N/A')).classes('text-gray-800')
-                    
-                    # Diagnóstico
-                    with ui.card().classes('bg-gray-50 border border-gray-200 p-4 w-full shadow-sm'):
-                        with ui.row().classes('w-full justify-between items-center mb-2'):
-                            ui.label('DIAGNÓSTICO').classes('text-xs text-gray-500 uppercase font-bold')
-                            if o.get('estado') == 'DIAGNÓSTICO' or o.get('diagnostico'):
-                                ui.button(icon='edit', on_click=lambda: (dialog.close(), open_new_diagnostic_modal(consecutivo, container, state, stats_container))).props('flat dense size=xs color=blue-6').tooltip('Editar con Formulario Completo')
-                        
-                        if o.get('diagnostico'):
-                            ui.label(o['diagnostico']).classes('text-gray-800 text-sm whitespace-pre-wrap')
-                        else:
-                            ui.label('Sin diagnóstico registrado').classes('text-gray-400 italic text-sm')
-                
-                with ui.column().classes('flex-1 gap-3'):
-                    # Cotización
-                    with ui.card().classes('bg-gray-50 border border-gray-200 p-4 w-full shadow-sm'):
-                        ui.label('COTIZACIÓN / ÍTEMS').classes('text-xs text-gray-500 uppercase font-bold mb-2')
-                        items = o.get('items_cotizacion') or []
-                        if items:
-                            total = 0
-                            for item in items:
-                                t = float(item.get('total', 0))
-                                total += t
-                                with ui.row().classes('w-full justify-between items-center py-1 border-b border-gray-200'):
-                                    ui.label(f"{item.get('nombre', '')} x{item.get('cantidad', 1)}").classes('text-gray-800 text-sm')
-                                    ui.label(f'S/ {t:.2f}').classes('text-green-600 text-sm font-bold')
-                            igv = total * 0.18
-                            with ui.column().classes('w-full items-end gap-1 pt-2'):
-                                ui.label(f'Subtotal: S/ {total:.2f}').classes('text-gray-600')
-                                ui.label(f'IGV 18%: S/ {igv:.2f}').classes('text-gray-600')
-                                ui.label(f'TOTAL: S/ {total + igv:.2f}').classes('text-lime-700 font-bold text-lg')
-                        else:
-                            ui.label('Sin ítems').classes('text-gray-500 text-sm')
-                        
-                        # Agregar ítem
-                        with ui.expansion('+ Agregar Ítem', icon='add').classes('w-full mt-2'):
-                            inv_opts = {i['codigo']: f"{i['nombre']} - S/{i['precio']}" for i in inv}
-                            item_sel = ui.select(inv_opts, label='Del inventario', with_input=True).props('outlined dense use-input bg-color=white').classes('w-full')
-                            with ui.row().classes('w-full gap-2'):
-                                n_manual = ui.input('O nombre manual').props('outlined dense bg-color=white').classes('flex-1')
-                                p_input = ui.input('Precio', value='0').props('outlined dense type=number bg-color=white').classes('w-24')
-                                c_input = ui.input('Cant.', value='1').props('outlined dense type=number bg-color=white').classes('w-20')
-                            
-                            def add_item():
-                                nombre = ''
-                                precio = float(p_input.value or 0)
-                                if item_sel.value:
-                                    sel = next((i for i in inv if i['codigo'] == item_sel.value), None)
-                                    if sel:
-                                        nombre = sel['nombre']
-                                        precio = sel['precio']
-                                elif n_manual.value:
-                                    nombre = n_manual.value.strip()
-                                else:
-                                    theme.notify_error('Selecciona o escribe un ítem')
-                                    return
-                                cant = max(1, int(float(c_input.value or 1)))
-                                adb = get_db()
-                                try:
-                                    ord_ = adb.query(Orden).filter_by(consecutivo=consecutivo).first()
-                                    if ord_:
-                                        new_items = list(ord_.items_cotizacion or [])
-                                        new_items.append({'nombre': nombre, 'precio_unitario': precio, 'cantidad': cant, 'total': precio * cant})
-                                        ord_.items_cotizacion = new_items
-                                        ord_.items_cotizacion = new_items # Trigger update
-                                        adb.commit()
-                                        theme.notify_success(f'{nombre} agregado')
-                                        dialog.close()
-                                        open_order_detail(consecutivo, container, state)
-                                finally:
-                                    adb.close()
-                            ui.button('Agregar', icon='add', on_click=add_item).props('color=lime-13 dense size=sm text-color=black').classes('mt-2')
-                    
-                    # Historial
-                    with ui.card().classes('bg-gray-50 border border-gray-200 p-4 w-full shadow-sm'):
-                        ui.label('HISTORIAL').classes('text-xs text-gray-500 uppercase font-bold mb-2')
-                        historial = o.get('historial') or []
-                        if historial:
-                            for entry in reversed(historial):
-                                with ui.row().classes('w-full gap-2 items-start py-1 border-b border-gray-200'):
-                                    ui.icon('schedule', size='14px').classes('text-gray-500 mt-1')
-                                    with ui.column().classes('gap-0'):
-                                        ui.label(entry.get('accion', '')).classes('text-gray-800 text-sm')
-                                        ui.label(f"{entry.get('fecha', '')} - {entry.get('usuario', '')}").classes('text-gray-500 text-xs')
-                        else:
-                            ui.label('Sin historial').classes('text-gray-500 text-sm')
-                    
-                    # Info
-                    with ui.card().classes('bg-gray-50 border border-gray-200 p-4 w-full shadow-sm'):
-                        ui.label('INFO').classes('text-xs text-gray-500 uppercase font-bold mb-2')
-                        ui.label(f"Fecha: {o.get('fecha', '')}").classes('text-gray-600 text-sm')
-                        ui.label(f"Técnico: {o.get('tecnico', 'N/A')}").classes('text-gray-600 text-sm')
-                        ui.label(f"Tipo: {o.get('tipo', '-')}").classes('text-gray-600 text-sm')
-                        if o.get('approval_token'):
-                            ui.label(f"Token aprobación: ...{o['approval_token'][-8:]}").classes('text-cyan-600 text-xs')
-        
-        # Acciones
-        with ui.row().classes('w-full justify-between mt-4 border-t border-gray-200 pt-4'):
-            with ui.row().classes('gap-2'):
-                ui.button('PDF Ingreso', icon='picture_as_pdf', on_click=lambda: generate_pdf(o, c, v, 'ingreso')).props('color=orange-6 size=sm')
-                if items:
-                    ui.button('PDF Cotización', icon='request_quote', on_click=lambda: generate_pdf(o, c, v, 'cotizacion')).props('color=blue-6 size=sm')
-                if estado in ('CONTROL', 'ENTREGA', 'ARCHIVADO') and items:
-                    ui.button('Factura/Boleta', icon='receipt', on_click=lambda: generate_pdf(o, c, v, 'factura')).props('color=green-6 size=sm')
-                ui.button('Enviar al Cliente', icon='send', on_click=lambda: send_approval_link(consecutivo)).props('color=cyan-6 size=sm')
+    with ui.dialog() as dialog, ui.card().classes('w-full max-w-6xl bg-slate-50 p-0 border-none shadow-2xl overflow-hidden'):
+        # --- HEADER PREMIUM ---
+        with ui.row().classes('w-full items-center justify-between p-6 bg-slate-900 border-b-4 border-indigo-500'):
+            with ui.row().classes('items-center gap-4'):
+                ui.icon(cfg['icon'], size='40px').classes('text-indigo-400')
+                with ui.column().classes('gap-0'):
+                    ui.label('DETALLE DE ORDEN DE SERVICIO').classes('text-white text-[10px] font-bold tracking-widest uppercase')
+                    ui.label(consecutivo).classes('text-3xl font-black text-white italic text-nowrap')
             
-            if estado != 'ARCHIVADO':
-                next_idx = min(ESTADOS.index(estado) + 1, len(ESTADOS) - 1)
-                next_est = ESTADOS[next_idx]
-                ui.button(f'Avanzar -> {next_est}', icon='arrow_forward',
-                    on_click=lambda: (advance_order(consecutivo, next_est), dialog.close(), refresh_orders(container, state))
-                ).classes('btn-sandoval')
-    
+            with ui.row().classes('items-center gap-3'):
+                ui.badge(estado, color=cfg['color']).classes('px-4 py-2 text-sm font-bold shadow-sm rounded-full')
+                ui.button(icon='close', on_click=dialog.close).props('flat round color=white size=sm').classes('hover:bg-white/10')
+
+        with ui.scroll_area().classes('w-full p-6').style('height: 80vh'):
+            # --- SECCIÓN 1: CABECERA TÉCNICA (CLIENTE Y VEHÍCULO) ---
+            with ui.row().classes('w-full gap-6 mb-8'):
+                with ui.card().classes('flex-1 bg-white border border-slate-200 p-5 shadow-sm rounded-2xl'):
+                    with ui.row().classes('items-center gap-2 mb-3'):
+                        ui.icon('person', color='indigo-7').classes('text-lg')
+                        ui.label('CLIENTE').classes('text-slate-400 text-[10px] font-bold tracking-wider')
+                    if c:
+                        ui.label(f"{c['nombre']} {c.get('apellidos', '')}").classes('text-lg font-bold text-slate-800')
+                        ui.label(f"Tel: {c.get('telefono', '-') or '-'}").classes('text-slate-600 text-sm')
+                
+                with ui.card().classes('flex-1 bg-white border border-slate-200 p-5 shadow-sm rounded-2xl'):
+                    with ui.row().classes('items-center gap-2 mb-3'):
+                        ui.icon('directions_car', color='indigo-7').classes('text-lg')
+                        ui.label('VEHÍCULO').classes('text-slate-400 text-[10px] font-bold tracking-wider')
+                    if v:
+                        ui.label(f"{v.get('marca', '')} {v.get('modelo', '')}").classes('text-lg font-bold text-slate-800')
+                        ui.label(f"Placa: {v.get('placa', '')} | KM: {o.get('km', '-')}").classes('text-slate-600 text-sm font-mono')
+
+            # --- SECCIÓN 2: FLUJO DE TRABAJO (FASE POR CUADRO) ---
+            ui.label('FLUJO DE TRABAJO POR FASES').classes('text-xs font-bold text-slate-400 tracking-[0.2em] mb-4 ml-2 uppercase')
+            
+            with ui.column().classes('w-full gap-4'):
+                order_states = list(theme.ESTADOS_CONFIG.keys())
+                try: current_state_idx = order_states.index(estado)
+                except: current_state_idx = 0
+                
+                for idx, (est_name, est_cfg) in enumerate(theme.ESTADOS_CONFIG.items()):
+                    is_current = est_name == estado
+                    is_past = idx < current_state_idx
+                    
+                    card_status_cls = 'border-indigo-500 shadow-md ring-2 ring-indigo-50 ring-offset-2' if is_current else (
+                        'border-emerald-200 opacity-90' if is_past else 'border-slate-100 opacity-60'
+                    )
+                    
+                    with ui.card().classes(f'w-full bg-white border {card_status_cls} rounded-2xl overflow-hidden transition-all'):
+                        with ui.expansion('', icon=est_cfg['icon']).classes('w-full').props('expand-icon-class=text-slate-400') as exp:
+                            with exp.add_slot('header'):
+                                with ui.row().classes('items-center justify-between w-full py-2 pr-4'):
+                                    with ui.row().classes('items-center gap-4'):
+                                        with ui.avatar(color=est_cfg['color']+'-1', text_color=est_cfg['color']).classes('w-10 h-10'):
+                                            ui.icon(est_cfg['icon'], size='xs')
+                                        with ui.column().classes('gap-0'):
+                                            ui.label(est_name).classes('font-black text-slate-800 tracking-tight')
+                                            status_label = 'EN PROCESO' if is_current else ('COMPLETADO' if is_past else 'PENDIENTE')
+                                            status_color = 'indigo-600' if is_current else ('emerald-600' if is_past else 'slate-400')
+                                            ui.label(status_label).classes(f'text-[9px] font-black text-{status_color} tracking-widest')
+                                    if is_past or is_current:
+                                        ui.icon('check_circle', color='emerald-500') if is_past else ui.icon('pending', color='indigo-500')
+
+                            with ui.column().classes('w-full p-4 gap-4 bg-slate-50/30'):
+                                phase_pics = []
+                                if o.get('fotos_evidencia'):
+                                    for p in o['fotos_evidencia']:
+                                        if isinstance(p, dict):
+                                            if p.get('fase', 'RECEPCIÓN').strip().upper() == est_name.upper():
+                                                phase_pics.append(p)
+                                        elif est_name.upper() == 'RECEPCIÓN':
+                                            phase_pics.append(p)
+
+                                if est_name.upper() == 'RECEPCIÓN':
+                                    with ui.row().classes('w-full gap-4'):
+                                        with ui.column().classes('flex-1'):
+                                            ui.label('MOTIVO').classes('text-[9px] font-bold text-slate-400')
+                                            ui.label(o.get('motivo', 'No especificado')).classes('text-sm text-slate-700 font-medium')
+                                        with ui.column().classes('flex-1'):
+                                            ui.label('OBSERVACIONES').classes('text-[9px] font-bold text-slate-400')
+                                            ui.label(o.get('observaciones', '-')).classes('text-sm text-slate-700')
+                                elif est_name.upper() == 'DIAGNÓSTICO':
+                                    if o.get('diagnostico'):
+                                        ui.label('DIAGNÓSTICO TÉCNICO').classes('text-[9px] font-bold text-slate-400')
+                                        ui.markdown(o['diagnostico']).classes('text-sm text-slate-700 bg-white p-3 rounded-lg border border-slate-100')
+                                elif est_name.upper() in ('REPUESTOS', 'APROBACIÓN'):
+                                    items_list = o.get('items_cotizacion') or []
+                                    if items_list:
+                                        for itm in items_list:
+                                            with ui.row().classes('w-full justify-between text-xs py-1 border-b'):
+                                                ui.label(f"• {itm.get('nombre')} x{itm.get('cantidad', 1)}")
+                                                ui.label(f"S/ {itm.get('total', 0):.2f}")
+                                elif est_name.upper() == 'REPARACIÓN':
+                                    if o.get('checklist_reparacion'): ui.label('Reparación finalizada.').classes('text-sm text-emerald-700')
+
+                                if phase_pics:
+                                    ui.label('EVIDENCIAS').classes('text-[9px] font-bold text-indigo-400 mt-2')
+                                    with ui.row().classes('w-full gap-2 flex-wrap'):
+                                        for p in phase_pics:
+                                            path = p.get('path') if isinstance(p, dict) else p
+                                            ui.image(path).classes('w-20 h-20 border rounded-lg cursor-pointer').on('click', lambda l=path: ui.run_javascript(f'window.open("{l}", "_blank")'))
+
+                                if is_current:
+                                    with ui.row().classes('w-full justify-end mt-2'):
+                                        if est_name.upper() == 'DIAGNÓSTICO':
+                                            ui.button('EDITAR', icon='edit', on_click=lambda: (dialog.close(), open_new_diagnostic_modal(consecutivo, container, state))).props('unelevated color=amber-8 size=sm')
+                                        elif est_name.upper() == 'REPARACIÓN':
+                                            ui.button('EDITAR', icon='edit', on_click=lambda: (dialog.close(), open_advanced_repair_module(consecutivo, container, state))).props('unelevated color=amber-8 size=sm')
+                                        else:
+                                            ui.button('EDITAR', icon='edit', on_click=lambda: (dialog.close(), open_edit_reception_dialog(consecutivo, container, state))).props('unelevated color=amber-8 size=sm')
+                            if is_current: exp.value = True
+
+            # --- DOCUMENTOS ---
+            with ui.row().classes('w-full justify-between mt-8 pt-4 border-t'):
+                with ui.row().classes('gap-2'):
+                    ui.button('PDF Ingreso', icon='picture_as_pdf', on_click=lambda: generate_pdf(o, c, v, 'ingreso')).props('outline size=sm')
+                    ui.button('Enviar link', icon='send', on_click=lambda: send_approval_link(consecutivo)).props('outline color=cyan size=sm')
+                
+                if estado != 'ARCHIVADO':
+                    next_idx = min(order_states.index(estado) + 1, len(order_states) - 1)
+                    next_est = order_states[next_idx]
+                    ui.button(f'AVANZAR -> {next_est}', icon='arrow_forward',
+                        on_click=lambda n=next_est: (advance_order(consecutivo, n), dialog.close(), refresh_orders(container, state))
+                    ).classes('btn-sandoval')
     dialog.open()
 
 
@@ -3288,18 +3251,29 @@ def open_customer_preview(consecutivo):
                     else:
                         ui.label('El diagnóstico aún no ha sido finalizado por el técnico.').classes('text-slate-400 italic text-sm')
 
-                # SECTION 4: EVIDENCIA FOTOGRÁFICA
+                # SECTION 4: EVIDENCIA FOTOGRÁFICA (FILTRADA POR FASE ACTUAL)
+                cur_fase = (order.estado or 'RECEPCIÓN').strip().upper()
                 if order.fotos_evidencia and isinstance(order.fotos_evidencia, list):
-                    ui.label('EVIDENCIA FOTOGRÁFICA').classes('text-xs font-bold text-slate-400 tracking-[0.2em] mb-4 ml-2')
-                    with ui.row().classes('w-full gap-4 mb-4 flex-wrap'):
-                        for p in order.fotos_evidencia:
-                            pic_path = p.get('path') if isinstance(p, dict) else p
-                            with ui.card().classes('w-48 h-48 p-0 relative border border-slate-200 group rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow'):
-                                # Ensure correct path serving
-                                # If path stored is "/evidencia/...", main.py handles it
-                                ui.image(pic_path).classes('w-full h-full object-cover')
-                                with ui.row().classes('absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity items-center justify-center'):
-                                    ui.button(icon='zoom_in', on_click=lambda l=pic_path: ui.run_javascript(f'window.open("{l}", "_blank")')).props('flat round color=white size=sm')
+                    # Filtrar evidencias que correspondan a la fase actual
+                    # Si la evidencia no tiene fase (formato antiguo), asumimos RECEPCIÓN
+                    fase_pics = []
+                    for p in order.fotos_evidencia:
+                        if isinstance(p, dict):
+                            if p.get('fase', 'RECEPCIÓN').strip().upper() == cur_fase:
+                                fase_pics.append(p)
+                        else:
+                            if cur_fase == 'RECEPCIÓN':
+                                fase_pics.append(p)
+                    
+                    if fase_pics:
+                        ui.label(f'EVIDENCIA FOTOGRÁFICA - {cur_fase}').classes('text-xs font-bold text-slate-400 tracking-[0.2em] mb-4 ml-2')
+                        with ui.row().classes('w-full gap-4 mb-4 flex-wrap'):
+                            for p in fase_pics:
+                                pic_path = p.get('path') if isinstance(p, dict) else p
+                                with ui.card().classes('w-48 h-48 p-0 relative border border-slate-200 group rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow'):
+                                    ui.image(pic_path).classes('w-full h-full object-cover')
+                                    with ui.row().classes('absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity items-center justify-center'):
+                                        ui.button(icon='zoom_in', on_click=lambda l=pic_path: ui.run_javascript(f'window.open("{l}", "_blank")')).props('flat round color=white size=sm')
 
                 # SECTION 5: PRESUPUESTO Y SERVICIOS (ULTRA PROFESSIONAL)
                 items = order.items_cotizacion or []
@@ -3356,165 +3330,170 @@ def open_customer_preview(consecutivo):
 
 
 def open_edit_reception_dialog(consecutivo, container, state):
-    """Edita datos iniciales de recepción"""
-    db = get_db()
+    """Edita datos iniciales de recepción con manejo de errores robusto"""
     try:
-        order = db.query(Orden).filter_by(consecutivo=consecutivo).first()
-        if not order: 
-            return
-        
-        new_reception_files = [] # Para nuevas fotos durante edición
-        
-        # Datos actuales para prellenar
-        curr_motivo = order.motivo
-        curr_km = order.km
-        curr_tecnico = order.tecnico
-        curr_diag_req = order.diagnostico_requerido
-        curr_tipo = order.tipo
-        curr_obs = order.observaciones # A veces guardamos combustible aqui
-        
-        # Intentar extraer combustible de obs si está formateado "Combustible: X"
-        combustible_val = 'Reserva'
-        if 'Combustible: ' in (curr_obs or ''):
-            parts = curr_obs.split('Combustible: ')
-            if len(parts) > 1:
-                combustible_val = parts[1].split('\n')[0].strip()
-
-    finally:
-        db.close()
-
-    tecnicos = _get_tecnicos()
-
-    with ui.dialog() as dialog, ui.card().classes('w-full max-w-4xl bg-white p-0 border border-gray-200 shadow-xl'):
-        with ui.row().classes('w-full items-center justify-between p-4 border-b border-gray-200'):
-            ui.label(f'Editar Recepción - {consecutivo}').classes('text-xl font-bold text-gray-800')
-            ui.button(icon='close', on_click=dialog.close).props('flat round color=grey-8')
-        
-        with ui.scroll_area().classes('w-full').style('height: 65vh'):
-            with ui.row().classes('w-full p-6 gap-6'):
-                with ui.column().classes('flex-1 gap-4'):
-                 tipo_input = ui.toggle(['Express', 'Estándar'], value=curr_tipo).props('color=lime-13 toggle-color=black text-color=black')
-                 
-                 tecnico_input = ui.select(tecnicos, value=curr_tecnico, label='Técnico').props('outlined dense bg-color=white').classes('w-full')
-                 
-                 with ui.row().classes('w-full gap-4'):
-                     km_input = ui.input('Kilometraje', value=curr_km).props('outlined dense bg-color=white').classes('flex-1')
-                     comb_input = ui.select(['Reserva', '1/4', '1/2', '3/4', 'Full'], value=combustible_val, label='Nivel Combustible').props('outlined dense bg-color=white').classes('flex-1')
-             
-                with ui.column().classes('flex-1 gap-4'):
-                    ui.label('GESTIÓN DE FOTOS').classes('text-xs font-bold text-blue-600 border-b w-full pb-1')
-                    
-                    edit_ev_cont = ui.row().classes('w-full gap-2 flex-wrap min-h-[50px]')
-                    
-                    def refresh_edit_photos():
-                        edit_ev_cont.clear()
-                        with edit_ev_cont:
-                            # Fotos actuales
-                            db_p = get_db()
-                            o_p = db_p.query(Orden).filter_by(consecutivo=consecutivo).first()
-                            current_pics = list(o_p.fotos_evidencia or [])
-                            db_p.close()
-                            
-                            for p in current_pics:
-                                pic_path = p.get('path') if isinstance(p, dict) else p
-                                with ui.card().classes('w-16 h-16 p-0 relative'):
-                                    ui.image(pic_path).classes('w-full h-full object-cover rounded')
-                                    ui.button(icon='close', on_click=lambda item=p: remove_existent_photo(item)).props('flat dense color=red round size=xs shadow-sm').classes('absolute -top-1 -right-1 bg-white z-10')
-
-                    def remove_existent_photo(path):
-                        db_r = get_db()
-                        try:
-                            o_r = db_r.query(Orden).filter_by(consecutivo=consecutivo).first()
-                            if o_r:
-                                cur = list(o_r.fotos_evidencia or [])
-                                if path in cur:
-                                    cur.remove(path)
-                                    o_r.fotos_evidencia = cur
-                                    from sqlalchemy.orm.attributes import flag_modified
-                                    flag_modified(o_r, "fotos_evidencia")
-                                    db_r.commit()
-                                    refresh_edit_photos()
-                        finally: db_r.close()
-
-                    async def handle_edit_up(e):
-                        try:
-                            content = None
-                            name = getattr(e, 'name', None)
-                            f_obj = getattr(e, 'content', getattr(e, 'file', None))
-                            
-                            if f_obj:
-                                if hasattr(f_obj, 'seek'): f_obj.seek(0)
-                                content = f_obj.read()
-                                if hasattr(content, '__await__'): content = await content
-                                if not name: name = getattr(f_obj, 'name', None)
-
-                            if not content and hasattr(e, 'files'):
-                                f = e.files[0]
-                                f_c = getattr(f, 'content', f)
-                                content = f_c.read() if hasattr(f_c, 'read') else f_c
-                                if hasattr(content, '__await__'): content = await content
-                                if not name: name = getattr(f, 'name', None)
-
-                            if content:
-                                final_name = name or "foto.jpg"
-                                new_reception_files.append((final_name, content))
-                                ui.notify(f'Añadida: {final_name}', type='positive')
-                                refresh_edit_photos()
-                            else:
-                                theme.notify_error("No se pudo extraer el contenido de la imagen")
-                        except Exception as err:
-                            theme.notify_error(f"Error: {str(err)}")
-
-                    ui.upload(on_upload=handle_edit_up, auto_upload=True).props('flat dense color=blue-7 accept="image/*" label="Añadir fotos extra"').classes('w-full border border-dashed border-gray-300 rounded p-1')
-                    refresh_edit_photos()
-
-                    with ui.row().classes('w-full justify-between items-center mt-2'):
-                        ui.label('¿Requiere diagnóstico?').classes('text-gray-800')
-                        diag_check = ui.switch(value=curr_diag_req).props('color=lime-13')
-                    
-                    motivo_input = ui.textarea('Motivo de ingreso', value=curr_motivo).props('outlined dense rows=3 bg-color=white').classes('w-full')
-
-        with ui.row().classes('w-full justify-end gap-3 p-4 border-t border-gray-200'):
-            ui.button('Cancelar', on_click=dialog.close).props('flat color=grey-8')
+        db = get_db()
+        try:
+            order = db.query(Orden).filter_by(consecutivo=consecutivo).first()
+            if not order: 
+                theme.notify_error('Orden no encontrada')
+                return
             
-            def save_changes():
-                ddb = get_db()
-                try:
-                    o = ddb.query(Orden).filter_by(consecutivo=consecutivo).first()
-                    if o:
-                        o.tipo = tipo_input.value
-                        o.tecnico = tecnico_input.value
-                        o.km = km_input.value
-                        o.motivo = motivo_input.value
-                        o.diagnostico_requerido = diag_check.value
-                        o.observaciones = f"Combustible: {comb_input.value}"
+            new_reception_files = [] # Para nuevas fotos durante edición
+            
+            # Datos actuales para prellenar
+            curr_motivo = order.motivo
+            curr_km = order.km
+            curr_tecnico = order.tecnico
+            curr_diag_req = order.diagnostico_requerido
+            curr_tipo = order.tipo
+            curr_obs = order.observaciones
+            
+            combustible_val = 'Reserva'
+            if 'Combustible: ' in (curr_obs or ''):
+                parts = curr_obs.split('Combustible: ')
+                if len(parts) > 1:
+                    combustible_val = parts[1].split('\n')[0].strip()
+        finally:
+            db.close()
+
+        tecnicos = _get_tecnicos()
+
+        with ui.dialog() as dialog, ui.card().classes('w-full max-w-4xl bg-white p-0 border border-gray-200 shadow-xl'):
+            with ui.row().classes('w-full items-center justify-between p-4 border-b border-gray-200'):
+                ui.label(f'Editar Recepción - {consecutivo}').classes('text-xl font-bold text-gray-800')
+                ui.button(icon='close', on_click=dialog.close).props('flat round color=grey-8')
+            
+            with ui.scroll_area().classes('w-full').style('height: 65vh'):
+                with ui.row().classes('w-full p-6 gap-6'):
+                    with ui.column().classes('flex-1 gap-4'):
+                        tipo_input = ui.toggle(['Express', 'Estándar'], value=curr_tipo).props('color=lime-13 toggle-color=black text-color=black')
+                        tecnico_input = ui.select(tecnicos, value=curr_tecnico, label='Técnico').props('outlined dense bg-color=white').classes('w-full')
+                        with ui.row().classes('w-full gap-4'):
+                            km_input = ui.input('Kilometraje', value=curr_km).props('outlined dense bg-color=white').classes('flex-1')
+                            comb_input = ui.select(['Reserva', '1/4', '1/2', '3/4', 'Full'], value=combustible_val, label='Nivel Combustible').props('outlined dense bg-color=white').classes('flex-1')
+                
+                    with ui.column().classes('flex-1 gap-4'):
+                        ui.label('GESTIÓN DE FOTOS (RECEPCIÓN)').classes('text-xs font-bold text-blue-600 border-b w-full pb-1')
+                        edit_ev_cont = ui.row().classes('w-full gap-2 flex-wrap min-h-[50px]')
                         
-                        # Guardar nuevas imágenes si hay
-                        if new_reception_files:
-                            folder_name = consecutivo.replace('#','').replace('/','_').strip()
-                            s_dir = f"static/evidencia/{folder_name}"
-                            os.makedirs(s_dir, exist_ok=True)
-                            curr_p = list(o.fotos_evidencia or [])
-                            for fn, fc in new_reception_files:
-                                sfname = f"{datetime.now().strftime('%H%M%S')}_{fn}"
-                                f_path = os.path.join(s_dir, sfname)
-                                with open(f_path, 'wb') as f:
-                                    f.write(fc)
-                                curr_p.append({'path': f"/evidencia/{folder_name}/{sfname}", 'fase': 'RECEPCIÓN'})
-                            o.fotos_evidencia = curr_p
-                            from sqlalchemy.orm.attributes import flag_modified
-                            flag_modified(o, "fotos_evidencia")
+                        def refresh_edit_photos():
+                            edit_ev_cont.clear()
+                            try:
+                                db_p = get_db()
+                                try:
+                                    o_p = db_p.query(Orden).filter_by(consecutivo=consecutivo).first()
+                                    if o_p:
+                                        # Solo mostramos fotos de la fase RECEPCIÓN para editar aquí
+                                        current_pics = []
+                                        for p in list(o_p.fotos_evidencia or []):
+                                            if isinstance(p, dict):
+                                                if p.get('fase', 'RECEPCIÓN').strip().upper() == 'RECEPCIÓN':
+                                                    current_pics.append(p)
+                                            else:
+                                                current_pics.append(p)
 
-                        ddb.commit()
-                        theme.notify_success('Recepción actualizada')
-                        dialog.close()
-                        refresh_orders(container, state)
-                except Exception as e:
-                    ddb.rollback()
-                    theme.notify_error(f'Error: {e}')
-                finally:
-                    ddb.close()
+                                        with edit_ev_cont:
+                                            for p in current_pics:
+                                                pic_path = p.get('path') if isinstance(p, dict) else p
+                                                with ui.card().classes('w-16 h-16 p-0 relative'):
+                                                    ui.image(pic_path).classes('w-full h-full object-cover rounded')
+                                                    ui.button(icon='close', on_click=lambda item=p: remove_existent_photo(item)).props('flat dense color=red round size=xs shadow-sm').classes('absolute -top-1 -right-1 bg-white z-10')
+                                finally:
+                                    db_p.close()
+                            except Exception as ex:
+                                print(f"Error refresh_edit_photos: {ex}")
 
-            ui.button('Guardar Cambios', icon='save', on_click=save_changes).props('unelevated color=lime-13 text-color=black')
-        
-    dialog.open()
+                        def remove_existent_photo(path):
+                            db_r = get_db()
+                            try:
+                                o_r = db_r.query(Orden).filter_by(consecutivo=consecutivo).first()
+                                if o_r:
+                                    cur = list(o_r.fotos_evidencia or [])
+                                    if path in cur:
+                                        cur.remove(path)
+                                        o_r.fotos_evidencia = cur
+                                        from sqlalchemy.orm.attributes import flag_modified
+                                        flag_modified(o_r, "fotos_evidencia")
+                                        db_r.commit()
+                                        refresh_edit_photos()
+                            finally: db_r.close()
+
+                        async def handle_edit_up(e):
+                            try:
+                                content = None
+                                name = getattr(e, 'name', None)
+                                f_obj = getattr(e, 'content', getattr(e, 'file', None))
+                                if f_obj:
+                                    if hasattr(f_obj, 'seek'): f_obj.seek(0)
+                                    content = f_obj.read()
+                                    if hasattr(content, '__await__'): content = await content
+                                    if not name: name = getattr(f_obj, 'name', None)
+                                
+                                if content:
+                                    final_name = name or "foto.jpg"
+                                    new_reception_files.append((final_name, content))
+                                    ui.notify(f'Añadida: {final_name}', type='positive')
+                                    # Simular visualización de la nueva foto
+                                    with edit_ev_cont:
+                                        ui.icon('image', size='lg', color='blue-2').classes('w-16 h-16 border rounded')
+                                else:
+                                    theme.notify_error("Error al leer imagen")
+                            except Exception as err:
+                                theme.notify_error(f"Error: {str(err)}")
+
+                        ui.upload(on_upload=handle_edit_up, auto_upload=True).props('flat dense color=blue-7 accept="image/*" label="Añadir fotos de recepción"').classes('w-full border border-dashed border-gray-300 rounded p-1')
+                        refresh_edit_photos()
+
+                        with ui.row().classes('w-full justify-between items-center mt-2'):
+                            ui.label('¿Requiere diagnóstico?').classes('text-gray-800')
+                            diag_check = ui.switch(value=curr_diag_req).props('color=lime-13')
+                        
+                        motivo_input = ui.textarea('Motivo de ingreso', value=curr_motivo).props('outlined dense rows=3 bg-color=white').classes('w-full')
+
+            with ui.row().classes('w-full justify-end gap-3 p-4 border-t border-gray-200'):
+                ui.button('Cancelar', on_click=dialog.close).props('flat color=grey-8')
+                
+                def save_changes():
+                    ddb = get_db()
+                    try:
+                        o = ddb.query(Orden).filter_by(consecutivo=consecutivo).first()
+                        if o:
+                            o.tipo = tipo_input.value
+                            o.tecnico = tecnico_input.value
+                            o.km = km_input.value
+                            o.motivo = motivo_input.value
+                            o.diagnostico_requerido = diag_check.value
+                            o.observaciones = f"Combustible: {comb_input.value}"
+                            
+                            if new_reception_files:
+                                folder_name = consecutivo.replace('#','').replace('/','_').strip()
+                                s_dir = f"static/evidencia/{folder_name}"
+                                os.makedirs(s_dir, exist_ok=True)
+                                curr_p = list(o.fotos_evidencia or [])
+                                for fn, fc in new_reception_files:
+                                    sfname = f"REV_{datetime.now().strftime('%H%M%S')}_{fn}"
+                                    f_path = os.path.join(s_dir, sfname)
+                                    with open(f_path, 'wb') as f:
+                                        f.write(fc)
+                                    curr_p.append({'path': f"/evidencia/{folder_name}/{sfname}", 'fase': 'RECEPCIÓN'})
+                                o.fotos_evidencia = curr_p
+                                from sqlalchemy.orm.attributes import flag_modified
+                                flag_modified(o, "fotos_evidencia")
+
+                            ddb.commit()
+                            theme.notify_success('Recepción actualizada')
+                            dialog.close()
+                            refresh_orders(container, state)
+                    except Exception as e:
+                        ddb.rollback()
+                        theme.notify_error(f'Error al guardar: {e}')
+                    finally:
+                        ddb.close()
+
+                ui.button('Guardar Cambios', icon='save', on_click=save_changes).props('unelevated color=lime-13 text-color=black')
+            
+        dialog.open()
+    except Exception as outer_ex:
+        theme.notify_error(f"Error crítico al abrir edición: {outer_ex}")
+        print(f"CRITICAL ERROR open_edit_reception_dialog: {outer_ex}")

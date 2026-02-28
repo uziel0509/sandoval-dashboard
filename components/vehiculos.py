@@ -94,12 +94,12 @@ def refresh_table(container, state):
                 </q-td>
             ''')
             
-            table.on('edit', lambda e: open_vehicle_dialog(container, state, e.args['placa']))
+            table.on('edit', lambda e: open_vehicle_dialog(container, state, (e.args['placa'] if isinstance(e.args, dict) else e.args[0]['placa'])))
             table.on('delete', lambda e: theme.confirm_dialog(
-                'Eliminar', f'¿Eliminar vehículo {e.args["placa"]}?',
-                on_confirm=lambda p=e.args['placa']: (delete_vehicle(p), refresh_table(container, state))
+                'Eliminar', f'¿Eliminar vehículo {e.args["placa"] if isinstance(e.args, dict) else e.args[0]["placa"]}?',
+                on_confirm=lambda p=(e.args['placa'] if isinstance(e.args, dict) else e.args[0]['placa']): (delete_vehicle(p), refresh_table(container, state))
             ))
-            table.on('history', lambda e: show_vehicle_history(e.args['placa']))
+            table.on('history', lambda e: show_vehicle_history((e.args['placa'] if isinstance(e.args, dict) else e.args[0]['placa'])))
     finally:
         db.close()
 

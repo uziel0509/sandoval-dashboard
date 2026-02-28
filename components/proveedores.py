@@ -70,9 +70,9 @@ def refresh_table(container, state):
                     </div>
                 </q-td>
             ''')
-            table.on('edit', lambda e: open_provider_dialog(container, state, e.args['id']))
-            table.on('delete', lambda e: theme.confirm_dialog('Eliminar', f'¿Eliminar proveedor {e.args["nombre"]}?',
-                on_confirm=lambda pid=e.args['id']: (delete_provider(pid), refresh_table(container, state))))
+            table.on('edit', lambda e: open_provider_dialog(container, state, (e.args['id'] if isinstance(e.args, dict) else e.args[0]['id'])))
+            table.on('delete', lambda e: theme.confirm_dialog('Eliminar', f'¿Eliminar proveedor {(e.args["nombre"] if isinstance(e.args, dict) else e.args[0]["nombre"])}?',
+                on_confirm=lambda pid=(e.args['id'] if isinstance(e.args, dict) else e.args[0]['id']): (delete_provider(pid), refresh_table(container, state))))
     finally:
         db.close()
 
