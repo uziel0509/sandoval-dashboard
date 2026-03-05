@@ -27,46 +27,97 @@ def get_groq_client() -> Groq:
 # ─── System Prompts ──────────────────────────────────────────────────────────
 
 def _get_system_prompt(context_data: dict) -> str:
-    """Genera el system prompt con datos en tiempo real del taller"""
+    """Genera el system prompt con datos en tiempo real e históricos del taller"""
     fecha = datetime.now().strftime('%d/%m/%Y %H:%M')
-    ordenes_activas = context_data.get('ordenes_activas', 0)
-    ingresos_mes   = context_data.get('ingresos_mes', 0)
-    stock_critico  = context_data.get('stock_critico', [])
-    clientes_total = context_data.get('clientes_total', 0)
-    ordenes_hoy    = context_data.get('ordenes_hoy', [])
+    
+    # Tiempo real
+    ordenes_activas  = context_data.get('ordenes_activas', 0)
+    ingresos_mes     = context_data.get('ingresos_mes', 0)
+    ingresos_semana  = context_data.get('ingresos_semana', 0)
+    clientes_total   = context_data.get('clientes_total', 0)
+    stock_critico    = context_data.get('stock_critico', [])
+    ordenes_hoy      = context_data.get('ordenes_hoy', [])
+    
+    # Historia
+    ordenes_completadas_total  = context_data.get('ordenes_completadas_total', 0)
+    ingresos_total_historico   = context_data.get('ingresos_total_historico', 0)
+    top_meses                  = context_data.get('top_meses', 'Sin datos')
+    ordenes_semana_count       = context_data.get('ordenes_semana_count', 0)
+    top_clientes               = context_data.get('top_clientes', 'Sin datos')
+    total_vehiculos            = context_data.get('total_vehiculos', 0)
+    total_productos            = context_data.get('total_productos', 0)
+    valor_inventario           = context_data.get('valor_inventario', 0)
+    top_motivos                = context_data.get('top_motivos', 'Sin datos')
+    ultimas_completadas        = context_data.get('ultimas_completadas', [])
 
-    stock_str = ", ".join([f"{s['nombre']} ({s['stock']} uds)" for s in stock_critico[:5]]) if stock_critico else "Ninguno"
-    ordenes_str = "\n".join([f"  - {o}" for o in ordenes_hoy[:5]]) if ordenes_hoy else "  - Ninguna"
+    stock_str = "\n".join([f"  ⚠ {s['nombre']}: {s['stock']} uds (mín: {s['minimo']})" for s in stock_critico[:8]]) if stock_critico else "  ✅ Ninguno en stock crítico"
+    ordenes_str = "\n".join([f"  🔧 {o}" for o in ordenes_hoy]) if ordenes_hoy else "  (Ninguna activa)"
+    ultimas_str = "\n".join(ultimas_completadas) if ultimas_completadas else "  (Sin historial)"
 
-    return f"""Eres el Asistente Inteligente de MECÁNICA Y REPUESTOS SANDOVAL EIRL.
-Tu nombre es "Asistente Sandoval". Hablas español con tono profesional, directo y amigable.
-Fecha y hora actual: {fecha}
+    return f"""Eres el Asistente IA de MECÁNICA Y REPUESTOS SANDOVAL EIRL.
+Tu nombre es "Asistente Sandoval". Eres directo, profesional y conoces todos los datos del taller.
+Fecha y hora: {fecha}
 
-═══════════════════════════════════════════════
-DATOS EN TIEMPO REAL DEL TALLER (HOY):
-═══════════════════════════════════════════════
-• Órdenes activas en taller:  {ordenes_activas}
-• Ingresos del mes:           S/ {ingresos_mes:,.2f}
-• Clientes registrados:       {clientes_total}
-• Productos con stock crítico: {stock_str}
+╔══════════════════════════════════════════════════════════╗
+║            MEMORIA HISTÓRICA COMPLETA DEL TALLER         ║
+╠══════════════════════════════════════════════════════════╣
+║ RESUMEN HISTÓRICO TOTAL                                   ║
+╠══════════════════════════════════════════════════════════╣
+  • Órdenes completadas TOTAL histórico:  {ordenes_completadas_total}
+  • Ingresos TOTALES históricos:           S/ {ingresos_total_historico:,.2f}
+  • Clientes registrados:                  {clientes_total}
+  • Vehículos en el sistema:               {total_vehiculos}
+  • Productos en inventario:               {total_productos} (Valor: S/ {valor_inventario:,.2f})
 
-Órdenes del día:
+╠══════════════════════════════════════════════════════════╣
+║ ESTE MES ({datetime.now().strftime('%B %Y').upper()})
+╠══════════════════════════════════════════════════════════╣
+  • Ingresos del mes:     S/ {ingresos_mes:,.2f}
+  • Órdenes activas:      {ordenes_activas}
+  • Órdenes completadas esta semana: {ordenes_semana_count} (S/ {ingresos_semana:,.2f})
+
+╠══════════════════════════════════════════════════════════╣
+║ RANKING DE MESES POR INGRESOS
+╠══════════════════════════════════════════════════════════╣
+  {top_meses}
+
+╠══════════════════════════════════════════════════════════╣
+║ CLIENTES MÁS FRECUENTES
+╠══════════════════════════════════════════════════════════╣
+{top_clientes if top_clientes else "  Sin datos suficientes"}
+
+╠══════════════════════════════════════════════════════════╣
+║ TIPOS DE TRABAJO MÁS FRECUENTES (HISTÓRICO)
+╠══════════════════════════════════════════════════════════╣
+  {top_motivos}
+
+╠══════════════════════════════════════════════════════════╣
+║ ÓRDENES ACTIVAS EN ESTE MOMENTO
+╠══════════════════════════════════════════════════════════╣
 {ordenes_str}
-═══════════════════════════════════════════════
+
+╠══════════════════════════════════════════════════════════╣
+║ ÚLTIMAS 10 ÓRDENES COMPLETADAS
+╠══════════════════════════════════════════════════════════╣
+{ultimas_str}
+
+╠══════════════════════════════════════════════════════════╣
+║ STOCK CRÍTICO (por debajo del mínimo)
+╠══════════════════════════════════════════════════════════╣
+{stock_str}
+╚══════════════════════════════════════════════════════════╝
 
 CAPACIDADES:
-- Analizar el estado del taller y dar recomendaciones
-- Identificar órdenes retrasadas o problemáticas
-- Responder preguntas sobre el negocio usando los datos reales
-- Leer e interpretar facturas de compra (cuando se te comparte una imagen)
-- Extraer productos de facturas para actualizar el inventario
+- Analizar el negocio completo usando la memoria histórica real de arriba
+- Responder preguntas de cualquier período: hoy, semana, mes, histórico
+- Identificar tendencias, patrones, clientes frecuentes
+- Dar recomendaciones basadas en datos reales
+- Leer facturas cuando el usuario sube una imagen
 
 REGLAS:
-- Responde siempre en español
-- Usa los datos reales que tienes para dar análisis precisos
-- Si te preguntan algo fuera del área del taller, dilo amablemente
-- Cuando analices una factura, devuelve los datos en formato estructurado
-- Sé conciso pero completo. Máximo 3 párrafos salvo que se pida más detalle"""
+- Usa SIEMPRE los datos reales de esta memoria para responder
+- Si el dato pedido no está en la memoria, dilo claramente
+- Sé conciso pero preciso con los números"""
 
 
 FACTURA_PROMPT = """Eres un sistema experto en lectura de facturas y boletas.
@@ -177,60 +228,142 @@ def analizar_factura_imagen(image_path: str) -> dict:
 
 def get_context_data() -> dict:
     """
-    Obtiene los datos en tiempo real del taller para inyectar al prompt.
+    Obtiene todos los datos históricos y en tiempo real del taller
+    para inyectar al prompt de la IA.
     """
     try:
-        from utils.models import get_db, Orden, Cliente, ItemInventario
+        from utils.models import get_db, Orden, Cliente, ItemInventario, Vehiculo
+        import json as _json
         db = get_db()
         try:
-            # Órdenes activas (no archivadas)
-            ordenes_activas = db.query(Orden).filter(
+            # ── Órdenes activas ──────────────────────────────────────
+            ordenes_activas_q = db.query(Orden).filter(
                 Orden.estado.notin_(['ARCHIVADO'])
-            ).count()
-            
-            # Clientes totales
-            clientes_total = db.query(Cliente).count()
-            
-            # Stock crítico
-            items_criticos = db.query(ItemInventario).filter(
-                ItemInventario.stock <= ItemInventario.stock_minimo
-            ).limit(10).all()
-            stock_critico = [{'nombre': i.nombre, 'stock': i.stock, 'minimo': i.stock_minimo} for i in items_criticos]
-            
-            # Ingresos del mes (órdenes finalizadas este mes)
-            from datetime import datetime
-            import json as _json
-            mes_actual = datetime.now().strftime('%Y-%m')
-            ordenes_mes = db.query(Orden).filter(
-                Orden.estado == 'ARCHIVADO',
-                Orden.fecha.like(f'{mes_actual}%')
             ).all()
+            ordenes_activas = len(ordenes_activas_q)
             
-            ingresos_mes = 0
-            for o in ordenes_mes:
+            ordenes_activas_detalle = []
+            for o in ordenes_activas_q:
+                ordenes_activas_detalle.append(
+                    f"{o.consecutivo} | {o.estado} | {getattr(o,'vehiculo_placa','')} | {(o.motivo or '')[:40]}"
+                )
+
+            # ── Órdenes archivadas (historial completo) ──────────────
+            ordenes_archivadas = db.query(Orden).filter(
+                Orden.estado == 'ARCHIVADO'
+            ).order_by(Orden.fecha.desc()).all()
+            
+            # Ingresos totales históricos y por mes
+            ingresos_por_mes = {}
+            ingresos_total_historico = 0
+            ordenes_completadas_total = len(ordenes_archivadas)
+            
+            for o in ordenes_archivadas:
                 items = o.items_cotizacion or []
                 if isinstance(items, str):
                     try: items = _json.loads(items)
                     except: items = []
-                for item in items:
-                    if isinstance(item, dict):
-                        ingresos_mes += float(item.get('total', 0) or 0)
+                total_orden = sum(float(item.get('total', 0) or 0) for item in items if isinstance(item, dict))
+                ingresos_total_historico += total_orden
+                
+                # Agrupar por mes YYYY-MM
+                mes = str(o.fecha or '')[:7] if o.fecha else 'Sin fecha'
+                ingresos_por_mes[mes] = ingresos_por_mes.get(mes, 0) + total_orden
+
+            # Mes actual
+            mes_actual = datetime.now().strftime('%Y-%m')
+            ingresos_mes = ingresos_por_mes.get(mes_actual, 0)
             
-            # Resumen órdenes activas
-            ordenes_recientes = db.query(Orden).filter(
-                Orden.estado.notin_(['ARCHIVADO'])
-            ).order_by(Orden.fecha.desc()).limit(5).all()
-            ordenes_hoy = [f"{o.consecutivo} - {o.estado} - {getattr(o, 'vehiculo_placa', '')}" for o in ordenes_recientes]
+            # Semana actual (últimos 7 días)
+            from datetime import timedelta
+            hace_7_dias = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            ordenes_semana = [o for o in ordenes_archivadas if str(o.fecha or '') >= hace_7_dias]
+            ingresos_semana = 0
+            for o in ordenes_semana:
+                items = o.items_cotizacion or []
+                if isinstance(items, str):
+                    try: items = _json.loads(items)
+                    except: items = []
+                ingresos_semana += sum(float(i.get('total', 0) or 0) for i in items if isinstance(i, dict))
+
+            # Top 5 meses con más ingresos
+            top_meses = sorted(ingresos_por_mes.items(), key=lambda x: x[1], reverse=True)[:6]
+            top_meses_str = " | ".join([f"{m}: S/{v:,.0f}" for m, v in top_meses])
+
+            # ── Clientes ─────────────────────────────────────────────
+            total_clientes = db.query(Cliente).count()
             
+            # Clientes más frecuentes (por número de órdenes)
+            clientes_frecuencia = {}
+            for o in ordenes_archivadas:
+                if o.cliente_id:
+                    clientes_frecuencia[o.cliente_id] = clientes_frecuencia.get(o.cliente_id, 0) + 1
+            
+            top_clientes_ids = sorted(clientes_frecuencia.items(), key=lambda x: x[1], reverse=True)[:5]
+            top_clientes_str = ''
+            for cid, cnt in top_clientes_ids:
+                cl = db.query(Cliente).filter_by(id=cid).first()
+                if cl:
+                    top_clientes_str += f"\n  • {cl.nombre} {cl.apellidos or ''} — {cnt} visita(s)"
+
+            # ── Inventario ───────────────────────────────────────────
+            todos_items = db.query(ItemInventario).all()
+            total_productos = len(todos_items)
+            stock_critico = [
+                {'nombre': i.nombre, 'stock': i.stock, 'minimo': i.stock_minimo}
+                for i in todos_items if i.stock <= i.stock_minimo
+            ]
+            valor_total_inventario = sum((i.precio or 0) * (i.stock or 0) for i in todos_items)
+            
+            # ── Vehículos ────────────────────────────────────────────
+            total_vehiculos = db.query(Vehiculo).count()
+            
+            # ── Órdenes por tipo de trabajo (motivos más frecuentes) ─
+            motivos = {}
+            for o in ordenes_archivadas:
+                mot = (o.motivo or 'Sin especificar')[:30]
+                motivos[mot] = motivos.get(mot, 0) + 1
+            top_motivos = sorted(motivos.items(), key=lambda x: x[1], reverse=True)[:5]
+            top_motivos_str = " | ".join([f"{m}({c})" for m, c in top_motivos])
+
+            # ── Últimas 10 órdenes completadas ──────────────────────
+            ultimas_completadas = []
+            for o in ordenes_archivadas[:10]:
+                items = o.items_cotizacion or []
+                if isinstance(items, str):
+                    try: items = _json.loads(items)
+                    except: items = []
+                total_o = sum(float(i.get('total', 0) or 0) for i in items if isinstance(i, dict))
+                ultimas_completadas.append(
+                    f"  {o.consecutivo} | {str(o.fecha or '')[:10]} | {getattr(o,'vehiculo_placa','')} | S/{total_o:,.0f}"
+                )
+
+            # ── Órdenes activas detalladas ───────────────────────────
+            ordenes_hoy = ordenes_activas_detalle[:8]
+
             return {
+                # Tiempo real
                 'ordenes_activas': ordenes_activas,
-                'clientes_total': clientes_total,
-                'stock_critico': stock_critico,
-                'ingresos_mes': ingresos_mes,
                 'ordenes_hoy': ordenes_hoy,
+                'ingresos_mes': ingresos_mes,
+                'clientes_total': total_clientes,
+                'stock_critico': stock_critico,
+                # Historia completa
+                'ordenes_completadas_total': ordenes_completadas_total,
+                'ingresos_semana': ingresos_semana,
+                'ingresos_total_historico': ingresos_total_historico,
+                'top_meses': top_meses_str,
+                'ordenes_semana_count': len(ordenes_semana),
+                'top_clientes': top_clientes_str,
+                'total_vehiculos': total_vehiculos,
+                'total_productos': total_productos,
+                'valor_inventario': valor_total_inventario,
+                'top_motivos': top_motivos_str,
+                'ultimas_completadas': ultimas_completadas,
             }
         finally:
             db.close()
     except Exception as e:
         logger.error(f"Error obteniendo context data: {e}")
         return {}
+
