@@ -273,10 +273,13 @@ def _open_nueva_factura(list_container):
                 async def handle_upload_sync(e: events.UploadEventArguments):
                     try:
                         os.makedirs(STATIC_FACTURAS, exist_ok=True)
-                        fname = f"factura_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{e.name}"
+                        
+                        # Extraer el nombre de forma segura (soporta distintas versiones de NiceGUI)
+                        file_name = getattr(e, 'name', None) or 'imagen_subida.jpg'
+                        
+                        fname = f"factura_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file_name}"
                         fpath = os.path.join(STATIC_FACTURAS, fname)
                         
-                        # Manejo seguro por si e.content ya no es un SpooledTemporaryFile
                         content = e.content.read() if hasattr(e.content, 'read') else e.content
                         
                         if isinstance(content, str):
