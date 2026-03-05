@@ -290,6 +290,15 @@ def _ver_detalle(f: dict, items: list):
 
 # ─── Diálogo Nueva Factura ────────────────────────────────────────────────────
 
+def _blank_factura() -> dict:
+    """Devuelve una factura vacía para llenado manual"""
+    return {
+        'proveedor': '', 'numero_factura': '',
+        'fecha': datetime.now().strftime('%d/%m/%Y'),
+        'subtotal': 0, 'igv': 0, 'total': 0,
+        'items': [], 'notas': '', 'tipo_detectado': '',
+    }
+
 def _open_nueva_factura(list_container):
     state = {
         'tipo': 'mercaderia',
@@ -359,7 +368,7 @@ def _open_nueva_factura(list_container):
                 # Mostrar preview
                 preview_container.clear()
                 with preview_container:
-                    ui.image(fpath).classes('w-full max-h-64 object-contain rounded-xl border border-gray-200 shadow-sm')
+                    ui.image(fpath).classes('w-full max-h-48 object-contain rounded-xl border border-gray-200 shadow-sm')
                 
                 # Analizar con IA
                 status_label.set_text('🤖 Analizando con IA Groq Vision...')
@@ -368,19 +377,19 @@ def _open_nueva_factura(list_container):
                     datos = analizar_factura_imagen(fpath)
                     
                     if 'error' in datos:
-                        status_label.set_text(f'⚠️ {datos["error"]}')
+                        status_label.set_text(f'⚠️ IA no pudo leer la imagen. Rellena los datos tú mismo.')
+                        datos = _blank_factura()
                     else:
-                        state['datos_ia'] = datos
-                        # Auto-detectar tipo
                         tipo_detectado = datos.get('tipo_detectado', 'mercaderia')
                         if tipo_detectado in ('mercaderia', 'gasto'):
                             set_tipo(tipo_detectado)
-                        
-                        _render_resultado_ia(datos, resultado_container, state)
-                        status_label.set_text('✅ ¡Factura analizada correctamente! Revisa y confirma los datos.')
+                        status_label.set_text('✅ ¡Analizado! Revisa y confirma los datos.')
                 except Exception as ex:
-                    status_label.set_text(f'⚠️ Error IA: {str(ex)[:80]}')
+                    status_label.set_text(f'⚠️ Error IA ({str(ex)[:50]}). Rellena los datos tú mismo.')
+                    datos = _blank_factura()
                 
+                state['datos_ia'] = datos
+                _render_resultado_ia(datos, resultado_container, state)
                 state['procesando'] = False
 
             ui.upload(
@@ -394,12 +403,12 @@ def _open_nueva_factura(list_container):
             resultado_container = ui.column().classes('w-full gap-3')
 
             # ── Botones ──
-            with ui.row().classes('w-full gap-3 pt-2'):
+            with ui.row().classes('w-full gap-3 pt-4 pb-2'):
                 ui.button('Cancelar', on_click=dlg.close).props('flat rounded color=grey-6').classes('flex-1')
                 
                 async def confirmar_y_guardar():
                     if not state['datos_ia']:
-                        theme.notify_warning('Primero sube una imagen para analizar')
+                        theme.notify_warning('Primero sube una imagen para analizar o espera que termine el análisis')
                         return
                     
                     datos = state['datos_ia']
