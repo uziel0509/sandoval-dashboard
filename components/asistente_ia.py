@@ -90,13 +90,30 @@ def show_asistente(container):
                     # Botón subir imagen (factura)
                     async def handle_img_upload(e):
                         import os, asyncio
-                        fname = f'ia_img_{datetime.now().strftime("%Y%m%d_%H%M%S")}_{e.name}'
+                        
+                        file_name = getattr(e, 'name', None)
+                        if not file_name and hasattr(e, 'file'):
+                            file_name = getattr(e.file, 'name', 'imagen_subida.jpg')
+                        file_name = file_name or 'imagen_subida.jpg'
+                        
+                        fname = f'ia_img_{datetime.now().strftime("%Y%m%d_%H%M%S")}_{file_name}'
                         fpath = os.path.join('static/facturas', fname)
                         os.makedirs('static/facturas', exist_ok=True)
+                        
+                        if hasattr(e, 'file'):
+                            content = await e.file.read()
+                        elif hasattr(e.content, 'read'):
+                            content = e.content.read()
+                        else:
+                            content = e.content
+                            
+                        if isinstance(content, str):
+                            content = content.encode('utf-8')
+                            
                         with open(fpath, 'wb') as f:
-                            f.write(e.content.read())
+                            f.write(content)
 
-                        _append_message(chat_container, chat_history, groq_messages, 'user', f'📸 [Imagen subida: {e.name}]')
+                        _append_message(chat_container, chat_history, groq_messages, 'user', f'📸 [Imagen subida: {file_name}]')
                         typing = _add_typing_indicator(chat_container)
 
                         try:

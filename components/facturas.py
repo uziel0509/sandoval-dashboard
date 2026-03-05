@@ -274,16 +274,26 @@ def _open_nueva_factura(list_container):
                     try:
                         os.makedirs(STATIC_FACTURAS, exist_ok=True)
                         
-                        # Extraer el nombre de forma segura (soporta distintas versiones de NiceGUI)
-                        file_name = getattr(e, 'name', None) or 'imagen_subida.jpg'
+                        # Extraer nombre compatible con NiceGUI < 3 y >= 3
+                        file_name = getattr(e, 'name', None)
+                        if not file_name and hasattr(e, 'file'):
+                            file_name = getattr(e.file, 'name', 'imagen_subida.jpg')
+                        file_name = file_name or 'imagen_subida.jpg'
                         
                         fname = f"factura_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file_name}"
                         fpath = os.path.join(STATIC_FACTURAS, fname)
                         
-                        content = e.content.read() if hasattr(e.content, 'read') else e.content
-                        
+                        # Extraer contenido compatible con NiceGUI < 3 y >= 3
+                        if hasattr(e, 'file'):
+                            content = await e.file.read()
+                        elif hasattr(e.content, 'read'):
+                            content = e.content.read()
+                        else:
+                            content = e.content
+                            
                         if isinstance(content, str):
                             content = content.encode('utf-8')
+
                         
                         with open(fpath, 'wb') as f:
                             f.write(content)
