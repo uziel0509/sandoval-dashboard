@@ -8,7 +8,7 @@ import os
 import json
 import asyncio
 from datetime import datetime
-from nicegui import ui, events
+from nicegui import ui, events, app
 from utils.models import get_db, ItemInventario
 import theme
 
@@ -230,7 +230,9 @@ def _open_nueva_factura(list_container):
     3. Botón "🤖 Analizar con IA" rellena los campos automáticamente (opcional)
     4. Botón "✅ Guardar Factura" siempre visible
     """
-    state = {'tipo': 'mercaderia', 'imagen_path': None, 'items': []}
+    state = {'tipo': 'mercaderia', 'items': []}
+    # Limpiar path previo
+    app.storage.user['_factura_img_path'] = None
 
     with ui.dialog().props('maximized') as dlg:
         with ui.card().classes('w-full h-full max-w-2xl mx-auto p-0 rounded-none').style('max-height:100vh; overflow-y:auto'):
@@ -278,14 +280,15 @@ def _open_nueva_factura(list_container):
                         content = e.content.read()
                         with open(fpath, 'wb') as f:
                             f.write(content)
-                        state['imagen_path'] = fpath
+                        # Guardar en storage para acceso confiable
+                        app.storage.user['_factura_img_path'] = fpath
                         img_container.clear()
                         with img_container:
                             ui.image(fpath).classes('w-full max-h-40 object-contain rounded-xl border border-gray-200')
-                            ui.label('✅ Imagen guardada').classes('text-xs text-green-600 font-bold')
+                            ui.label('✅ Imagen lista').classes('text-xs text-green-600 font-bold')
                     except Exception as ex:
                         with img_container:
-                            ui.label(f'⚠️ Error guardando imagen: {ex}').classes('text-xs text-red-500')
+                            ui.label(f'⚠️ Error: {ex}').classes('text-xs text-red-500')
 
                 ui.upload(
                     auto_upload=True, multiple=False,
@@ -313,14 +316,15 @@ def _open_nueva_factura(list_container):
                 items_container = ui.column().classes('w-full gap-1')
 
                 async def analizar_ia():
-                    if not state['imagen_path']:
+                    fpath = app.storage.user.get('_factura_img_path')
+                    if not fpath or not os.path.exists(fpath):
                         theme.notify_warning('Primero sube una imagen de la factura')
                         return
                     ia_status.set_text('🤖 Analizando con IA Groq Vision...')
                     try:
                         from utils.groq_service import analizar_factura_imagen
                         loop = asyncio.get_event_loop()
-                        datos = await loop.run_in_executor(None, analizar_factura_imagen, state['imagen_path'])
+                        datos = await loop.run_in_executor(None, analizar_factura_imagen, fpath)
 
                         if datos and 'error' not in datos:
                             if datos.get('proveedor'):
@@ -371,6 +375,7 @@ def _open_nueva_factura(list_container):
                     async def guardar():
                         proveedor = inp_proveedor.value.strip()
                         total_val = float(inp_total.value or 0)
+                        fpath_final = app.storage.user.get('_factura_img_path') or ''
 
                         if not proveedor:
                             theme.notify_warning('Escribe el nombre del proveedor')
@@ -385,7 +390,7 @@ def _open_nueva_factura(list_container):
                             'subtotal': round(total_val / 1.18, 2),
                             'igv': round(total_val - total_val / 1.18, 2),
                             'notas': inp_notas.value.strip(),
-                            'imagen_path': state['imagen_path'] or '',
+                            'imagen_path': fpath_final,
                             'items': state['items'],
                         }
 
