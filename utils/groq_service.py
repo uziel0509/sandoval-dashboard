@@ -343,7 +343,10 @@ def get_context_data() -> dict:
                     try: items = _json.loads(items)
                     except: items = []
                 total_o = sum(float(i.get('total', 0) or 0) for i in items if isinstance(i, dict))
-                items_str = ', '.join([f"{i.get('nombre','')[:25]} x{i.get('cantidad',1)}" for i in items[:5] if isinstance(i, dict) and i.get('nombre')])
+                items_str = ', '.join([
+                    f"{i.get('nombre','')[:25]} x{i.get('cantidad',1)} @S/{float(i.get('precio_unitario', i.get('precio', i.get('costo', 0))) or 0):,.1f}"
+                    for i in items[:5] if isinstance(i, dict) and i.get('nombre')
+                ])
                 ultimas_completadas.append(
                     f"  {o.consecutivo} | {str(o.fecha or '')[:10]} | {getattr(o,'vehiculo_placa','')} | S/{total_o:,.0f} | {items_str or 'Sin ítems'}"
                 )
