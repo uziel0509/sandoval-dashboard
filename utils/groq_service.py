@@ -50,6 +50,8 @@ def _get_system_prompt(context_data: dict) -> str:
     top_motivos                = context_data.get('top_motivos', 'Sin datos')
     ultimas_completadas        = context_data.get('ultimas_completadas', [])
 
+    top_repuestos = context_data.get('top_repuestos', '  (Sin datos)')
+
     stock_str = "\n".join([f"  ⚠ {s['nombre']}: {s['stock']} uds (mín: {s['minimo']})" for s in stock_critico[:8]]) if stock_critico else "  ✅ Ninguno en stock crítico"
     ordenes_str = "\n".join([f"  🔧 {o}" for o in ordenes_hoy]) if ordenes_hoy else "  (Ninguna activa)"
     ultimas_str = "\n".join(ultimas_completadas) if ultimas_completadas else "  (Sin historial)"
@@ -100,6 +102,11 @@ Fecha y hora: {fecha}
 ║ ÚLTIMAS 10 ÓRDENES COMPLETADAS
 ╠══════════════════════════════════════════════════════════╣
 {ultimas_str}
+
+╠══════════════════════════════════════════════════════════╣
+║ REPUESTOS / SERVICIOS MÁS COTIZADOS (HISTÓRICO TOTAL)
+╠══════════════════════════════════════════════════════════╣
+{top_repuestos}
 
 ╠══════════════════════════════════════════════════════════╣
 ║ STOCK CRÍTICO (por debajo del mínimo)
@@ -326,17 +333,35 @@ def get_context_data() -> dict:
             top_motivos = sorted(motivos.items(), key=lambda x: x[1], reverse=True)[:5]
             top_motivos_str = " | ".join([f"{m}({c})" for m, c in top_motivos])
 
-            # ── Últimas 10 órdenes completadas ──────────────────────
+            # ── Últimas 10 órdenes completadas (con repuestos) ──────
             ultimas_completadas = []
+            top_repuestos = {}  # Acumular repuestos más usados
+            
             for o in ordenes_archivadas[:10]:
                 items = o.items_cotizacion or []
                 if isinstance(items, str):
                     try: items = _json.loads(items)
                     except: items = []
                 total_o = sum(float(i.get('total', 0) or 0) for i in items if isinstance(i, dict))
+                items_str = ', '.join([f"{i.get('nombre','')[:25]} x{i.get('cantidad',1)}" for i in items[:5] if isinstance(i, dict) and i.get('nombre')])
                 ultimas_completadas.append(
-                    f"  {o.consecutivo} | {str(o.fecha or '')[:10]} | {getattr(o,'vehiculo_placa','')} | S/{total_o:,.0f}"
+                    f"  {o.consecutivo} | {str(o.fecha or '')[:10]} | {getattr(o,'vehiculo_placa','')} | S/{total_o:,.0f} | {items_str or 'Sin ítems'}"
                 )
+
+            # ── Top repuestos/servicios más cotizados (historial TOTAL) ──
+            for o in ordenes_archivadas:
+                items = o.items_cotizacion or []
+                if isinstance(items, str):
+                    try: items = _json.loads(items)
+                    except: items = []
+                for item in items:
+                    if isinstance(item, dict) and item.get('nombre'):
+                        nombre = item['nombre'][:40]
+                        cant = int(item.get('cantidad', 1) or 1)
+                        top_repuestos[nombre] = top_repuestos.get(nombre, 0) + cant
+            
+            top_repuestos_sorted = sorted(top_repuestos.items(), key=lambda x: x[1], reverse=True)[:10]
+            top_repuestos_str = "\n".join([f"  • {n}: {c} unidades cotizadas" for n, c in top_repuestos_sorted]) if top_repuestos_sorted else "  (Sin datos de repuestos)"
 
             # ── Órdenes activas detalladas ───────────────────────────
             ordenes_hoy = ordenes_activas_detalle[:8]
@@ -360,6 +385,7 @@ def get_context_data() -> dict:
                 'valor_inventario': valor_total_inventario,
                 'top_motivos': top_motivos_str,
                 'ultimas_completadas': ultimas_completadas,
+                'top_repuestos': top_repuestos_str,
             }
         finally:
             db.close()
