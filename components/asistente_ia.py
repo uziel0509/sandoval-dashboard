@@ -89,7 +89,7 @@ def show_asistente(container):
 
                     # Botón subir imagen (factura)
                     async def handle_img_upload(e):
-                        import os
+                        import os, asyncio
                         fname = f'ia_img_{datetime.now().strftime("%Y%m%d_%H%M%S")}_{e.name}'
                         fpath = os.path.join('static/facturas', fname)
                         os.makedirs('static/facturas', exist_ok=True)
@@ -101,7 +101,9 @@ def show_asistente(container):
 
                         try:
                             from utils.groq_service import analizar_factura_imagen
-                            datos = analizar_factura_imagen(fpath)
+                            # Ejecutar en hilo separado para no bloquear la UI
+                            loop = asyncio.get_event_loop()
+                            datos = await loop.run_in_executor(None, analizar_factura_imagen, fpath)
                             if 'error' in datos:
                                 resp = f"⚠️ No pude leer la imagen: {datos['error']}"
                             else:
@@ -117,6 +119,7 @@ def show_asistente(container):
 
                         chat_container.remove(typing)
                         _append_message(chat_container, chat_history, groq_messages, 'assistant', resp)
+
 
                     ui.upload(auto_upload=True, multiple=False, on_upload=handle_img_upload).props(
                         'flat round color=blue-7 icon=add_photo_alternate accept=image/*'

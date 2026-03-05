@@ -359,6 +359,7 @@ def _open_nueva_factura(list_container):
                 status_label.set_text('⏳ Subiendo imagen...')
                 
                 # Guardar imagen
+                import asyncio
                 fname = f"factura_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{e.name}"
                 fpath = os.path.join(STATIC_FACTURAS, fname)
                 with open(fpath, 'wb') as f:
@@ -370,24 +371,28 @@ def _open_nueva_factura(list_container):
                 with preview_container:
                     ui.image(fpath).classes('w-full max-h-48 object-contain rounded-xl border border-gray-200 shadow-sm')
                 
-                # Analizar con IA
-                status_label.set_text('🤖 Analizando con IA Groq Vision...')
+                status_label.set_text('🤖 Analizando con IA Groq Vision... (puede tardar ~15s)')
+                datos = _blank_factura()  # por defecto, formulario en blanco
+                
                 try:
                     from utils.groq_service import analizar_factura_imagen
-                    datos = analizar_factura_imagen(fpath)
+                    # Ejecutar en hilo para no bloquear la UI
+                    loop = asyncio.get_event_loop()
+                    resultado = await loop.run_in_executor(None, analizar_factura_imagen, fpath)
                     
-                    if 'error' in datos:
-                        status_label.set_text(f'⚠️ IA no pudo leer la imagen. Rellena los datos tú mismo.')
-                        datos = _blank_factura()
-                    else:
+                    if resultado and 'error' not in resultado:
+                        datos = resultado
                         tipo_detectado = datos.get('tipo_detectado', 'mercaderia')
                         if tipo_detectado in ('mercaderia', 'gasto'):
                             set_tipo(tipo_detectado)
-                        status_label.set_text('✅ ¡Analizado! Revisa y confirma los datos.')
+                        status_label.set_text('✅ ¡Factura analizada! Revisa y confirma.')
+                    else:
+                        err = resultado.get('error', 'Error desconocido') if resultado else 'Sin respuesta'
+                        status_label.set_text(f'⚠️ IA no pudo leerla ({err[:50]}). Rellena los datos tú mismo.')
                 except Exception as ex:
-                    status_label.set_text(f'⚠️ Error IA ({str(ex)[:50]}). Rellena los datos tú mismo.')
-                    datos = _blank_factura()
+                    status_label.set_text(f'⚠️ Error: {str(ex)[:60]}. Rellena los datos tú mismo.')
                 
+                # Siempre mostrar formulario (con datos IA o en blanco)
                 state['datos_ia'] = datos
                 _render_resultado_ia(datos, resultado_container, state)
                 state['procesando'] = False
