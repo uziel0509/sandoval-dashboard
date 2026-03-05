@@ -230,9 +230,7 @@ def _open_nueva_factura(list_container):
     3. Botón "🤖 Analizar con IA" rellena los campos automáticamente (opcional)
     4. Botón "✅ Guardar Factura" siempre visible
     """
-    state = {'tipo': 'mercaderia', 'items': []}
-    # Limpiar path previo
-    app.storage.user['_factura_img_path'] = None
+    state = {'tipo': 'mercaderia', 'items': [], 'imagen_path': None}
 
     with ui.dialog().props('maximized') as dlg:
         with ui.card().classes('w-full h-full max-w-2xl mx-auto p-0 rounded-none').style('max-height:100vh; overflow-y:auto'):
@@ -272,21 +270,33 @@ def _open_nueva_factura(list_container):
                     ui.icon('add_photo_alternate', size='40px').classes('text-gray-300')
                     ui.label('Sube la imagen aquí').classes('text-sm text-gray-400')
 
-                def handle_upload_sync(e: events.UploadEventArguments):
+                async def handle_upload_sync(e: events.UploadEventArguments):
                     try:
                         os.makedirs(STATIC_FACTURAS, exist_ok=True)
                         fname = f"factura_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{e.name}"
                         fpath = os.path.join(STATIC_FACTURAS, fname)
-                        content = e.content.read()
+                        
+                        # Manejo seguro por si e.content ya no es un SpooledTemporaryFile
+                        content = e.content.read() if hasattr(e.content, 'read') else e.content
+                        
+                        if isinstance(content, str):
+                            content = content.encode('utf-8')
+                        
                         with open(fpath, 'wb') as f:
                             f.write(content)
-                        # Guardar en storage para acceso confiable
-                        app.storage.user['_factura_img_path'] = fpath
+                            
+                        # Guardar imagen y hacer update de state para acceso futuro
+                        state['imagen_path'] = fpath
                         img_container.clear()
                         with img_container:
                             ui.image(fpath).classes('w-full max-h-40 object-contain rounded-xl border border-gray-200')
                             ui.label('✅ Imagen lista').classes('text-xs text-green-600 font-bold')
+                        
+                        import theme
+                        theme.notify_success("Imagen cargada con éxito")
                     except Exception as ex:
+                        import theme
+                        theme.notify_warning(f'Error upload: {str(ex)}')
                         with img_container:
                             ui.label(f'⚠️ Error: {ex}').classes('text-xs text-red-500')
 
@@ -316,7 +326,7 @@ def _open_nueva_factura(list_container):
                 items_container = ui.column().classes('w-full gap-1')
 
                 async def analizar_ia():
-                    fpath = app.storage.user.get('_factura_img_path')
+                    fpath = state.get('imagen_path')
                     if not fpath or not os.path.exists(fpath):
                         theme.notify_warning('Primero sube una imagen de la factura')
                         return
@@ -375,7 +385,7 @@ def _open_nueva_factura(list_container):
                     async def guardar():
                         proveedor = inp_proveedor.value.strip()
                         total_val = float(inp_total.value or 0)
-                        fpath_final = app.storage.user.get('_factura_img_path') or ''
+                        fpath_final = state.get('imagen_path') or ''
 
                         if not proveedor:
                             theme.notify_warning('Escribe el nombre del proveedor')
