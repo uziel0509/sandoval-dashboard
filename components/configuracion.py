@@ -20,6 +20,7 @@ def show_config(container):
             empresa_tab = ui.tab('Empresa', icon='business').classes('mx-2')
             tecnicos_tab = ui.tab('Técnicos', icon='engineering').classes('mx-2')
             qr_tab = ui.tab('Portal QR', icon='qr_code').classes('mx-2')
+            ia_tab = ui.tab('IA Sandoval', icon='smart_toy').classes('mx-2')
             sistema_tab = ui.tab('Sistema', icon='tune').classes('mx-2')
         
         with ui.tab_panels(tabs, value=empresa_tab).classes('w-full bg-transparent'):
@@ -29,6 +30,8 @@ def show_config(container):
                 _tecnicos_form()
             with ui.tab_panel(qr_tab):
                 _qr_portal_section()
+            with ui.tab_panel(ia_tab):
+                _ia_config_section()
             with ui.tab_panel(sistema_tab):
                 _sistema_form()
 
@@ -165,3 +168,65 @@ def _qr_portal_section():
                     ui.label('• Imprime este código y colócalo en el mostrador de recepción.').classes('text-xs text-blue-800/80 font-medium')
                     ui.label('• El cliente lo escanea y entra directo a su historial de reparaciones.').classes('text-xs text-blue-800/80 font-medium')
                     ui.label('• ¡Dales una experiencia 100% digital y transparente!').classes('text-xs text-blue-900 font-black mt-2 italic')
+
+
+def _ia_config_section():
+    current_key = get_config('groq_api_key', '')
+    masked = current_key[:10] + '...' + current_key[-4:] if len(current_key) > 14 else current_key
+
+    with ui.column().classes('w-full items-center gap-6 p-4'):
+        with ui.card().classes('w-full max-w-xl bg-white border border-gray-200 p-8 shadow-xl rounded-[40px]'):
+            with ui.row().classes('items-center gap-4 mb-6'):
+                with ui.element('div').classes('w-14 h-14 rounded-2xl flex items-center justify-center').style('background:linear-gradient(135deg,#274495,#1e3a8a)'):
+                    ui.icon('smart_toy', size='28px', color='white')
+                with ui.column().classes('gap-0'):
+                    ui.label('ASISTENTE IA SANDOVAL').classes('text-xl font-black text-gray-900 tracking-tight')
+                    ui.label('Configuración de Groq API').classes('text-xs text-gray-400 font-medium')
+
+            # Estado actual
+            if current_key:
+                with ui.row().classes('w-full items-center gap-3 p-4 bg-green-50 border border-green-100 rounded-2xl mb-4'):
+                    ui.icon('check_circle', size='20px').classes('text-green-500')
+                    with ui.column().classes('gap-0'):
+                        ui.label('API Key configurada').classes('text-sm font-bold text-green-800')
+                        ui.label(f'Clave actual: {masked}').classes('text-xs text-green-600 font-mono')
+            else:
+                with ui.row().classes('w-full items-center gap-3 p-4 bg-amber-50 border border-amber-100 rounded-2xl mb-4'):
+                    ui.icon('warning', size='20px').classes('text-amber-500')
+                    ui.label('Sin API Key — El asistente no funcionará').classes('text-sm font-bold text-amber-800')
+
+            # Campo para actualizar
+            ui.label('API KEY DE GROQ').classes('text-[10px] font-black text-blue-600 uppercase tracking-widest')
+            new_key_input = ui.input('Nueva API Key', placeholder='gsk_...').props('outlined dense').classes('w-full font-mono')
+
+            async def test_and_save():
+                key = new_key_input.value.strip()
+                if not key.startswith('gsk_'):
+                    theme.notify_warning('La clave debe comenzar con gsk_')
+                    return
+                set_config('groq_api_key', key)
+                theme.notify_success('✅ API Key guardada correctamente')
+                new_key_input.value = ''
+
+            ui.button('Guardar API Key', icon='save', on_click=test_and_save).props(
+                'unelevated rounded color=primary'
+            ).classes('w-full mt-4 font-bold')
+
+            ui.separator().classes('my-4')
+
+            # Info de modelos usados
+            ui.label('MODELOS UTILIZADOS').classes('text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2')
+            for model, uso in [
+                ('llama-3.3-70b-versatile', 'Chat y análisis del taller'),
+                ('meta-llama/llama-4-scout-17b-16e-instruct', 'Lectura de facturas (visión)'),
+            ]:
+                with ui.row().classes('w-full items-center gap-3 py-2 border-b border-gray-100'):
+                    ui.icon('memory', size='16px').classes('text-blue-400')
+                    with ui.column().classes('gap-0'):
+                        ui.label(model).classes('text-xs font-mono font-bold text-gray-700')
+                        ui.label(uso).classes('text-[10px] text-gray-400')
+
+            ui.label(
+                '💡 Obtén tu API Key gratuita en console.groq.com'
+            ).classes('text-[10px] text-gray-300 text-center mt-4')
+

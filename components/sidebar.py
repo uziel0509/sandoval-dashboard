@@ -33,9 +33,11 @@ def create_sidebar(drawer, on_navigate):
                 {'icon': 'store',         'label': 'Proveedores',         'page': 'proveedores',  'modulo': 'proveedores'},
                 {'icon': 'inventory_2',   'label': 'Inventario',          'page': 'inventario',    'modulo': 'inventario'},
                 {'icon': 'receipt_long',  'label': 'Notas de Venta',      'page': 'notas_venta',  'modulo': 'notas_venta'},
+                {'icon': 'receipt',       'label': 'Facturas',            'page': 'facturas',     'modulo': 'facturas'},
                 {'icon': 'event',         'label': 'Citas / Agenda',      'page': 'citas',         'modulo': 'citas'},
                 {'icon': 'assessment',    'label': 'Reportes',            'page': 'reportes',     'modulo': 'reportes'},
                 {'icon': 'trending_up',   'label': 'Rentabilidad',        'page': 'rentabilidad', 'modulo': 'rentabilidad'},
+                {'icon': 'smart_toy',     'label': 'IA Sandoval',         'page': 'asistente_ia', 'modulo': 'asistente_ia'},
                 {'icon': 'manage_accounts','label': 'Usuarios',           'page': 'usuarios',     'modulo': 'usuarios'},
                 {'icon': 'settings',      'label': 'Configuración',       'page': 'config',       'modulo': 'config'},
             ]

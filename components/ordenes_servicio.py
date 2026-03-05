@@ -1095,9 +1095,12 @@ def open_archive_dialog(consecutivo: str, container, state, stats_container=None
                 advance_order(consecutivo, 'ARCHIVADO')
                 dlg.close()
                 refresh_orders(container, state, stats_container)
-                theme.notify_success(f'✅ Orden {consecutivo} finalizada y archivada.')
-                if method:
-                    theme.notify_info(f'Encuesta preparada vía {method}')
+                try:
+                    theme.notify_success(f'✅ Orden {consecutivo} finalizada y archivada.')
+                    if method:
+                        theme.notify_info(f'Encuesta preparada vía {method}')
+                except Exception:
+                    pass  # El contexto UI ya fue destruido, no hay donde mostrar la notificación
                     
             def _open_wa_encuesta():
                 if not client or not client.telefono:

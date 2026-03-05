@@ -39,6 +39,10 @@ try:
     # ─── Inicializar Base de Datos ───
     from utils.models import init_db, migrate_json_to_db
     init_db()
+    # Pre-poblar API Key de Groq si no existe
+    from utils.models import get_config, set_config
+    if not get_config('groq_api_key'):
+        set_config('groq_api_key', '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')
     log_boot("Base de datos SQLite inicializada")
     
     # migrate_json_to_db()
@@ -51,7 +55,8 @@ try:
     from components import (
         sidebar, clientes, proveedores, ordenes_servicio,
         inventario, metricas, vehiculos, reportes, configuracion,
-        usuarios, citas, rentabilidad, notas_venta
+        usuarios, citas, rentabilidad, notas_venta,
+        facturas, asistente_ia
     )
     from pages.approval import approval_page
     from pages.reporte_entrega import reporte_entrega_page
@@ -183,6 +188,10 @@ try:
                     inventario.show_inventario(content_area)
                 elif page_name == 'notas_venta':
                     notas_venta.show_notas_venta(content_area)
+                elif page_name == 'facturas':
+                    facturas.show_facturas(content_area)
+                elif page_name == 'asistente_ia':
+                    asistente_ia.show_asistente(content_area)
                 elif page_name == 'citas':
                     citas.show_citas(content_area)
                 elif page_name == 'reportes':
