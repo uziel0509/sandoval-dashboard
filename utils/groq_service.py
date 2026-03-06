@@ -51,10 +51,14 @@ def _get_system_prompt(context_data: dict) -> str:
     ultimas_completadas        = context_data.get('ultimas_completadas', [])
 
     top_repuestos = context_data.get('top_repuestos', '  (Sin datos)')
+    vehiculos_lista = context_data.get('vehiculos_lista', [])
+    cotizaciones_detalle = context_data.get('cotizaciones_detalle', [])
 
     stock_str = "\n".join([f"  ⚠ {s['nombre']}: {s['stock']} uds (mín: {s['minimo']})" for s in stock_critico[:8]]) if stock_critico else "  ✅ Ninguno en stock crítico"
     ordenes_str = "\n".join([f"  🔧 {o}" for o in ordenes_hoy]) if ordenes_hoy else "  (Ninguna activa)"
     ultimas_str = "\n".join(ultimas_completadas) if ultimas_completadas else "  (Sin historial)"
+    vehiculos_str = "\n".join(vehiculos_lista) if vehiculos_lista else "  (Sin vehículos registrados)"
+    cotizaciones_str = "\n".join(cotizaciones_detalle) if cotizaciones_detalle else "  (Sin cotizaciones pendientes)"
 
     return f"""Eres el Asistente IA de MECÁNICA Y REPUESTOS SANDOVAL EIRL.
 Tu nombre es "Asistente Sandoval". Eres directo, profesional y conoces todos los datos del taller.
@@ -97,6 +101,16 @@ Fecha y hora: {fecha}
 ║ ÓRDENES ACTIVAS EN ESTE MOMENTO
 ╠══════════════════════════════════════════════════════════╣
 {ordenes_str}
+
+╠══════════════════════════════════════════════════════════╣
+║ COTIZACIONES PENDIENTES
+╠══════════════════════════════════════════════════════════╣
+{cotizaciones_str}
+
+╠══════════════════════════════════════════════════════════╣
+║ VEHÍCULOS REGISTRADOS (CON DUEÑOS Y PLACAS)
+╠══════════════════════════════════════════════════════════╣
+{vehiculos_str}
 
 ╠══════════════════════════════════════════════════════════╣
 ║ ÚLTIMAS 10 ÓRDENES COMPLETADAS
@@ -323,7 +337,25 @@ def get_context_data() -> dict:
             valor_total_inventario = sum((i.precio or 0) * (i.stock or 0) for i in todos_items)
             
             # ── Vehículos ────────────────────────────────────────────
-            total_vehiculos = db.query(Vehiculo).count()
+            vehiculos_q = db.query(Vehiculo).all()
+            total_vehiculos = len(vehiculos_q)
+            vehiculos_lista = []
+            for v in vehiculos_q:
+                dueno = "Desconocido"
+                if getattr(v, 'cliente_id', None):
+                    cl = db.query(Cliente).filter_by(id=v.cliente_id).first()
+                    if cl: dueno = f"{cl.nombre} {cl.apellidos or ''}".strip()
+                vehiculos_lista.append(f"  🚗 {v.placa} | Dueño: {dueno} | {v.marca} {v.modelo}")
+                
+            # ── Cotizaciones ─────────────────────────────────────────
+            cotizaciones_q = db.query(Orden).filter(Orden.estado == 'COTIZACIÓN').all()
+            cotizaciones_detalle = []
+            for c in cotizaciones_q:
+                try: 
+                    items_cot = _json.loads(c.items_cotizacion) if isinstance(c.items_cotizacion, str) else (c.items_cotizacion or [])
+                    cot_total = sum(float(i.get('total', 0) or 0) for i in items_cot if isinstance(i, dict))
+                except: cot_total = 0
+                cotizaciones_detalle.append(f"  📝 {c.consecutivo} | Placa: {c.vehiculo_placa} | Dueño: {c.cliente_nombre} | S/ {cot_total:,.2f}")
             
             # ── Órdenes por tipo de trabajo (motivos más frecuentes) ─
             motivos = {}
@@ -389,6 +421,8 @@ def get_context_data() -> dict:
                 'top_motivos': top_motivos_str,
                 'ultimas_completadas': ultimas_completadas,
                 'top_repuestos': top_repuestos_str,
+                'vehiculos_lista': vehiculos_lista,
+                'cotizaciones_detalle': cotizaciones_detalle,
             }
         finally:
             db.close()

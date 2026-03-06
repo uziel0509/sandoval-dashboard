@@ -22,10 +22,7 @@ load_dotenv()
 
 TELEGRAM_TOKEN = "8680913184:AAHMAU3GaUwXZLgxnIniR7GTAtXlRulSp9E"
 
-# Aquí pondremos los IDs de ustedes dos para que nadie más pueda usarlo.
-# Por ahora está vacío para que cuando le escribas tu primer "Hola", te diga tu ID
-# y luego me lo pasas para agregarlo a esta lista fuerte de seguridad.
-ALLOWED_USERS = []
+ALLOWED_USERS = [8216634547]
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
