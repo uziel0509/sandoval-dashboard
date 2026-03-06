@@ -201,6 +201,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'tipo': tipo,
             'subtipo_gasto': '',
             'proveedor': datos.get('proveedor', 'Desconocido'),
+            'ruc_proveedor': datos.get('ruc_proveedor', ''),
             'numero_factura': datos.get('numero_factura', 'S/N'),
             'fecha': datos.get('fecha', datetime.now().strftime('%d/%m/%Y')),
             'subtotal': datos.get('subtotal', 0),

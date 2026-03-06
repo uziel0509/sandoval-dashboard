@@ -147,6 +147,7 @@ Analiza la imagen de la factura y extrae TODA la información posible.
 Devuelve ÚNICAMENTE un JSON válido con esta estructura exacta:
 {
   "proveedor": "Nombre del proveedor/tienda",
+  "ruc_proveedor": "El RUC o DNI del local, si figura. Sino vacio.",
   "numero_factura": "Número de factura o boleta",
   "fecha": "DD/MM/YYYY o la fecha que aparezca",
   "subtotal": 0.00,

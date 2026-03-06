@@ -53,25 +53,51 @@ def _get_facturas_db():
     finally:
         db.close()
 
-def _save_proveedor(nombre: str, tipo: str):
-    if not nombre or nombre.strip().lower() == 'desconocido':
+def _save_proveedor(nombre: str, tipo: str, ruc: str = ''):
+    if not nombre or nombre.strip().lower() in ['desconocido', 's/n', '']:
         return
-    from sqlalchemy import text
+        
+    from utils.models import get_db, Proveedor
+    import hashlib
+    
     db = get_db()
     try:
-        db.execute(text("""
-            INSERT INTO proveedores_facturas (nombre, tipo, ultima_fecha)
-            VALUES (:nombre, :tipo, :fecha)
-            ON CONFLICT(nombre) DO UPDATE SET
-            tipo = excluded.tipo,
-            ultima_fecha = excluded.ultima_fecha
-        """), {
-            'nombre': nombre.upper().strip(),
-            'tipo': tipo.lower(),
-            'fecha': datetime.now().strftime('%Y-%m-%d')
-        })
+        nombre_clean = nombre.upper().strip()
+        ruc_clean = ruc.strip() if ruc else ""
+        
+        # Etiqueta visual para la tabla
+        tipo_label = "📦 MERCADERÍA / REPUESTOS" if tipo.lower() == 'mercaderia' else "💸 GASTOS OPERACIONALES"
+        
+        # 1. Buscar si ya existe por RUC (Si nos dieron RUC)
+        p = None
+        if ruc_clean and len(ruc_clean) >= 8:
+            p = db.query(Proveedor).filter_by(id=ruc_clean).first()
+            
+        # 2. Si no lo halló por RUC, intentar buscar por Nombre Exacto
+        if not p:
+            p = db.query(Proveedor).filter(Proveedor.nombre == nombre_clean).first()
+            
+        if not p:
+            # Crear ID de RUC (Si no nos dio, inventamos uno temporal como PROV-ABC)
+            fake_ruc = ruc_clean if (ruc_clean and len(ruc_clean) >= 8) else ("PROV-" + hashlib.md5(nombre_clean.encode()).hexdigest()[:6].upper())
+            
+            p = Proveedor(
+                id=fake_ruc,
+                nombre=nombre_clean,
+                productos=tipo_label,
+                tipo='Empresa' # Por defecto empresa
+            )
+            db.add(p)
+        else:
+            # Si ya existía, asgurarnos de que diga que vende (Mercadería o Gastos)
+            prods = p.productos or ""
+            if "GASTOS" not in prods and "MERCADERÍA" not in prods:
+                p.productos = tipo_label
+            elif tipo_label not in prods:
+                p.productos = f"{prods} - {tipo_label}"
+                
         db.commit()
-    except Exception:
+    except Exception as e:
         db.rollback()
     finally:
         db.close()
@@ -108,7 +134,7 @@ def _save_factura(data: dict) -> int:
         
         # Guardar proveedor en su respectiva tabla automáticamente
         try:
-            _save_proveedor(data.get('proveedor', ''), data.get('tipo', 'mercaderia'))
+            _save_proveedor(data.get('proveedor', ''), data.get('tipo', 'mercaderia'), data.get('ruc_proveedor', ''))
         except Exception as e:
             pass
             
@@ -364,8 +390,9 @@ def _open_nueva_factura(list_container):
 
                 # Campos del formulario
                 with ui.row().classes('w-full gap-3'):
-                    inp_proveedor = ui.input('Proveedor / Tienda', placeholder='Ej: Repuestos Pérez SAC').props('outlined dense').classes('flex-1')
-                    inp_nro = ui.input('N° Factura', placeholder='F001-00123').props('outlined dense').classes('flex-1')
+                    inp_proveedor = ui.input('Proveedor / Tienda', placeholder='Ej: Repuestos Pérez SAC').props('outlined dense').classes('flex-[2]')
+                    inp_ruc = ui.input('RUC/DNI', placeholder='Ej: 201234...').props('outlined dense').classes('flex-[1]')
+                    inp_nro = ui.input('N° Factura', placeholder='F001-00123').props('outlined dense').classes('flex-[1]')
 
                 with ui.row().classes('w-full gap-3'):
                     inp_fecha = ui.input('Fecha', value=datetime.now().strftime('%d/%m/%Y')).props('outlined dense').classes('flex-1')
@@ -391,6 +418,8 @@ def _open_nueva_factura(list_container):
                         if datos and 'error' not in datos:
                             if datos.get('proveedor'):
                                 inp_proveedor.value = datos['proveedor']
+                            if datos.get('ruc_proveedor'):
+                                inp_ruc.value = datos['ruc_proveedor']
                             if datos.get('numero_factura'):
                                 inp_nro.value = datos['numero_factura']
                             if datos.get('fecha'):
@@ -446,6 +475,7 @@ def _open_nueva_factura(list_container):
                         data = {
                             'tipo': state['tipo'],
                             'proveedor': proveedor,
+                            'ruc_proveedor': inp_ruc.value.strip(),
                             'numero_factura': inp_nro.value.strip(),
                             'fecha': inp_fecha.value.strip() or datetime.now().strftime('%d/%m/%Y'),
                             'total': total_val,
