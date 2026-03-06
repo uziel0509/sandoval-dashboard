@@ -139,63 +139,49 @@ def open_import_historico(container, state, stats_container=None):
         
         async def process_upload(e):
             import os, asyncio, traceback
+            
+            # ⚡ CRITICO: Leer bytes AHORA, antes de cualquier await
+            # En NiceGUI async, despues del primer await e.content se destruye
+            raw_bytes = None
+            file_name = ''
             try:
-                print(f"[HISTORICO] Upload event recibido, tipo: {type(e)}")
-                status_label.set_text('⏳ Leyendo archivo...')
+                file_name = getattr(e, 'name', '') or ''
+                # Intentar sin seek primero
+                try:
+                    raw_bytes = e.content.read()
+                except:
+                    pass
+                # Si retorno vacio, intentar con seek
+                if not raw_bytes:
+                    try:
+                        e.content.seek(0)
+                        raw_bytes = e.content.read()
+                    except:
+                        pass
+                print(f"[HISTORICO] Bytes capturados: {len(raw_bytes) if raw_bytes else 0}, archivo: {file_name}")
+            except Exception as read_err:
+                print(f"[HISTORICO] Error leyendo bytes: {read_err}")
+            
+            # A partir de aqui ya podemos hacer asyncs con seguridad
+            try:
+                if not raw_bytes:
+                    ui.notify(f'❌ No se pudieron leer los bytes del archivo. Nombre: {file_name}', type='negative', position='top', timeout=8000)
+                    status_label.set_text('❌ Error: archivo vacío o no leíble.')
+                    return
+                    
+                status_label.set_text(f'⏳ Archivo recibido ({len(raw_bytes)//1024} KB). Guardando...')
                 
                 os.makedirs('/var/www/sandoval/static', exist_ok=True)
                 
-                # Leer contenido del archivo - múltiples estrategias
-                content = None
-                
-                # Estrategia 1: e.content.read() directamente (sin seek)
-                try:
-                    content = e.content.read()
-                    if content:
-                        print(f"[HISTORICO] Estrategia 1 OK: {len(content)} bytes")
-                except Exception as ex1:
-                    print(f"[HISTORICO] Estrategia 1 falló: {ex1}")
-                
-                # Estrategia 2: seek(0) antes de leer
-                if not content:
-                    try:
-                        e.content.seek(0)
-                        content = e.content.read()
-                        if content:
-                            print(f"[HISTORICO] Estrategia 2 OK: {len(content)} bytes")
-                    except Exception as ex2:
-                        print(f"[HISTORICO] Estrategia 2 falló: {ex2}")
-                
-                # Estrategia 3: el objeto 'e' mismo tiene read()
-                if not content:
-                    try:
-                        if hasattr(e, 'read'):
-                            content = e.read()
-                            if content:
-                                print(f"[HISTORICO] Estrategia 3 OK: {len(content)} bytes")
-                    except Exception as ex3:
-                        print(f"[HISTORICO] Estrategia 3 falló: {ex3}")
-                        
-                print(f"[HISTORICO] Resultado lectura: content={'OK '+str(len(content))+' bytes' if content else 'VACIO'}")
-                
-                if not content:
-                    ui.notify('❌ No se pudo leer el archivo. Revisa si el PDF no está protegido.', type='negative', position='top', timeout=7000)
-                    status_label.set_text('❌ Error leyendo archivo.')
-                    return
-                
-                status_label.set_text('⏳ Enviando a Groq Vision IA... (demora ~10 segundos)')
-                
-                temp_filename = f"hist_{datetime.now().strftime('%H%M%S_%f')}"
-                
-                # Detectar si es PDF o imagen
-                name = getattr(e, 'name', '') or ''
-                ext = '.pdf' if name.lower().endswith('.pdf') else '.jpg'
-                temp_filename = temp_filename + ext
+                # Detectar extension
+                ext = '.pdf' if file_name.lower().endswith('.pdf') else '.jpg'
+                temp_filename = f"hist_{datetime.now().strftime('%H%M%S_%f')}{ext}"
                 temp_path = f"/var/www/sandoval/static/{temp_filename}"
                 
                 with open(temp_path, 'wb') as f:
-                    f.write(content)
-                print(f"[HISTORICO] Foto guardada: {temp_path}")
+                    f.write(raw_bytes)
+                print(f"[HISTORICO] Archivo guardado: {temp_path} ({len(raw_bytes)} bytes)")
+
                 
                 from utils.groq_service import analizar_factura_historica_imagen
                 datos = await asyncio.get_event_loop().run_in_executor(
