@@ -432,14 +432,15 @@ def get_context_data() -> dict:
         return {}
 
 
-FACTURA_HISTORICA_PROMPT = """Eres un experto en lectura de facturas automotrices.
-Analiza la imagen y extrae los datos para generar un registro histórico.
+FACTURA_HISTORICA_PROMPT = """Eres un experto en lectura de facturas automotrices peruanas.
+Analiza la imagen y extrae los datos para un registro histórico.
 
 Devuelve ÚNICAMENTE un JSON válido con esta estructura exacta:
 {
-  "placa": "Placa del vehículo, si figura, sino vacio",
-  "cliente_nombre": "Nombre del cliente si figura",
-  "fecha": "DD/MM/YYYY o la fecha que aparezca",
+  "placa": "Placa del vehículo (ejemplo: ABC-123 o 0080-1P), si no figura deja vacío",
+  "cliente_nombre": "Nombre o razón social del COMPRADOR (quien paga la factura)",
+  "ruc_cliente": "RUC o DNI del COMPRADOR (11 dígitos si es RUC, 8 si es DNI), vacío si no aparece",
+  "fecha": "DD/MM/YYYY o la fecha que aparezca en la factura",
   "items": [
     {
       "nombre": "Nombre del repuesto o servicio",
@@ -448,7 +449,7 @@ Devuelve ÚNICAMENTE un JSON válido con esta estructura exacta:
       "total": 0.00
     }
   ],
-  "notas": "Cualquier observación"
+  "notas": "Cualquier observación relevante"
 }
 NO incluyas texto adicional fuera del JSON."""
 

@@ -174,11 +174,53 @@ def _register_historico_api():
             if not placa or placa in ('NONE', 'NULL', ''):
                 return JSONResponse({'ok': False, 'error': 'La IA no detectó placa en la factura. Asegúrate que figure en el PDF.'})
             
+            # Datos extra de la IA (cliente y ruc si los detectó)
+            cliente_nombre_ia = str(datos.get('cliente_nombre', '')).strip()
+            ruc_ia = str(datos.get('ruc_cliente', datos.get('ruc', ''))).strip()
+            
             db_h = get_db()
             try:
                 vehiculo = db_h.query(Vehiculo).filter_by(placa=placa).first()
+                
                 if not vehiculo:
-                    return JSONResponse({'ok': False, 'error': f'Placa "{placa}" no está registrada en el sistema'})
+                    print(f"[HIST-API] Placa {placa} no encontrada. Buscando cliente por RUC/nombre...")
+                    
+                    cliente_auto = None
+                    # 1. Buscar por RUC exacto (como id del cliente)
+                    if ruc_ia and len(ruc_ia) >= 8:
+                        cliente_auto = db_h.query(Cliente).filter_by(id=ruc_ia).first()
+                    
+                    # 2. Buscar por nombre de cliente detectado por la IA
+                    if not cliente_auto and cliente_nombre_ia:
+                        from sqlalchemy import func
+                        cliente_auto = db_h.query(Cliente).filter(
+                            func.upper(Cliente.nombre).contains(cliente_nombre_ia[:15].upper())
+                        ).first()
+                    
+                    # 3. Fallback: buscar cualquier cliente con "CMAC" en el nombre
+                    if not cliente_auto:
+                        from sqlalchemy import func
+                        cliente_auto = db_h.query(Cliente).filter(
+                            func.upper(Cliente.nombre).contains('CMAC')
+                        ).first()
+                    
+                    if not cliente_auto:
+                        return JSONResponse({'ok': False, 'error': f'Placa "{placa}" no registrada y no se encontró cliente CMAC. Registra el cliente primero.'})
+                    
+                    # Crear el vehículo automáticamente
+                    print(f"[HIST-API] Creando vehículo {placa} para {cliente_auto.nombre}")
+                    vehiculo = Vehiculo(
+                        placa=placa,
+                        cliente_id=cliente_auto.id,
+                        marca='Sin especificar',
+                        modelo='Moto Lineal',
+                        tipo='Moto',
+                        observaciones='Registrada automáticamente al importar factura histórica vía IA'
+                    )
+                    db_h.add(vehiculo)
+                    db_h.commit()
+                    db_h.refresh(vehiculo)
+                    print(f"[HIST-API] ✅ Vehículo {placa} creado automáticamente")
                 
                 cliente = db_h.query(Cliente).filter_by(id=vehiculo.cliente_id).first()
                 if not cliente:
