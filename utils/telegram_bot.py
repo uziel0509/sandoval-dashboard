@@ -219,8 +219,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         items_str = "\n".join([f"   - {i.get('cantidad', 1)}x {i.get('nombre', '...')[:25]} (S/ {i.get('total', 0)})" for i in factura_data['items'][:5]])
         if len(factura_data['items']) > 5:
             items_str += f"\n   ... y {len(factura_data['items']) - 5} ítems más"
+            
+        from components.facturas import _check_duplicate_factura
+        is_duplicate = _check_duplicate_factura(factura_data['proveedor'], factura_data['numero_factura'])
+        
+        duplicate_warning = "⚠️ *¡ATENCIÓN: EL SISTEMA DETECTA QUE ESTA FACTURA YA FUE REGISTRADA ANTES!*\n\n" if is_duplicate else ""
         
         preview_msg = (
+            f"{duplicate_warning}"
             f"🔍 **Vista Previa de la Factura ({tipo.upper()})**\n\n"
             f"🏢 *Proveedor:* {factura_data['proveedor']}\n"
             f"📄 *Nº Factura:* {factura_data['numero_factura']}\n"
@@ -232,11 +238,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"¿Los datos son correctos?"
         )
         
-        # Botones de confirmación
-        keyboard = [
-            [InlineKeyboardButton("✅ Confirmar y Guardar", callback_data='save_factura')],
-            [InlineKeyboardButton("❌ Rechazar", callback_data='discard_factura')]
-        ]
+        keyboard = []
+        if not is_duplicate:
+            keyboard.append([InlineKeyboardButton("✅ Confirmar y Guardar", callback_data='save_factura')])
+        else:
+            keyboard.append([InlineKeyboardButton("⚠️ Guardar Doble de todas formas", callback_data='save_factura')])
+        
+        keyboard.append([InlineKeyboardButton("❌ Rechazar", callback_data='discard_factura')])
+        
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(preview_msg, reply_markup=reply_markup, parse_mode='Markdown')

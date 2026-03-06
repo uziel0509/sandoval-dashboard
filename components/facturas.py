@@ -112,6 +112,32 @@ def _save_proveedor(nombre, tipo: str, ruc=''):
         except:
             pass
 
+def _check_duplicate_factura(proveedor: str, numero_factura: str) -> bool:
+    if not numero_factura or str(numero_factura).strip().upper() in ['S/N', 'SIN NUMERO', 'NONE', '']:
+        return False
+        
+    proveedor_clean = str(proveedor).strip().lower()
+    if not proveedor_clean:
+        return False
+        
+    from sqlalchemy import text
+    from utils.models import get_db
+    db = get_db()
+    try:
+        row = db.execute(text("""
+            SELECT id FROM facturas
+            WHERE LOWER(proveedor) = :prov
+            AND LOWER(numero_factura) = :num
+            LIMIT 1
+        """), {
+            'prov': proveedor_clean,
+            'num': str(numero_factura).strip().lower()
+        }).fetchone()
+        return bool(row)
+    except:
+        return False
+    finally:
+        db.close()
 
 def _save_factura(data: dict) -> int:
     from sqlalchemy import text
@@ -480,6 +506,11 @@ def _open_nueva_factura(list_container):
 
                         if not proveedor:
                             theme.notify_warning('Escribe el nombre del proveedor')
+                            return
+                            
+                        nro_fact = inp_nro.value.strip()
+                        if _check_duplicate_factura(proveedor, nro_fact):
+                            theme.notify_warning('⚠️ Esta factura ya fue registrada. Verifica el proveedor y N° de Factura.')
                             return
 
                         data = {
