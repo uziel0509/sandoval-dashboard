@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.models import get_db, ItemInventario
 from components.facturas import _save_factura, _agregar_items_a_inventario
-from utils.groq_service import client, FACTURA_PROMPT, get_context_data
+from utils.groq_service import get_groq_client, FACTURA_PROMPT, get_context_data
 
 load_dotenv()
 
@@ -70,6 +70,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     processing_msg = await update.message.reply_text("⏳ Consultando la base de datos del taller...")
     
     try:
+        client = get_groq_client()
         response = client.chat.completions.create(
             model="meta-llama/llama-4-scout-17b-16e-instruct", # Modelo inteligente de Groq
             messages=[
@@ -142,6 +143,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(f"🤖 Analizando la imagen como *{tipo.upper()}* usando Llama-4 Vision... Espera un momento.", parse_mode="Markdown")
     
     try:
+        client = get_groq_client()
         import base64
         with open(fpath, "rb") as f:
             img_b64 = base64.b64encode(f.read()).decode("utf-8")
