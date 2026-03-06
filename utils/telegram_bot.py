@@ -127,8 +127,39 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     data = query.data
     
-    if data == 'cancelar_factura':
+    if data == 'cancelar_factura' or data == 'discard_factura':
+        context.user_data.pop('pending_factura', None)
         await query.edit_message_text("❌ Subida de recibo cancelada.")
+        return
+        
+    if data == 'save_factura':
+        factura_data = context.user_data.get('pending_factura')
+        if not factura_data:
+            await query.edit_message_text("⚠️ Sesión expirada. Vuelve a subir la foto.")
+            return
+            
+        try:
+            # Inyectar silenciosamente a SQLite de la página web
+            factura_id = _save_factura(factura_data)
+            
+            # Si es mercadería, añadir también al stock disponible internamente
+            if factura_data['tipo'] == 'mercaderia' and factura_data.get('items'):
+                _agregar_items_a_inventario(factura_data['items'])
+                
+            res_msg = (
+                f"✅ **¡Factura Registrada Exitosamente!**\n\n"
+                f"🏢 *Proveedor:* {factura_data['proveedor']}\n"
+                f"📄 *Nº Factura:* {factura_data['numero_factura']}\n"
+                f"💰 *Total:* S/ {factura_data['total']}\n"
+                f"📦 *Items detectados:* {len(factura_data['items'])}\n"
+                f"📌 *Clasificación:* {factura_data['tipo'].upper()}\n\n"
+                f"*(Ya está disponible en la página web)*"
+            )
+            await query.edit_message_text(res_msg, parse_mode='Markdown')
+            context.user_data.pop('pending_factura', None)
+        except Exception as e:
+            logger.error(f"Error guardando factura telegram: {e}")
+            await query.edit_message_text(f"❌ Falló el guardado. Error técnico: {str(e)}")
         return
         
     fpath = context.user_data.get('last_invoice_path')
@@ -180,23 +211,34 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'notas': 'Subida vía Telegram Bot Sandoval'
         }
         
-        # Inyectar silenciosamente a SQLite de la página web
-        factura_id = _save_factura(factura_data)
+        # Guardar temporalmente para confirmación
+        context.user_data['pending_factura'] = factura_data
         
-        # Si es mercadería, añadir también al stock disponible internamente
-        if tipo == 'mercaderia' and datos.get('items'):
-            _agregar_items_a_inventario(datos['items'])
-            
-        res_msg = (
-            f"✅ **¡Factura Registrada Exitosamente!**\n\n"
+        # Generar mensaje de confirmación
+        items_str = "\n".join([f"   - {i.get('cantidad', 1)}x {i.get('nombre', '...')[:25]} (S/ {i.get('total', 0)})" for i in factura_data['items'][:5]])
+        if len(factura_data['items']) > 5:
+            items_str += f"\n   ... y {len(factura_data['items']) - 5} ítems más"
+        
+        preview_msg = (
+            f"🔍 **Vista Previa de la Factura ({tipo.upper()})**\n\n"
             f"🏢 *Proveedor:* {factura_data['proveedor']}\n"
             f"📄 *Nº Factura:* {factura_data['numero_factura']}\n"
-            f"💰 *Total:* S/ {factura_data['total']}\n"
-            f"📦 *Items detectados:* {len(factura_data['items'])}\n"
-            f"📌 *Clasificación:* {tipo.upper()}\n\n"
-            f"*(Ya está disponible en la página web)*"
+            f"📅 *Fecha:* {factura_data['fecha']}\n"
+            f"� *Subtotal:* S/ {factura_data['subtotal']}\n"
+            f"� *IGV:* S/ {factura_data['igv']}\n"
+            f"💰 *Total:* S/ {factura_data['total']}\n\n"
+            f"� *Ítems detectados:*\n{items_str if items_str else '   (Ninguno o no legibles)'}\n\n"
+            f"¿Los datos son correctos?"
         )
-        await query.edit_message_text(res_msg, parse_mode='Markdown')
+        
+        # Botones de confirmación
+        keyboard = [
+            [InlineKeyboardButton("✅ Confirmar y Guardar", callback_data='save_factura')],
+            [InlineKeyboardButton("❌ Rechazar", callback_data='discard_factura')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(preview_msg, reply_markup=reply_markup, parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Error procesando factura telegram: {e}")

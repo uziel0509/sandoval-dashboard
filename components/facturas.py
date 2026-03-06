@@ -41,7 +41,38 @@ def _get_facturas_db():
                 agregado_inventario INTEGER DEFAULT 0
             )
         """))
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS proveedores_facturas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT UNIQUE,
+                tipo TEXT DEFAULT 'gastos',
+                ultima_fecha TEXT DEFAULT ''
+            )
+        """))
         db.commit()
+    finally:
+        db.close()
+
+def _save_proveedor(nombre: str, tipo: str):
+    if not nombre or nombre.strip().lower() == 'desconocido':
+        return
+    from sqlalchemy import text
+    db = get_db()
+    try:
+        db.execute(text("""
+            INSERT INTO proveedores_facturas (nombre, tipo, ultima_fecha)
+            VALUES (:nombre, :tipo, :fecha)
+            ON CONFLICT(nombre) DO UPDATE SET
+            tipo = excluded.tipo,
+            ultima_fecha = excluded.ultima_fecha
+        """), {
+            'nombre': nombre.upper().strip(),
+            'tipo': tipo.lower(),
+            'fecha': datetime.now().strftime('%Y-%m-%d')
+        })
+        db.commit()
+    except Exception:
+        db.rollback()
     finally:
         db.close()
 
@@ -74,6 +105,13 @@ def _save_factura(data: dict) -> int:
             'agregado_inventario': 1 if data.get('tipo') == 'mercaderia' else 0,
         })
         db.commit()
+        
+        # Guardar proveedor en su respectiva tabla automáticamente
+        try:
+            _save_proveedor(data.get('proveedor', ''), data.get('tipo', 'mercaderia'))
+        except Exception as e:
+            pass
+            
         row = db.execute(text("SELECT last_insert_rowid()")).fetchone()
         return row[0] if row else 0
     finally:
