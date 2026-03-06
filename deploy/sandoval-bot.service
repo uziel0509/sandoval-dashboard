@@ -1,0 +1,17 @@
+[Unit]
+Description=SANDOVAL Assistant - Telegram Bot
+After=network.target
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=/var/www/sandoval
+Environment="PATH=/var/www/sandoval/venv/bin:$PATH"
+ExecStart=/var/www/sandoval/venv/bin/python /var/www/sandoval/utils/telegram_bot.py
+
+# Auto-reiniciar si el bot se cae
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
