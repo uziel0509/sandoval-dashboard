@@ -53,17 +53,18 @@ def _get_facturas_db():
     finally:
         db.close()
 
-def _save_proveedor(nombre: str, tipo: str, ruc: str = ''):
-    if not nombre or nombre.strip().lower() in ['desconocido', 's/n', '']:
+def _save_proveedor(nombre, tipo: str, ruc=''):
+    nombre_str = str(nombre).strip() if nombre else ''
+    if not nombre_str or nombre_str.lower() in ['desconocido', 's/n', 'none', 'null', '']:
         return
-        
+            
     from utils.models import get_db, Proveedor
     import hashlib
     
     db = get_db()
     try:
-        nombre_clean = nombre.upper().strip()
-        ruc_clean = ruc.strip() if ruc else ""
+        nombre_clean = nombre_str.upper()
+        ruc_clean = str(ruc).strip() if ruc else ""
         
         # Etiqueta visual para la tabla
         tipo_label = "📦 MERCADERÍA / REPUESTOS" if tipo.lower() == 'mercaderia' else "💸 GASTOS OPERACIONALES"
@@ -98,9 +99,18 @@ def _save_proveedor(nombre: str, tipo: str, ruc: str = ''):
                 
         db.commit()
     except Exception as e:
-        db.rollback()
+        import traceback
+        print(f"ERROR en DB _save_proveedor: {e}")
+        traceback.print_exc()
+        try:
+            db.rollback()
+        except:
+            pass
     finally:
-        db.close()
+        try:
+            db.close()
+        except:
+            pass
 
 
 def _save_factura(data: dict) -> int:
