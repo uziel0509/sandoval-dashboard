@@ -431,3 +431,48 @@ def get_context_data() -> dict:
         logger.error(f"Error obteniendo context data: {e}")
         return {}
 
+
+FACTURA_HISTORICA_PROMPT = """Eres un experto en lectura de facturas automotrices.
+Analiza la imagen y extrae los datos para generar un registro histórico.
+
+Devuelve ÚNICAMENTE un JSON válido con esta estructura exacta:
+{
+  "placa": "Placa del vehículo, si figura, sino vacio",
+  "cliente_nombre": "Nombre del cliente si figura",
+  "fecha": "DD/MM/YYYY o la fecha que aparezca",
+  "items": [
+    {
+      "nombre": "Nombre del repuesto o servicio",
+      "cantidad": 1,
+      "precio_unitario": 0.00,
+      "total": 0.00
+    }
+  ],
+  "notas": "Cualquier observación"
+}
+NO incluyas texto adicional fuera del JSON."""
+
+def analizar_factura_historica_imagen(image_path: str) -> dict:
+    import base64
+    import json
+    try:
+        with open(image_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+        client = get_groq_client()
+        response = client.chat.completions.create(
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": FACTURA_HISTORICA_PROMPT},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_string}"}}
+                ]
+            }],
+            max_tokens=2000,
+            temperature=0.1,
+        )
+        raw_content = response.choices[0].message.content.strip()
+        raw_content = raw_content.replace('```json', '').replace('```', '').strip()
+        return json.loads(raw_content)
+    except Exception as e:
+        return {"error": str(e)}

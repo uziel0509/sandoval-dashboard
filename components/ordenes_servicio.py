@@ -41,9 +41,11 @@ def show_ordenes(container):
                 ui.icon('build_circle', size='32px').classes('text-[#274495]')
                 ui.label('GESTIÓN DE ÓRDENES DE SERVICIO').classes('text-xl font-extrabold text-[#274495] tracking-tight')
             
-            ui.button('Nueva Orden', icon='add',
-                on_click=lambda: open_create_order_dialog(cards_container, state, stats_container)
-            ).classes('btn-sandoval px-6 h-11')
+            with ui.row().classes('gap-3'):
+                ui.button('Importar Histórico (IA)', icon='auto_awesome', on_click=lambda: open_import_historico(cards_container, state, stats_container)).classes('bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 rounded-lg shadow-sm h-11')
+                ui.button('Nueva Orden', icon='add',
+                    on_click=lambda: open_create_order_dialog(cards_container, state, stats_container)
+                ).classes('btn-sandoval px-6 h-11')
         
         # Stats
         stats_container = ui.row().classes('w-full gap-3 mb-4 overflow-x-auto flex-nowrap pb-2 items-center')
@@ -125,6 +127,128 @@ def refresh_orders(container, state, stats_container=None):
                 _render_order_card(order, clients, vehicles, container, state, stats_container)
     finally:
         db.close()
+
+
+def open_import_historico(container, state, stats_container=None):
+    with ui.dialog() as dialog, ui.card().classes('w-full max-w-lg p-6 bg-white shadow-xl rounded-xl'):
+        ui.icon('auto_awesome', size='3rem', color='amber-500').classes('mx-auto mb-2 drop-shadow-sm')
+        ui.label('MÁQUINA DEL TIEMPO (IA)').classes('text-xl font-bold text-center text-blue-900 w-full mb-1 tracking-tight')
+        ui.label('Sube una factura antigua y la IA clonará la fecha, repuestos, cliente e inyectará los datos automáticamente en el Portal de 7 fases. No se descontará stock.').classes('text-xs text-center text-gray-500 mb-6 font-medium leading-relaxed')
+        
+        status_label = ui.label('').classes('text-sm font-bold text-center text-blue-600 w-full mb-4')
+        
+        async def process_upload(e):
+            import os
+            try:
+                status_label.set_text('⏳ Analizando factura con IA Groq Vision... espera por favor.')
+                
+                temp_path = f"static/tmp_historico_{datetime.now().strftime('%H%M%S')}.jpg"
+                with open(temp_path, 'wb') as f:
+                    f.write(e.content.read())
+                    
+                import asyncio
+                from utils.groq_service import analizar_factura_historica_imagen
+                loop = asyncio.get_event_loop()
+                datos = await loop.run_in_executor(None, analizar_factura_historica_imagen, temp_path)
+                
+                if not datos or 'error' in datos:
+                    theme.notify_error(f"Error AI: {datos.get('error','No se pudo leer')}")
+                    status_label.set_text('Error de IA.')
+                    return
+                
+                db = get_db()
+                try:
+                    placa_ia = str(datos.get('placa', '')).upper().strip()
+                    if not placa_ia or placa_ia == 'NONE' or placa_ia == 'NULL':
+                        theme.notify_warning("La IA no encontró una placa legible en la foto. Intenta otra.")
+                        status_label.set_text('⚠️ No se detectó placa en el comprobante.')
+                        return
+                        
+                    vehiculo = db.query(Vehiculo).filter_by(placa=placa_ia).first()
+                    if not vehiculo:
+                        theme.notify_warning(f"La placa detectada ({placa_ia}) no está inscrita en tu inventario de vehículos.")
+                        status_label.set_text(f'⚠️ Placa {placa_ia} no registrada en sistema.')
+                        return
+                        
+                    cliente = db.query(Cliente).filter_by(id=vehiculo.cliente_id).first()
+                    
+                    # Generar Consecutivo
+                    td = datetime.now()
+                    base_cons = f"ODS-{td.strftime('%Y%m')}-HIST-{secrets.token_hex(2).upper()}"
+                    
+                    # Limpiar o validar los items
+                    items = datos.get('items', [])
+                    for i in items:
+                        if 'categoria' not in i: i['categoria'] = 'Repuesto Histórico'
+                        if 'id' not in i: i['id'] = secrets.token_hex(4)
+                    
+                    # Calcular el total basado en la IA (Si falló la suma o es 0, recalcular sobre ítems)
+                    total_calc = sum(float(it.get('total', 0) or 0) for it in items)
+                    
+                    # Generar orden ARCHIVADA
+                    nueva = Orden(
+                        consecutivo=base_cons,
+                        fecha=str(datos.get('fecha', td.strftime('%Y-%m-%d %H:%M:%S'))),
+                        cliente_id=cliente.id,
+                        cliente_nombre=f"{cliente.nombre} {cliente.apellidos}",
+                        vehiculo_placa=vehiculo.placa,
+                        tecnico='RESTAURO_HISTÓRICO_IA',
+                        motivo=f"Registro Histórico de Mantenimiento. Total: S/ {total_calc:,.2f}",
+                        estado='ARCHIVADO', 
+                        approval_status='aprobado',
+                        fotos_evidencia=json.dumps([
+                            {'path': f"/{temp_path}", 'fase': 'RECEPCIÓN'},
+                            {'path': f"/{temp_path}", 'fase': 'DIAGNÓSTICO'}
+                        ]),
+                        diagnostico="Mantenimiento y diagnóstico general ejecutado y culminado exitosamente según los detalles especificados en el comprobante de pago histórico adjunto.",
+                        items_cotizacion=items
+                    )
+                    
+                    # Engaño de Checklist para Fases Avanzadas
+                    full_struct = {
+                         'quick_check': {},
+                         'findings': [],
+                         'evidence_cats': {
+                             'RECEPCIÓN': [f"/{temp_path}"],
+                             'DIAGNÓSTICO': [f"/{temp_path}"]
+                         },
+                         'diagnostic_details': {
+                             'analysis': "El servicio registrado pertenece a un histórico recuperado.",
+                             'solution': "Mantenimiento culminado."
+                         }
+                    }
+                    nueva.checklist_reparacion = full_struct
+                    
+                    # Historial interno
+                    nueva.historial = [
+                        {'fecha': td.strftime('%Y-%m-%d %H:%M'), 'accion': f"Orden importada vía IA desde factura ({placa_ia})", 'usuario': 'Sistema Bot'}
+                    ]
+                    
+                    db.add(nueva)
+                    db.commit()
+                    
+                    from utils.models import log_actividad
+                    log_actividad(f'Registro Histórico Creado: {base_cons}', 'ordenes')
+                    
+                    theme.notify_success('¡VIAJE EN EL TIEMPO EXITOSO! Orden Histórica Creada.')
+                    dialog.close()
+                    refresh_orders(container, state, stats_container)
+                    
+                finally:
+                    db.close()
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                theme.notify_error(f"Error inesperado importando histórico: {e}")
+                status_label.set_text('Error en subida.')
+                
+        ui.upload(
+            on_upload=process_upload,
+            auto_upload=True,
+            label="1. Sube Foto/PDF de la Factura (Automático)"
+        ).props('accept="image/*" max-files="1" color="amber-7" flat bordered').classes('w-full border-2 border-amber-100 bg-amber-50/20 rounded-xl')
+        
+    dialog.open()
 
 
 def regress_order(consecutivo, new_estado):
