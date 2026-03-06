@@ -452,11 +452,40 @@ Devuelve ÚNICAMENTE un JSON válido con esta estructura exacta:
 }
 NO incluyas texto adicional fuera del JSON."""
 
-def analizar_factura_historica_imagen(image_path: str) -> dict:
+def _pdf_to_image_path(pdf_path: str) -> str:
+    """Convierte la primera página de un PDF a JPEG y retorna la ruta de la imagen."""
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(pdf_path)
+        page = doc[0]
+        mat = fitz.Matrix(200/72, 200/72)  # 200 DPI para buena calidad
+        pix = page.get_pixmap(matrix=mat)
+        img_path = pdf_path.replace('.pdf', '_p1.jpg')
+        pix.save(img_path)
+        doc.close()
+        print(f"[HISTORICO] PDF convertido a imagen: {img_path}")
+        return img_path
+    except ImportError:
+        raise Exception("PyMuPDF no instalado. Ejecuta: pip install pymupdf")
+    except Exception as e:
+        raise Exception(f"Error convirtiendo PDF: {e}")
+
+
+def analizar_factura_historica_imagen(file_path: str) -> dict:
     import base64
     import json
     try:
-        with open(image_path, "rb") as image_file:
+        # Si es PDF, convertir primera página a imagen
+        actual_path = file_path
+        if file_path.lower().endswith('.pdf'):
+            print(f"[HISTORICO] PDF detectado, convirtiendo...")
+            actual_path = _pdf_to_image_path(file_path)
+
+        ext = os.path.splitext(actual_path)[1].lower()
+        mime_map = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp'}
+        mime_type = mime_map.get(ext, 'image/jpeg')
+
+        with open(actual_path, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
         client = get_groq_client()
         response = client.chat.completions.create(
@@ -465,7 +494,7 @@ def analizar_factura_historica_imagen(image_path: str) -> dict:
                 "role": "user",
                 "content": [
                     {"type": "text", "text": FACTURA_HISTORICA_PROMPT},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_string}"}}
+                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{encoded_string}"}}
                 ]
             }],
             max_tokens=2000,
@@ -473,6 +502,9 @@ def analizar_factura_historica_imagen(image_path: str) -> dict:
         )
         raw_content = response.choices[0].message.content.strip()
         raw_content = raw_content.replace('```json', '').replace('```', '').strip()
-        return json.loads(raw_content)
+        result = json.loads(raw_content)
+        print(f"[HISTORICO] IA respondio: {result}")
+        return result
     except Exception as e:
+        logger.error(f"[HISTORICO] Error analizando factura: {e}")
         return {"error": str(e)}

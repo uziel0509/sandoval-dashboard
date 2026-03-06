@@ -161,7 +161,12 @@ def open_import_historico(container, state, stats_container=None):
                 
                 status_label.set_text('⏳ Enviando a Groq Vision IA... (demora ~10 segundos)')
                 
-                temp_filename = f"hist_{datetime.now().strftime('%H%M%S_%f')}.jpg"
+                temp_filename = f"hist_{datetime.now().strftime('%H%M%S_%f')}"
+                
+                # Detectar si es PDF o imagen
+                name = getattr(e, 'name', '') or ''
+                ext = '.pdf' if name.lower().endswith('.pdf') else '.jpg'
+                temp_filename = temp_filename + ext
                 temp_path = f"/var/www/sandoval/static/{temp_filename}"
                 
                 with open(temp_path, 'wb') as f:
@@ -266,8 +271,8 @@ def open_import_historico(container, state, stats_container=None):
         ui.upload(
             on_upload=process_upload,
             auto_upload=True,
-            label='📸 Sube la Foto de la Factura Aquí'
-        ).props('accept="image/*,image/jpeg,image/png" max-files="1" color="amber-7" flat bordered').classes('w-full border-2 border-dashed border-amber-300 bg-amber-50/20 rounded-xl p-4')
+            label='📸 Sube la Foto o PDF de la Factura'
+        ).props('accept="image/*,image/jpeg,image/png,.pdf,application/pdf" max-files="1" color="amber-7" flat bordered').classes('w-full border-2 border-dashed border-amber-300 bg-amber-50/20 rounded-xl p-4')
         
         ui.button('✖ Cerrar', on_click=dialog.close).props('flat color=grey-6').classes('w-full mt-4')
         
