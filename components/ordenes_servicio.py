@@ -145,17 +145,41 @@ def open_import_historico(container, state, stats_container=None):
                 
                 os.makedirs('/var/www/sandoval/static', exist_ok=True)
                 
-                # Leer contenido del archivo de forma robusta
+                # Leer contenido del archivo - múltiples estrategias
                 content = None
+                
+                # Estrategia 1: e.content.read() directamente (sin seek)
                 try:
-                    e.content.seek(0)
                     content = e.content.read()
-                    print(f"[HISTORICO] Leido via e.content: {len(content)} bytes")
+                    if content:
+                        print(f"[HISTORICO] Estrategia 1 OK: {len(content)} bytes")
                 except Exception as ex1:
-                    print(f"[HISTORICO] e.content falló: {ex1}")
+                    print(f"[HISTORICO] Estrategia 1 falló: {ex1}")
+                
+                # Estrategia 2: seek(0) antes de leer
+                if not content:
+                    try:
+                        e.content.seek(0)
+                        content = e.content.read()
+                        if content:
+                            print(f"[HISTORICO] Estrategia 2 OK: {len(content)} bytes")
+                    except Exception as ex2:
+                        print(f"[HISTORICO] Estrategia 2 falló: {ex2}")
+                
+                # Estrategia 3: el objeto 'e' mismo tiene read()
+                if not content:
+                    try:
+                        if hasattr(e, 'read'):
+                            content = e.read()
+                            if content:
+                                print(f"[HISTORICO] Estrategia 3 OK: {len(content)} bytes")
+                    except Exception as ex3:
+                        print(f"[HISTORICO] Estrategia 3 falló: {ex3}")
+                        
+                print(f"[HISTORICO] Resultado lectura: content={'OK '+str(len(content))+' bytes' if content else 'VACIO'}")
                 
                 if not content:
-                    ui.notify('❌ No se pudo leer el archivo. Intenta con otra foto (JPG/PNG).', type='negative', position='top', timeout=7000)
+                    ui.notify('❌ No se pudo leer el archivo. Revisa si el PDF no está protegido.', type='negative', position='top', timeout=7000)
                     status_label.set_text('❌ Error leyendo archivo.')
                     return
                 
