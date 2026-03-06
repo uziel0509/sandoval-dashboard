@@ -87,7 +87,8 @@ def _get_all_facturas() -> list:
         rows = db.execute(text("""
             SELECT id, tipo, subtipo_gasto, proveedor, numero_factura, fecha,
                    total, estado, fecha_registro, imagen_path, items_json, notas
-            FROM facturas ORDER BY id DESC
+            FROM facturas 
+            ORDER BY substr(fecha, 7, 4) DESC, substr(fecha, 4, 2) DESC, substr(fecha, 1, 2) DESC, id DESC
         """)).fetchall()
         return [dict(r._mapping) for r in rows]
     finally:
