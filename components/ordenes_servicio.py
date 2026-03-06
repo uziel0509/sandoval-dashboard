@@ -232,7 +232,38 @@ def _register_historico_api():
                 for it in items:
                     if 'categoria' not in it: it['categoria'] = 'Repuesto Histórico'
                     if 'id' not in it: it['id'] = secrets.token_hex(4)
-                total = sum(float(it.get('total', 0) or 0) for it in items)
+                
+                # —— Cálculo de IGV 18% (solo facturas históricas CMAC) ——
+                subtotal = round(sum(float(it.get('total', 0) or 0) for it in items), 2)
+                igv = round(subtotal * 0.18, 2)
+                total_final = round(subtotal + igv, 2)
+                
+                # Añadir líneas de resumen al final de items para que el portal las muestre
+                items.append({
+                    'id': 'subtotal_line',
+                    'nombre': '― Subtotal (sin IGV)',
+                    'cantidad': 1,
+                    'precio_unitario': subtotal,
+                    'total': subtotal,
+                    'categoria': 'Resumen'
+                })
+                items.append({
+                    'id': 'igv_line',
+                    'nombre': 'IGV 18%',
+                    'cantidad': 1,
+                    'precio_unitario': igv,
+                    'total': igv,
+                    'categoria': 'Impuesto'
+                })
+                items.append({
+                    'id': 'total_line',
+                    'nombre': '═ TOTAL CON IGV',
+                    'cantidad': 1,
+                    'precio_unitario': total_final,
+                    'total': total_final,
+                    'categoria': 'Total'
+                })
+                
                 web = f"/static/{fname}"
                 
                 nueva = Orden(
@@ -242,7 +273,7 @@ def _register_historico_api():
                     vehiculo_placa=vehiculo.placa,
                     tecnico='HISTÓRICO IA',
                     km=str(getattr(vehiculo, 'km', '0')),
-                    motivo=f"Registro Histórico de Mantenimiento — {cliente.nombre}. Total: S/ {total:,.2f}",
+                    motivo=f"Registro Histórico — {cliente.nombre} | Subtotal: S/ {subtotal:,.2f} | IGV 18%: S/ {igv:,.2f} | TOTAL: S/ {total_final:,.2f}",
                     estado='ARCHIVADO',
                     approval_status='aprobado',
                     fotos_evidencia=[{'path': web, 'fase': 'RECEPCIÓN'}, {'path': web, 'fase': 'DIAGNÓSTICO'}],
@@ -252,13 +283,13 @@ def _register_historico_api():
                         'quick_check': {}, 'findings': [],
                         'diagnostic_details': {'analysis': 'Histórico IA.', 'solution': 'Mantenimiento culminado.'}
                     },
-                    historial=[{'fecha': td.strftime('%Y-%m-%d %H:%M'), 'accion': f'Importado IA — Placa: {placa}', 'usuario': 'Sistema IA'}]
+                    historial=[{'fecha': td.strftime('%Y-%m-%d %H:%M'), 'accion': f'Importado IA — Placa: {placa} | Total con IGV: S/ {total_final:,.2f}', 'usuario': 'Sistema IA'}]
                 )
                 db_h.add(nueva)
                 db_h.commit()
-                log_actividad(f'Histórico: {cons} — {placa}', 'ordenes')
-                print(f"[HIST-API] ✅ Orden {cons} creada para {placa}")
-                return JSONResponse({'ok': True, 'consecutivo': cons, 'placa': placa})
+                log_actividad(f'Histórico: {cons} — {placa} | S/ {total_final:,.2f}', 'ordenes')
+                print(f"[HIST-API] ✅ Orden {cons} creada para {placa} | Subtotal: {subtotal} | IGV: {igv} | Total: {total_final}")
+                return JSONResponse({'ok': True, 'consecutivo': cons, 'placa': placa, 'total': total_final})
             finally:
                 db_h.close()
         except Exception as err:
@@ -266,8 +297,57 @@ def _register_historico_api():
             return JSONResponse({'ok': False, 'error': str(err)})
 
 
+# Endpoint para añadir IGV retroactivamente a órdenes históricas ya creadas
+_fix_igv_registered = False
+
+def _register_fix_igv_api():
+    global _fix_igv_registered
+    if _fix_igv_registered:
+        return
+    _fix_igv_registered = True
+    
+    from nicegui import app as _app2
+    from fastapi.responses import JSONResponse as _JR
+    
+    @_app2.post('/api/fix-igv-historicos')
+    async def _fix_igv():
+        """Recalcula y añade IGV 18% a todas las órdenes históricas que no lo tienen."""
+        import json as _j
+        db_fix = get_db()
+        try:
+            ordenes = db_fix.query(Orden).filter_by(estado='ARCHIVADO', tecnico='HISTÓRICO IA').all()
+            actualizadas = 0
+            for o in ordenes:
+                items = o.items_cotizacion or []
+                if isinstance(items, str):
+                    try: items = _j.loads(items)
+                    except: items = []
+                # Verificar si ya tiene líneas de IGV
+                ids_existentes = [str(it.get('id','')) for it in items if isinstance(it, dict)]
+                if 'igv_line' in ids_existentes:
+                    continue  # Ya tiene IGV, saltar
+                # Filtrar solo items reales (no resumen)
+                items_reales = [it for it in items if isinstance(it, dict) and it.get('categoria') not in ('Resumen','Impuesto','Total')]
+                subtotal = round(sum(float(it.get('total', 0) or 0) for it in items_reales), 2)
+                igv = round(subtotal * 0.18, 2)
+                total_final = round(subtotal + igv, 2)
+                # Añadir líneas de resumen
+                items_reales.append({'id': 'subtotal_line', 'nombre': '― Subtotal (sin IGV)', 'cantidad': 1, 'precio_unitario': subtotal, 'total': subtotal, 'categoria': 'Resumen'})
+                items_reales.append({'id': 'igv_line', 'nombre': 'IGV 18%', 'cantidad': 1, 'precio_unitario': igv, 'total': igv, 'categoria': 'Impuesto'})
+                items_reales.append({'id': 'total_line', 'nombre': '═ TOTAL CON IGV', 'cantidad': 1, 'precio_unitario': total_final, 'total': total_final, 'categoria': 'Total'})
+                o.items_cotizacion = items_reales
+                o.motivo = f"Registro Histórico | Subtotal: S/ {subtotal:,.2f} | IGV 18%: S/ {igv:,.2f} | TOTAL: S/ {total_final:,.2f}"
+                actualizadas += 1
+                print(f"[FIX-IGV] Actualizada: {o.consecutivo} | Total con IGV: {total_final}")
+            db_fix.commit()
+            return _JR({'ok': True, 'actualizadas': actualizadas})
+        finally:
+            db_fix.close()
+
+
 def open_import_historico(container, state, stats_container=None):
-    _register_historico_api()  # Asegurar que el endpoint exista
+    _register_historico_api()   # endpoint subida
+    _register_fix_igv_api()     # endpoint corrección IGV
     
     with ui.dialog() as dialog, ui.card().classes('w-full max-w-lg p-6 bg-white shadow-xl rounded-xl gap-4'):
         ui.icon('auto_awesome', size='3rem', color='amber-500').classes('mx-auto drop-shadow-sm')
