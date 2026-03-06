@@ -140,11 +140,41 @@ def open_import_historico(container, state, stats_container=None):
         async def process_upload(e):
             import os
             try:
+                status_label.set_text('⏳ Preparando archivo...')
+                os.makedirs('static', exist_ok=True)
+                
+                content = None
+                def _get(obj, attr):
+                    if isinstance(obj, dict): return obj.get(attr)
+                    return getattr(obj, attr, None)
+                    
+                # 1. Intentar desde 'content'
+                f_obj = _get(e, 'content')
+                if f_obj:
+                    if hasattr(f_obj, 'seek'): f_obj.seek(0)
+                    content = f_obj.read()
+                
+                # 2. Intentar desde 'file'
+                if not content:
+                    f_obj = _get(e, 'file')
+                    if f_obj:
+                        if hasattr(f_obj, 'seek'): f_obj.seek(0)
+                        content = f_obj.read()
+                        
+                # 3. Handle coroutines
+                if hasattr(content, '__await__'):
+                    content = await content
+                    
+                if not content:
+                    theme.notify_error("Formato de upload no reconocido")
+                    status_label.set_text('Error leyendo foto.')
+                    return
+
                 status_label.set_text('⏳ Analizando factura con IA Groq Vision... espera por favor.')
                 
                 temp_path = f"static/tmp_historico_{datetime.now().strftime('%H%M%S')}.jpg"
                 with open(temp_path, 'wb') as f:
-                    f.write(e.content.read())
+                    f.write(content)
                     
                 import asyncio
                 from utils.groq_service import analizar_factura_historica_imagen
