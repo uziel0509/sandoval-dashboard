@@ -133,150 +133,143 @@ def open_import_historico(container, state, stats_container=None):
     with ui.dialog() as dialog, ui.card().classes('w-full max-w-lg p-6 bg-white shadow-xl rounded-xl'):
         ui.icon('auto_awesome', size='3rem', color='amber-500').classes('mx-auto mb-2 drop-shadow-sm')
         ui.label('MÁQUINA DEL TIEMPO (IA)').classes('text-xl font-bold text-center text-blue-900 w-full mb-1 tracking-tight')
-        ui.label('Sube una factura antigua y la IA clonará la fecha, repuestos, cliente e inyectará los datos automáticamente en el Portal de 7 fases. No se descontará stock.').classes('text-xs text-center text-gray-500 mb-6 font-medium leading-relaxed')
+        ui.label('Sube una foto de la factura antigua y la IA creará la orden de servicio histórica automáticamente (sin descontar stock).').classes('text-xs text-center text-gray-500 mb-6 font-medium leading-relaxed')
         
-        status_label = ui.label('').classes('text-sm font-bold text-center text-blue-600 w-full mb-4')
+        status_label = ui.label('📸 Listo para recibir tu factura...').classes('text-sm font-bold text-center text-blue-600 w-full mb-4')
         
         async def process_upload(e):
-            import os
+            import os, asyncio, traceback
             try:
-                status_label.set_text('⏳ Preparando archivo...')
-                os.makedirs('static', exist_ok=True)
+                print(f"[HISTORICO] Upload event recibido, tipo: {type(e)}")
+                status_label.set_text('⏳ Leyendo archivo...')
                 
+                os.makedirs('/var/www/sandoval/static', exist_ok=True)
+                
+                # Leer contenido del archivo de forma robusta
                 content = None
-                def _get(obj, attr):
-                    if isinstance(obj, dict): return obj.get(attr)
-                    return getattr(obj, attr, None)
-                    
-                # 1. Intentar desde 'content'
-                f_obj = _get(e, 'content')
-                if f_obj:
-                    if hasattr(f_obj, 'seek'): f_obj.seek(0)
-                    content = f_obj.read()
+                try:
+                    e.content.seek(0)
+                    content = e.content.read()
+                    print(f"[HISTORICO] Leido via e.content: {len(content)} bytes")
+                except Exception as ex1:
+                    print(f"[HISTORICO] e.content falló: {ex1}")
                 
-                # 2. Intentar desde 'file'
                 if not content:
-                    f_obj = _get(e, 'file')
-                    if f_obj:
-                        if hasattr(f_obj, 'seek'): f_obj.seek(0)
-                        content = f_obj.read()
-                        
-                # 3. Handle coroutines
-                if hasattr(content, '__await__'):
-                    content = await content
-                    
-                if not content:
-                    theme.notify_error("Formato de upload no reconocido")
-                    status_label.set_text('Error leyendo foto.')
+                    ui.notify('❌ No se pudo leer el archivo. Intenta con otra foto (JPG/PNG).', type='negative', position='top', timeout=7000)
+                    status_label.set_text('❌ Error leyendo archivo.')
                     return
-
-                status_label.set_text('⏳ Analizando factura con IA Groq Vision... espera por favor.')
                 
-                temp_path = f"static/tmp_historico_{datetime.now().strftime('%H%M%S')}.jpg"
+                status_label.set_text('⏳ Enviando a Groq Vision IA... (demora ~10 segundos)')
+                
+                temp_filename = f"hist_{datetime.now().strftime('%H%M%S_%f')}.jpg"
+                temp_path = f"/var/www/sandoval/static/{temp_filename}"
+                
                 with open(temp_path, 'wb') as f:
                     f.write(content)
-                    
-                import asyncio
+                print(f"[HISTORICO] Foto guardada: {temp_path}")
+                
                 from utils.groq_service import analizar_factura_historica_imagen
-                loop = asyncio.get_event_loop()
-                datos = await loop.run_in_executor(None, analizar_factura_historica_imagen, temp_path)
+                datos = await asyncio.get_event_loop().run_in_executor(
+                    None, analizar_factura_historica_imagen, temp_path
+                )
+                print(f"[HISTORICO] Respuesta IA: {datos}")
                 
                 if not datos or 'error' in datos:
-                    theme.notify_error(f"Error AI: {datos.get('error','No se pudo leer')}")
-                    status_label.set_text('Error de IA.')
+                    err = datos.get('error', 'Sin respuesta') if datos else 'Sin respuesta'
+                    ui.notify(f'❌ Error IA: {err}', type='negative', position='top', timeout=8000)
+                    status_label.set_text(f'❌ Error IA: {err}')
+                    return
+                
+                placa_ia = str(datos.get('placa', '')).upper().strip()
+                print(f"[HISTORICO] Placa detectada: '{placa_ia}'")
+                
+                if not placa_ia or placa_ia in ('NONE', 'NULL', ''):
+                    ui.notify('⚠️ La IA no encontró ninguna placa en la imagen. Asegúrate que la placa figure en la factura.', type='warning', position='top', timeout=8000)
+                    status_label.set_text('⚠️ No se detectó placa. Prueba otra foto.')
                     return
                 
                 db = get_db()
                 try:
-                    placa_ia = str(datos.get('placa', '')).upper().strip()
-                    if not placa_ia or placa_ia == 'NONE' or placa_ia == 'NULL':
-                        theme.notify_warning("La IA no encontró una placa legible en la foto. Intenta otra.")
-                        status_label.set_text('⚠️ No se detectó placa en el comprobante.')
-                        return
-                        
                     vehiculo = db.query(Vehiculo).filter_by(placa=placa_ia).first()
                     if not vehiculo:
-                        theme.notify_warning(f"La placa detectada ({placa_ia}) no está inscrita en tu inventario de vehículos.")
-                        status_label.set_text(f'⚠️ Placa {placa_ia} no registrada en sistema.')
+                        ui.notify(f'⚠️ La placa "{placa_ia}" no está registrada. Priméro registórala en Veícículos.', type='warning', position='top', timeout=8000)
+                        status_label.set_text(f'⚠️ Placa {placa_ia} no en sistema.')
                         return
-                        
-                    cliente = db.query(Cliente).filter_by(id=vehiculo.cliente_id).first()
                     
-                    # Generar Consecutivo
+                    cliente = db.query(Cliente).filter_by(id=vehiculo.cliente_id).first()
+                    if not cliente:
+                        ui.notify(f'⚠️ El vehículo {placa_ia} no tiene cliente asignado.', type='warning', position='top', timeout=6000)
+                        return
+                    
                     td = datetime.now()
                     base_cons = f"ODS-{td.strftime('%Y%m')}-HIST-{secrets.token_hex(2).upper()}"
                     
-                    # Limpiar o validar los items
                     items = datos.get('items', [])
                     for i in items:
                         if 'categoria' not in i: i['categoria'] = 'Repuesto Histórico'
                         if 'id' not in i: i['id'] = secrets.token_hex(4)
                     
-                    # Calcular el total basado en la IA (Si falló la suma o es 0, recalcular sobre ítems)
                     total_calc = sum(float(it.get('total', 0) or 0) for it in items)
+                    web_path = f"/static/{temp_filename}"
                     
-                    # Generar orden ARCHIVADA
                     nueva = Orden(
                         consecutivo=base_cons,
                         fecha=str(datos.get('fecha', td.strftime('%Y-%m-%d %H:%M:%S'))),
                         cliente_id=cliente.id,
-                        cliente_nombre=f"{cliente.nombre} {cliente.apellidos}",
+                        cliente_nombre=f"{cliente.nombre} {getattr(cliente,'apellidos','')}".strip(),
                         vehiculo_placa=vehiculo.placa,
-                        tecnico='RESTAURO_HISTÓRICO_IA',
+                        tecnico='HISTÓRICO IA',
+                        km=str(getattr(vehiculo, 'km', '0')),
                         motivo=f"Registro Histórico de Mantenimiento. Total: S/ {total_calc:,.2f}",
-                        estado='ARCHIVADO', 
+                        estado='ARCHIVADO',
                         approval_status='aprobado',
-                        fotos_evidencia=json.dumps([
-                            {'path': f"/{temp_path}", 'fase': 'RECEPCIÓN'},
-                            {'path': f"/{temp_path}", 'fase': 'DIAGNÓSTICO'}
-                        ]),
-                        diagnostico="Mantenimiento y diagnóstico general ejecutado y culminado exitosamente según los detalles especificados en el comprobante de pago histórico adjunto.",
-                        items_cotizacion=items
+                        fotos_evidencia=[
+                            {'path': web_path, 'fase': 'RECEPCIÓN'},
+                            {'path': web_path, 'fase': 'DIAGNÓSTICO'}
+                        ],
+                        diagnostico="Mantenimiento y diagnóstico general ejecutado y culminado exitosamente según los detalles del comprobante de pago histórico adjunto.",
+                        items_cotizacion=items,
+                        checklist_reparacion={
+                            'quick_check': {},
+                            'findings': [],
+                            'diagnostic_details': {
+                                'analysis': 'Servicio registrado como histórico recuperado vía IA.',
+                                'solution': 'Mantenimiento culminado exitosamente.'
+                            }
+                        },
+                        historial=[
+                            {'fecha': td.strftime('%Y-%m-%d %H:%M'), 'accion': f'Orden importada vía IA desde factura. Placa: {placa_ia}', 'usuario': 'Sistema IA'}
+                        ]
                     )
-                    
-                    # Engaño de Checklist para Fases Avanzadas
-                    full_struct = {
-                         'quick_check': {},
-                         'findings': [],
-                         'evidence_cats': {
-                             'RECEPCIÓN': [f"/{temp_path}"],
-                             'DIAGNÓSTICO': [f"/{temp_path}"]
-                         },
-                         'diagnostic_details': {
-                             'analysis': "El servicio registrado pertenece a un histórico recuperado.",
-                             'solution': "Mantenimiento culminado."
-                         }
-                    }
-                    nueva.checklist_reparacion = full_struct
-                    
-                    # Historial interno
-                    nueva.historial = [
-                        {'fecha': td.strftime('%Y-%m-%d %H:%M'), 'accion': f"Orden importada vía IA desde factura ({placa_ia})", 'usuario': 'Sistema Bot'}
-                    ]
                     
                     db.add(nueva)
                     db.commit()
+                    print(f"[HISTORICO] ✅ Orden creada: {base_cons} para {placa_ia}")
                     
                     from utils.models import log_actividad
-                    log_actividad(f'Registro Histórico Creado: {base_cons}', 'ordenes')
+                    log_actividad(f'Registro Histórico Creado: {base_cons} — Placa: {placa_ia}', 'ordenes')
                     
-                    theme.notify_success('¡VIAJE EN EL TIEMPO EXITOSO! Orden Histórica Creada.')
+                    ui.notify(f'✅ ¡ORDEN HISTÓRICA CREADA! {base_cons} — Placa: {placa_ia}', type='positive', position='top', timeout=8000)
+                    status_label.set_text(f'✅ ¡Éxito! {base_cons} creada para {placa_ia}')
                     dialog.close()
                     refresh_orders(container, state, stats_container)
                     
                 finally:
                     db.close()
+                    
             except Exception as e:
-                import traceback
                 traceback.print_exc()
-                theme.notify_error(f"Error inesperado importando histórico: {e}")
-                status_label.set_text('Error en subida.')
+                print(f"[HISTORICO] ❌ Error crítico: {e}")
+                ui.notify(f'❌ Error: {str(e)[:200]}', type='negative', position='top', timeout=10000)
+                status_label.set_text(f'❌ Error: {str(e)[:100]}')
                 
         ui.upload(
             on_upload=process_upload,
             auto_upload=True,
-            label="1. Sube Foto/PDF de la Factura (Automático)"
-        ).props('accept="image/*" max-files="1" color="amber-7" flat bordered').classes('w-full border-2 border-amber-100 bg-amber-50/20 rounded-xl')
+            label='📸 Sube la Foto de la Factura Aquí'
+        ).props('accept="image/*,image/jpeg,image/png" max-files="1" color="amber-7" flat bordered').classes('w-full border-2 border-dashed border-amber-300 bg-amber-50/20 rounded-xl p-4')
+        
+        ui.button('✖ Cerrar', on_click=dialog.close).props('flat color=grey-6').classes('w-full mt-4')
         
     dialog.open()
 
