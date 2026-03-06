@@ -140,48 +140,75 @@ def open_import_historico(container, state, stats_container=None):
         async def process_upload(e):
             import os, asyncio, traceback
             
-            # ⚡ CRITICO: Leer bytes AHORA, antes de cualquier await
-            # En NiceGUI async, despues del primer await e.content se destruye
-            raw_bytes = None
-            file_name = ''
-            try:
-                file_name = getattr(e, 'name', '') or ''
-                # Intentar sin seek primero
-                try:
-                    raw_bytes = e.content.read()
-                except:
-                    pass
-                # Si retorno vacio, intentar con seek
-                if not raw_bytes:
-                    try:
-                        e.content.seek(0)
-                        raw_bytes = e.content.read()
-                    except:
-                        pass
-                print(f"[HISTORICO] Bytes capturados: {len(raw_bytes) if raw_bytes else 0}, archivo: {file_name}")
-            except Exception as read_err:
-                print(f"[HISTORICO] Error leyendo bytes: {read_err}")
+            # --- Igual que handle_upload en diagnostico (funciona) ---
+            def _get(obj, attr):
+                if isinstance(obj, dict): return obj.get(attr)
+                return getattr(obj, attr, None)
             
-            # A partir de aqui ya podemos hacer asyncs con seguridad
+            # Debug: ver estructura real del evento
             try:
-                if not raw_bytes:
-                    ui.notify(f'❌ No se pudieron leer los bytes del archivo. Nombre: {file_name}', type='negative', position='top', timeout=8000)
-                    status_label.set_text('❌ Error: archivo vacío o no leíble.')
-                    return
-                    
-                status_label.set_text(f'⏳ Archivo recibido ({len(raw_bytes)//1024} KB). Guardando...')
+                attrs = [a for a in dir(e) if not a.startswith('_')]
+                print(f"[HISTORICO] e type={type(e).__name__} attrs={attrs}")
+                for a in ['name','filename','content','file','files','type']:
+                    v = _get(e, a)
+                    print(f"[HISTORICO]   e.{a} = {type(v).__name__} len={len(v) if hasattr(v,'__len__') else 'N/A'}")
+            except Exception as dbg_err:
+                print(f"[HISTORICO] debug err: {dbg_err}")
+            
+            content = None
+            name = None
+            
+            # 1. Desde e.content  (NiceGUI >= 1.x)
+            f_obj = _get(e, 'content')
+            if f_obj:
+                if hasattr(f_obj, 'seek'): f_obj.seek(0)
+                content = f_obj.read()
+                if not name: name = _get(f_obj, 'name')
+            
+            # 2. Desde e.file
+            if not content:
+                f_obj = _get(e, 'file')
+                if f_obj:
+                    if hasattr(f_obj, 'seek'): f_obj.seek(0)
+                    content = f_obj.read()
+                    if not name: name = _get(f_obj, 'name')
+            
+            # 3. Desde e.files[0]
+            if not content:
+                files = _get(e, 'files')
+                if files and len(files) > 0:
+                    f_obj = files[0]
+                    f_content = _get(f_obj, 'content') or f_obj
+                    if hasattr(f_content, 'read'):
+                        if hasattr(f_content, 'seek'): f_content.seek(0)
+                        content = f_content.read()
+                    else:
+                        content = f_content
+                    if not name: name = _get(f_obj, 'name')
+            
+            # Nombre del archivo
+            if not name:
+                name = _get(e, 'name') or _get(e, 'filename') or 'archivo.pdf'
+            
+            print(f"[HISTORICO] RESULTADO: {len(content) if content else 0} bytes, nombre={name}")
+            
+            if not content:
+                ui.notify(f'❌ Error leyendo el archivo "{name}". Ver log del servidor.', type='negative', position='top', timeout=8000)
+                status_label.set_text('❌ Error leyendo archivo. Ver log del VPS para detalles.')
+                return
+            
+            # --- Procesamiento IA ---
+            try:
+                status_label.set_text(f'⏳ {len(content)//1024}KB recibidos. Enviando a IA...')
                 
                 os.makedirs('/var/www/sandoval/static', exist_ok=True)
-                
-                # Detectar extension
-                ext = '.pdf' if file_name.lower().endswith('.pdf') else '.jpg'
+                ext = '.pdf' if str(name).lower().endswith('.pdf') else '.jpg'
                 temp_filename = f"hist_{datetime.now().strftime('%H%M%S_%f')}{ext}"
                 temp_path = f"/var/www/sandoval/static/{temp_filename}"
                 
                 with open(temp_path, 'wb') as f:
-                    f.write(raw_bytes)
-                print(f"[HISTORICO] Archivo guardado: {temp_path} ({len(raw_bytes)} bytes)")
-
+                    f.write(content if isinstance(content, bytes) else bytes(content))
+                print(f"[HISTORICO] Guardado en: {temp_path}")
                 
                 from utils.groq_service import analizar_factura_historica_imagen
                 datos = await asyncio.get_event_loop().run_in_executor(
@@ -199,7 +226,7 @@ def open_import_historico(container, state, stats_container=None):
                 print(f"[HISTORICO] Placa detectada: '{placa_ia}'")
                 
                 if not placa_ia or placa_ia in ('NONE', 'NULL', ''):
-                    ui.notify('⚠️ La IA no encontró ninguna placa en la imagen. Asegúrate que la placa figure en la factura.', type='warning', position='top', timeout=8000)
+                    ui.notify('⚠️ La IA no encontró placa en la imagen. Asegúrate que figure en la factura.', type='warning', position='top', timeout=8000)
                     status_label.set_text('⚠️ No se detectó placa. Prueba otra foto.')
                     return
                 
