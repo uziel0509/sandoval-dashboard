@@ -15,6 +15,15 @@ import theme
 ESTADOS = list(theme.ESTADOS_CONFIG.keys())
 TECNICOS_DEFAULT = ['Técnico 1', 'Técnico 2', 'Técnico 3']
 
+# Registrar rutas API al importar el módulo (no esperar a que se abra el diálogo)
+def _init_api_routes():
+    try:
+        _register_historico_api()
+        _register_fix_igv_api()
+    except Exception:
+        pass  # Se reintentará cuando se abra el diálogo
+
+
 def _get_tecnicos():
     try:
         from utils.models import ConfigSistema

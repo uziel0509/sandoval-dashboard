@@ -98,7 +98,7 @@ Fecha y hora: {fecha}
   {top_motivos}
 
 ╠══════════════════════════════════════════════════════════╣
-║ ÓRDENES ACTIVAS EN ESTE MOMENTO
+║ ÓRDENES ACTIVAS EN ESTE MOMENTO (CON PRESUPUESTO COMPLETO)
 ╠══════════════════════════════════════════════════════════╣
 {ordenes_str}
 
@@ -266,8 +266,25 @@ def get_context_data() -> dict:
             
             ordenes_activas_detalle = []
             for o in ordenes_activas_q:
+                items = o.items_cotizacion or []
+                if isinstance(items, str):
+                    try: items = _json.loads(items)
+                    except: items = []
+                # Calcular total del presupuesto
+                total_o = sum(float(it.get('total', 0) or 0) for it in items if isinstance(it, dict) and it.get('categoria') not in ('Resumen', 'Impuesto', 'Total'))
+                items_str = ', '.join([
+                    f"{it.get('nombre','')[:30]} x{it.get('cantidad',1)} @S/{float(it.get('precio_unitario', it.get('precio', 0)) or 0):,.1f} = S/{float(it.get('total',0) or 0):,.1f}"
+                    for it in items if isinstance(it, dict) and it.get('nombre') and it.get('categoria') not in ('Resumen', 'Impuesto', 'Total')
+                ])
+                # Buscar nombre del cliente
+                cliente_nombre = ''
+                if o.cliente_id:
+                    cl = db.query(Cliente).filter_by(id=o.cliente_id).first()
+                    if cl: cliente_nombre = f"{cl.nombre} {cl.apellidos or ''}".strip()
                 ordenes_activas_detalle.append(
-                    f"{o.consecutivo} | {o.estado} | {getattr(o,'vehiculo_placa','')} | {(o.motivo or '')[:40]}"
+                    f"{o.consecutivo} | ESTADO: {o.estado} | Placa: {getattr(o,'vehiculo_placa','')} | Cliente: {cliente_nombre} | "
+                    f"Motivo: {(o.motivo or '')[:60]} | Presupuesto: S/ {total_o:,.2f} | "
+                    f"Items: {items_str[:200] or 'Sin ítems'}"
                 )
 
             # ── Órdenes archivadas (historial completo) ──────────────
@@ -400,7 +417,8 @@ def get_context_data() -> dict:
             top_repuestos_str = "\n".join([f"  • {n}: {c} unidades cotizadas" for n, c in top_repuestos_sorted]) if top_repuestos_sorted else "  (Sin datos de repuestos)"
 
             # ── Órdenes activas detalladas ───────────────────────────
-            ordenes_hoy = ordenes_activas_detalle[:8]
+            ordenes_hoy = ordenes_activas_detalle  # todas sin limite
+
 
             return {
                 # Tiempo real
