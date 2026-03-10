@@ -9,6 +9,8 @@ import sys
 import traceback
 import datetime
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # Configurar NiceGUI para máxima estabilidad
 app.config.reconnect_timeout = 60.0  # 60 segundos para reconectar
@@ -227,7 +229,7 @@ try:
         reconnect_timeout=60.0,  # 60 segundos
         binding_refresh_interval=1.0,  # Reducir frecuencia aún más
         favicon='🚗',
-        storage_secret='sandoval-secret-2026-xyz',
+        storage_secret=os.getenv('STORAGE_SECRET', 'sandoval-secret-2026-xyz'),
         viewport='width=device-width, initial-scale=1, user-scalable=yes'
     )
 

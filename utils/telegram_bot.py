@@ -20,9 +20,9 @@ from utils.groq_service import get_groq_client, FACTURA_PROMPT, get_context_data
 
 load_dotenv()
 
-TELEGRAM_TOKEN = "8680913184:AAHMAU3GaUwXZLgxnIniR7GTAtXlRulSp9E"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 
-ALLOWED_USERS = [8216634547]
+ALLOWED_USERS = [int(x.strip()) for x in os.getenv("ALLOWED_USERS", "").split(",") if x.strip()]
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -262,10 +262,9 @@ def _reset_chat(container, history: list, groq_messages: list):
     """Limpia el chat y la sesión persistida."""
     history.clear()
     groq_messages.clear()
-    # Limpiar del storage (incluido el resumen)
+    # Limpiar del storage
     app.storage.user.pop(STORAGE_KEY_HISTORY, None)
     app.storage.user.pop(STORAGE_KEY_GROQ, None)
-    app.storage.user.pop(STORAGE_KEY_SUMMARY, None)
     container.clear()
     with container:
         _mensaje_bienvenida()
