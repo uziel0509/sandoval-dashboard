@@ -216,6 +216,38 @@ class NotaVenta(Base):
     cliente_rel = relationship('Cliente', foreign_keys=[cliente_id])
 
 
+
+# ─────────────────────── COTIZACIONES ───────────────────────
+
+class Cotizacion(Base):
+    __tablename__ = 'cotizaciones'
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    numero          = Column(String(30), unique=True, nullable=False)
+    cliente_id      = Column(Integer, ForeignKey('clientes.id'), nullable=True)
+    nombre_cliente  = Column(String(150), nullable=False, default='')
+    estado          = Column(String(20), default='PENDIENTE')
+    total           = Column(Float, default=0)
+    nota            = Column(Text, default='')
+    creado_por      = Column(String(100), default='')
+    fecha_creacion  = Column(DateTime, default=datetime.now)
+
+    cliente_rel = relationship('Cliente', foreign_keys=[cliente_id])
+    items       = relationship('CotizacionItem', back_populates='cotizacion', cascade='all, delete-orphan')
+
+
+class CotizacionItem(Base):
+    __tablename__ = 'cotizacion_items'
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    cotizacion_id    = Column(Integer, ForeignKey('cotizaciones.id'), nullable=False)
+    descripcion      = Column(String(200), nullable=False)
+    tipo             = Column(String(20), default='repuesto')
+    cantidad         = Column(Integer, default=1)
+    precio_unitario  = Column(Float, default=0)
+    subtotal         = Column(Float, default=0)
+
+    cotizacion = relationship('Cotizacion', back_populates='items')
+
+
 # ─────────────────────── INICIALIZACIÓN ───────────────────────
 
 def init_db():
