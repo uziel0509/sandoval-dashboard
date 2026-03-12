@@ -28,6 +28,7 @@ def create_sidebar(drawer, on_navigate):
             menu_items = [
                 {'icon': 'dashboard',     'label': 'Dashboard',           'page': 'dashboard',    'modulo': 'dashboard'},
                 {'icon': 'build',         'label': 'Órdenes de Servicio', 'page': 'ordenes',      'modulo': 'ordenes'},
+                {'icon': 'request_quote', 'label': 'Cotizaciones',  'page': 'cotizaciones', 'modulo': 'cotizaciones'},
                 {'icon': 'people',        'label': 'Clientes',            'page': 'clientes',     'modulo': 'clientes'},
                 {'icon': 'directions_car','label': 'Vehículos',           'page': 'vehiculos',    'modulo': 'vehiculos'},
                 {'icon': 'store',         'label': 'Proveedores',         'page': 'proveedores',  'modulo': 'proveedores'},
