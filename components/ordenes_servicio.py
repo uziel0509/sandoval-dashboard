@@ -4,7 +4,7 @@ Flujo completo de 8 estados con SQLite + token de aprobación
 """
 
 from nicegui import ui
-from utils.models import get_db, Orden, Cliente, Vehiculo, ItemInventario, log_actividad, get_config
+from utils.models import get_db, Orden, Cliente, Vehiculo, ItemInventario, log_actividad, get_config, OrdenComputadora
 from utils import pdf_generator as pdf_gen
 from datetime import datetime
 import secrets
@@ -1467,22 +1467,24 @@ def _render_order_card(order, clients, vehicles, container, state, stats_contain
     client = clients.get(order.cliente_id)
     vehicle = vehicles.get(order.vehiculo_placa)
     
-    with ui.card().classes('w-full bg-white border border-gray-200 hover:border-indigo-500 hover:shadow-md transition-all p-4 shadow-sm group'):
-        with ui.row().classes('w-full items-center justify-between'):
-            with ui.row().classes('items-center gap-4 flex-1'):
-                # Icono de estado con fondo círculo
-                with ui.avatar(color=cfg['color']+'-1', text_color=cfg['color']).classes('w-12 h-12'):
+    with ui.card().classes('w-full bg-white border border-gray-100 hover:border-indigo-500 hover:shadow-md transition-all p-4 shadow-sm group'):
+        # Contenedor Principal Adaptativo
+        with ui.element('div').classes('w-full flex flex-col md:flex-row items-start md:items-center justify-between gap-4'):
+            # Info Section
+            with ui.row().classes('items-center gap-4 flex-1 w-full'):
+                # Icono de estado
+                with ui.avatar(color=cfg['color']+'-1', text_color=cfg['color']).classes('w-12 h-12 flex-shrink-0'):
                     ui.icon(cfg['icon'], size='sm')
 
                 with ui.column().classes('gap-1 flex-1'):
-                    with ui.row().classes('items-center gap-2'):
+                    with ui.row().classes('items-center gap-2 flex-wrap'):
                         ui.label(order.consecutivo).classes('text-indigo-900 font-bold text-lg cursor-pointer hover:underline underline-offset-4 decoration-indigo-300').on('click', lambda: open_order_detail(order.consecutivo, container, state))
-                        ui.label(order.estado).classes(f'text-[10px] px-2 py-0.5 rounded-full bg-{cfg["color"]}-100 text-{cfg["color"]} font-bold uppercase tracking-wider')
+                        ui.label(order.estado).classes(f'text-[9px] px-2 py-0.5 rounded-full bg-{cfg["color"]}-100 text-{cfg["color"]} font-extrabold uppercase tracking-wider')
                     
                     if client:
-                        ui.label(f"{client.nombre} {client.apellidos}").classes('text-sm font-semibold text-gray-700')
+                        ui.label(f"{client.nombre} {client.apellidos}").classes('text-sm font-bold text-gray-800')
                     
-                    with ui.row().classes('items-center gap-3 text-gray-400 text-[11px]'):
+                    with ui.row().classes('items-center gap-3 text-gray-400 text-[10px] flex-wrap'):
                         if vehicle:
                              with ui.row().classes('items-center gap-1'):
                                  ui.icon('directions_car', size='xs')
@@ -1491,12 +1493,13 @@ def _render_order_card(order, clients, vehicles, container, state, stats_contain
                             ui.icon('calendar_month', size='xs')
                             ui.label(order.fecha[:10])
                         if order.tecnico:
-                             ui.label(f"Técnico: {order.tecnico}").classes('text-indigo-600 text-xs font-medium')
+                             ui.label(f"Técnico: {order.tecnico}").classes('text-indigo-600 font-bold')
                     
                     if order.motivo:
-                        ui.label(order.motivo[:100] + ('...' if len(order.motivo or '') > 100 else '')).classes('text-gray-500 text-xs mt-1 italic')
+                        ui.label(order.motivo[:80] + ('...' if len(order.motivo or '') > 80 else '')).classes('text-gray-500 text-[11px] mt-1 italic leading-tight')
             
-            with ui.row().classes('gap-1'):
+            # Action Buttons Section - Wrap on mobile
+            with ui.row().classes('gap-1 flex-wrap justify-end md:justify-end w-full md:w-auto mt-2 md:mt-0 pt-3 md:pt-0 border-t md:border-t-0 border-gray-100'):
                 # Vista Cliente (Ojo)
                 has_diag = bool(order.checklist_reparacion or (order.diagnostico and len(order.diagnostico or '') > 10))
                 if cur_estado == 'DIAGNÓSTICO' and not has_diag:
@@ -1518,6 +1521,9 @@ def _render_order_card(order, clients, vehicles, container, state, stats_contain
                 
                 # Gestión Interna (Llave/Settings)
                 ui.button(icon='settings', on_click=lambda o=order: open_order_detail(o.consecutivo, container, state)).props('flat dense color=grey-7 size=sm').tooltip('Detalles')
+                
+                # Gestión de Computadoras / Módulos
+                ui.button(icon='memory', on_click=lambda o=order: open_computer_orders_management(o.consecutivo)).props('flat dense color=blue-9 size=sm').tooltip('Vincular Orden de Computadora / Módulo')
                 
                 # Retroceder (Flecha Izquierda)
                 try:
@@ -3854,3 +3860,195 @@ def open_edit_reception_dialog(consecutivo, container, state):
     except Exception as outer_ex:
         theme.notify_error(f"Error crítico al abrir edición: {outer_ex}")
         print(f"CRITICAL ERROR open_edit_reception_dialog: {outer_ex}")
+
+
+def open_computer_orders_management(order_consecutivo):
+    """Diálogo para gestionar órdenes de computadora vinculadas a una ODS"""
+    with ui.dialog() as dialog, ui.card().classes('w-full max-w-4xl p-0 bg-gray-50 overflow-hidden'):
+        # Header Premium Dark
+        with ui.row().classes('w-full items-center justify-between p-4 bg-[#0a192f] text-white'):
+            with ui.row().classes('items-center gap-3'):
+                ui.icon('memory', size='md').classes('text-blue-400')
+                with ui.column().classes('gap-0'):
+                    ui.label('LABORATORIO DE ELECTRÓNICA').classes('font-black tracking-tighter text-xl')
+                    ui.label(f'Vinculado a ODS: {order_consecutivo}').classes('text-[10px] text-blue-300 font-bold uppercase')
+            ui.button(icon='close', on_click=dialog.close).props('flat round color=white')
+
+        list_container = ui.column().classes('w-full p-6 gap-4')
+
+        def refresh_list():
+            list_container.clear()
+            db = get_db()
+            try:
+                comp_orders = db.query(OrdenComputadora).filter_by(orden_servicio_id=order_consecutivo).all()
+                with list_container:
+                    if not comp_orders:
+                        with ui.column().classes('w-full items-center py-12 bg-white border border-dashed border-gray-300 rounded-2xl'):
+                            ui.icon('developer_board', size='xl').classes('text-gray-200')
+                            ui.label('No hay módulos vinculados').classes('text-gray-400 font-bold mt-2')
+                            ui.button('Vincular Primer Módulo', icon='add', 
+                                     on_click=lambda: open_new_computer_order_form(order_consecutivo, refresh_list)
+                            ).classes('mt-4 btn-sandoval')
+                    else:
+                        with ui.row().classes('w-full justify-between items-center mb-2'):
+                            ui.label(f'{len(comp_orders)} Módulos en Laboratorio').classes('text-gray-500 font-bold text-xs uppercase')
+                            ui.button('Vincular Otro Módulo', icon='add', 
+                                     on_click=lambda: open_new_computer_order_form(order_consecutivo, refresh_list)
+                            ).props('flat color=blue-9').classes('font-bold')
+
+                        for comp in comp_orders:
+                            with ui.card().classes('w-full bg-white border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow'):
+                                with ui.row().classes('w-full items-center gap-4'):
+                                    # Status Icon
+                                    status_info = {
+                                        'RECIBIDO': ('blue', 'inbox'),
+                                        'EN LABORATORIO': ('amber', 'engineering'),
+                                        'REPARADO': ('green', 'check_circle'),
+                                        'ENTREGADO': ('grey-7', 'task_alt'),
+                                        'SIN SOLUCIÓN': ('red', 'error_outline')
+                                    }
+                                    clr, ico = status_info.get(comp.estado, ('blue', 'memory'))
+                                    
+                                    with ui.avatar(color=f"{clr}-1", text_color=clr).classes('w-12 h-12'):
+                                        ui.icon(ico, size='sm')
+                                    
+                                    with ui.column().classes('flex-1 gap-0'):
+                                        ui.label(comp.consecutivo).classes('text-sm font-black text-gray-900')
+                                        ui.label(f"{comp.modulo_nombre} - {comp.marca} {comp.modelo}").classes('text-xs text-gray-600')
+                                        ui.label(f"Serie: {comp.serie or '—'}").classes('text-[10px] text-gray-400')
+                                    
+                                    with ui.column().classes('items-end'):
+                                        ui.label(comp.estado).classes(f'text-[10px] px-2 py-0.5 rounded-full bg-{clr}-100 text-{clr} font-bold uppercase')
+                                        ui.label(f"S/ {comp.costo_reparacion:.2f}").classes('text-sm font-bold mt-1 text-gray-800')
+
+                                    with ui.row().classes('gap-1'):
+                                        ui.button(icon='edit', on_click=lambda c=comp: open_edit_computer_order(c.id, refresh_list)).props('flat dense color=amber-8 size=sm').tooltip('Editar / Diagnóstico Lab')
+                                        ui.button(icon='delete', on_click=lambda c=comp: delete_computer_order(c.id, refresh_list)).props('flat dense color=red-4 size=sm').tooltip('Eliminar Vínculo')
+            finally:
+                db.close()
+
+        refresh_list()
+    dialog.open()
+
+
+def open_new_computer_order_form(order_consecutivo, refresh_callback):
+    """Formulario para crear una nueva orden de computadora vinculada"""
+    with ui.dialog() as dialog, ui.card().classes('w-[500px] p-6 bg-white rounded-2xl shadow-xl'):
+        ui.label('Vincular Módulo Electrónico').classes('text-xl font-black text-indigo-900 mb-6')
+        
+        with ui.column().classes('w-full gap-4'):
+            modulo = ui.input('Nombre / Tipo de Módulo', placeholder='Ej: ECU Motor, ABS, Airbag, BCM').props('outlined dense bg-color=white').classes('w-full')
+            
+            with ui.row().classes('w-full gap-2'):
+                marca = ui.input('Marca').props('outlined dense bg-color=white').classes('flex-1')
+                modelo = ui.input('Modelo').props('outlined dense bg-color=white').classes('flex-1')
+                
+            serie = ui.input('Número de Serie / Parte').props('outlined dense bg-color=white').classes('w-full mb-4')
+        
+        def save():
+            if not modulo.value:
+                theme.notify_error('El nombre del módulo es obligatorio')
+                return
+            
+            db = get_db()
+            try:
+                # Generar consecutivo LAB
+                from datetime import datetime
+                count = db.query(OrdenComputadora).count() + 1
+                cons = f"LAB-{datetime.now().strftime('%Y%m')}-{count:04d}"
+                
+                new_comp = OrdenComputadora(
+                    consecutivo=cons,
+                    orden_servicio_id=order_consecutivo,
+                    modulo_nombre=modulo.value,
+                    marca=marca.value or '',
+                    modelo=modelo.value or '',
+                    serie=serie.value or '',
+                    estado='RECIBIDO',
+                    fecha_ingreso=datetime.now()
+                )
+                db.add(new_comp)
+                db.commit()
+                theme.notify_success(f'Módulo {cons} vinculado correctamente')
+                dialog.close()
+                refresh_callback()
+            except Exception as e:
+                theme.notify_error(f'Error al vincular: {e}')
+            finally:
+                db.close()
+
+        with ui.row().classes('w-full justify-end gap-3 mt-6'):
+            ui.button('CANCELAR', on_click=dialog.close).props('flat color=grey')
+            ui.button('CONFIRMAR VÍNCULO', icon='link', on_click=save).classes('btn-sandoval px-6 h-12 shadow-md')
+            
+    dialog.open()
+
+
+def delete_computer_order(comp_id, refresh_callback):
+    async def confirm():
+        db = get_db()
+        try:
+            comp = db.query(OrdenComputadora).get(comp_id)
+            if comp:
+                db.delete(comp)
+                db.commit()
+                theme.notify_success('Vínculo eliminado')
+                refresh_callback()
+        except Exception as e:
+            theme.notify_error(f'Error al eliminar: {e}')
+        finally:
+            db.close()
+    
+    theme.confirm_dialog('¿Eliminar vínculo?', 'Esta acción desvinculará el módulo de la orden de servicio. No se puede deshacer.', on_confirm=confirm)
+
+
+def open_edit_computer_order(comp_id, refresh_callback):
+    """Edición de los detalles de laboratorio de una computadora"""
+    db = get_db()
+    comp = db.query(OrdenComputadora).get(comp_id)
+    db.close()
+    
+    if not comp: return
+
+    with ui.dialog() as dialog, ui.card().classes('w-[600px] p-0 bg-white overflow-hidden shadow-2xl rounded-2xl'):
+        with ui.row().classes('w-full items-center justify-between p-5 bg-[#0a192f] text-white'):
+            with ui.row().classes('items-center gap-2'):
+                ui.icon('engineering', color='blue-400')
+                ui.label(f'Ficha Técnica de Laboratorio: {comp.consecutivo}').classes('font-bold text-sm tracking-tight')
+            ui.button(icon='close', on_click=dialog.close).props('flat round color=white size=sm')
+
+        with ui.column().classes('w-full p-8 gap-5'):
+            with ui.row().classes('w-full gap-4'):
+                opts = ['RECIBIDO', 'EN LABORATORIO', 'REPARADO', 'ENTREGADO', 'SIN SOLUCIÓN']
+                estado = ui.select(opts, value=comp.estado).props('outlined dense label="Estado de Laboratorio" bg-color=white').classes('flex-1')
+                costo = ui.number('Costo Reparación (S/)', value=comp.costo_reparacion, format='%.2f').props('outlined dense bg-color=white').classes('w-44 font-bold')
+            
+            diag_lab = ui.textarea('Diagnóstico / Hallazgos en Laboratorio', value=comp.diagnostico_lab).props('outlined dense rows=4 bg-color=white placeholder="Escriba los componentes dañados o fallas detectadas..."').classes('w-full')
+            trabajo = ui.textarea('Trabajo Realizado / Componentes Cambiados', value=comp.trabajo_realizado).props('outlined dense rows=4 bg-color=white placeholder="Detalle de la reparación electrónica..."').classes('w-full')
+
+            def save():
+                sdb = get_db()
+                try:
+                    c = sdb.query(OrdenComputadora).get(comp_id)
+                    if c:
+                        c.estado = estado.value
+                        c.costo_reparacion = costo.value or 0
+                        c.diagnostico_lab = diag_lab.value or ''
+                        c.trabajo_realizado = trabajo.value or ''
+                        if estado.value == 'ENTREGADO' and not c.fecha_entrega:
+                            from datetime import datetime
+                            c.fecha_entrega = datetime.now()
+                        sdb.commit()
+                        theme.notify_success(f'Módulo {c.consecutivo} actualizado')
+                        dialog.close()
+                        refresh_callback()
+                except Exception as e:
+                    theme.notify_error(f'Error al guardar: {e}')
+                finally:
+                    sdb.close()
+
+            with ui.row().classes('w-full justify-end gap-3 mt-6 pt-4 border-t border-gray-100'):
+                ui.button('Cerrar', on_click=dialog.close).props('flat')
+                ui.button('Guardar Ficha Técnica', icon='save', on_click=save).classes('btn-sandoval px-8 h-12 shadow-lg')
+                
+    dialog.open()

@@ -101,21 +101,72 @@ def show_portal(container):
             
             /* Ajustes para Móvil */
             @media (max-width: 600px) {{
-                .card-premium {{ padding: 16px; }}
-                .phase-circle {{ width: 32px; height: 32px; font-size: 14px; }}
+                .card-premium {{ padding: 16px; border-radius: 12px; }}
+                .phase-circle {{ width: 28px; height: 28px; font-size: 12px; }}
                 .phase-item label {{ font-size: 8px; width: 50px; }}
-                .tracker-line {{ top: 16px !important; }}
+                .tracker-line {{ display: none !important; }}
+                .tracker-progress {{ display: none !important; }}
                 .hide-on-mobile {{ display: none !important; }}
+                
+                /* Vertical Tracker for Mobile */
+                .tracker-container-mobile {{
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0px;
+                    padding-left: 20px;
+                    border-left: 2px solid var(--gris-borde);
+                    margin-left: 10px;
+                }}
+                .phase-item-v {{
+                    display: flex;
+                    flex-direction: row;
+                    align-items: center;
+                    gap: 16px;
+                    padding: 12px 0;
+                    position: relative;
+                }}
+                .phase-item-v::before {{
+                    content: '';
+                    position: absolute;
+                    left: -21px;
+                    top: 0;
+                    bottom: 0;
+                    width: 2px;
+                    background: var(--gris-borde);
+                }}
+                .phase-item-v.done::before, .phase-item-v.active::before {{
+                    background: var(--azul);
+                }}
+                .phase-circle-v {{
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 14px;
+                    background: white;
+                    border: 2px solid var(--gris-borde);
+                    z-index: 2;
+                    margin-left: -37px;
+                }}
+                .done .phase-circle-v {{ background: var(--azul); color: white; border-color: var(--azul); }}
+                .active .phase-circle-v {{ background: var(--azul-med); color: white; border-color: var(--azul-med); box-shadow: 0 0 10px rgba(35, 86, 168, 0.3); }}
             }}
             .tracker-line {{ position: absolute; height: 3px; background: var(--gris-borde); top: 24px; left: 0; right: 0; z-index: 1; }}
             .tracker-progress {{ position: absolute; height: 3px; background: var(--azul); top: 24px; left: 0; z-index: 1; transition: width 1s; }}
         </style>
         ''')
 
-        with container.classes('w-full max-w-[1200px] mx-auto p-4 gap-6'):
+        with container.classes('w-full max-w-[1200px] mx-auto p-4 gap-6 pb-24 md:pb-6'):
+            # Welcome Message
+            with ui.column().classes('w-full gap-1 mb-2'):
+                ui.label(f'¡Hola, {cliente.nombre}! 👋').classes('text-2xl font-black text-blue-950 tracking-tighter')
+                ui.label('Aquí puedes ver el estado real de tu atención.').classes('text-xs text-gray-500 font-bold')
+            
             
             # 2. STATS ROW
-            with ui.row().classes('w-full gap-4'):
+            with ui.row().classes('w-full gap-4 md:flex-nowrap flex-wrap'):
                 _quick_stat('🚗', str(vehiculos_totales), 'Mis vehículos')
                 _quick_stat('🔧', str(servicios_activos), 'Servicio activo')
                 _quick_stat('📋', str(visitas_totales), 'Visitas totales')
@@ -123,14 +174,19 @@ def show_portal(container):
 
             # 3. TRACKER DE SEGUIMIENTO (Si hay orden activa)
             if active_order:
-                with ui.element('div').classes('card-premium w-full mt-4'):
+                with ui.element('div').classes('card-premium w-full mt-4').id('seguimiento-en-vivo'):
                     with ui.row().classes('w-full justify-between items-center mb-8'):
                         with ui.column().classes('gap-0'):
                             ui.label('SEGUIMIENTO EN VIVO').classes('text-[10px] font-black text-blue-800 tracking-widest uppercase opacity-50')
                             ui.label(f'Orden de Trabajo #{active_order.consecutivo}').classes('text-xl font-bold text-gray-900')
-                        ui.label(f'📅 Entrega estimada: {getattr(active_order, "proximo_mantenimiento", "Pendiente") or "Pendiente"}').classes('text-xs font-bold text-blue-900 bg-blue-50 px-4 py-2 rounded-full border border-blue-100')
+                        ui.label(f'📅 Entrega estimada: {getattr(active_order, "proximo_mantenimiento", "Pendiente") or "Pendiente"}').classes('text-xs font-bold text-blue-900 bg-blue-50 px-4 py-2 rounded-full border border-blue-100 mt-2 md:mt-0')
                     
-                    _render_tracker(active_order.estado)
+                    # Horizontal tracker for Desktop, Vertical for Mobile
+                    with ui.element('div').classes('w-full mt-4 md:block hidden'):
+                        _render_tracker(active_order.estado)
+                    
+                    with ui.element('div').classes('w-full mt-4 md:hidden block'):
+                        _render_tracker_vertical(active_order.estado)
                     
                     # ─── MÓDULO ESPECIAL DE APROBACIÓN (Fase 4) ───
                     if active_order.estado == 'APROBACIÓN':
@@ -201,7 +257,7 @@ def show_portal(container):
             # 5. AGENDAR CITA + NOTIFICACIONES (Vertical Stack)
             with ui.column().classes('w-full gap-6 mt-4'):
                 # Agendar Cita (VINCULADO AL DISEÑO PREMIUM)
-                with ui.element('div').classes('card-premium w-full'):
+                with ui.element('div').classes('card-premium w-full').id('agendar-cita'):
                     with ui.row().classes('items-center gap-3 mb-6'):
                         with ui.element('div').classes('w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-800 text-xl'):
                             ui.label('📅')
@@ -288,7 +344,7 @@ def show_portal(container):
                         _notif_item('visibility', 'Diagnóstico subido', 'Ya puede revisar el informe técnico.', 'Hoy 08:00 AM')
 
             # 6. HISTORIAL DE SERVICIOS
-            with ui.element('div').classes('card-premium w-full mt-4 overflow-hidden'):
+            with ui.element('div').classes('card-premium w-full mt-4 overflow-hidden').id('historial-servicios'):
                 ui.label('📂 Historial de Servicios').classes('text-lg font-bold text-blue-900 mb-6')
                 
                 # Encabezados de tabla con NiceGUI puro
@@ -299,10 +355,24 @@ def show_portal(container):
                     ui.label('COSTO').classes('flex-1 text-[11px] font-bold text-gray-400 text-center')
                     ui.label('ESTADO').classes('flex-1 text-[11px] font-bold text-gray-400 text-right')
 
-                # Filas de la tabla
-                with ui.column().classes('w-full gap-0'):
+                # Filas de la tabla / Tarjetas en Móvil
+                with ui.column().classes('w-full gap-3 mt-2'):
                     for o in ordenes_all[:8]:
-                        with ui.row().classes('w-full p-4 border-b border-gray-100 items-center hover:bg-blue-50/30 transition-colors'):
+                        # Card for mobile
+                        with ui.element('div').classes('md:hidden block bg-gray-50 p-4 rounded-2xl border border-gray-100 shadow-sm'):
+                            with ui.row().classes('w-full justify-between items-center mb-2'):
+                                ui.label(str(o.fecha)).classes('text-[10px] font-bold text-gray-400')
+                                ui.badge(str(o.consecutivo)).props('outline').classes('text-blue-600 font-mono')
+                            ui.label(o.motivo or 'Revisión').classes('text-sm font-black text-gray-800 mb-2')
+                            with ui.row().classes('w-full justify-between items-center mt-2 pt-2 border-t border-gray-200/50'):
+                                is_done = o.estado in ('ARCHIVADO', 'ENTREGA')
+                                badge_color = 'green-1' if is_done else 'amber-1'
+                                text_color = 'green-9' if is_done else 'amber-9'
+                                ui.badge(o.estado).classes(f'bg-{badge_color} text-{text_color} px-3 py-1 rounded-full text-[10px] font-bold')
+                                ui.button(icon='visibility', on_click=lambda _, order_obj=o: _view_order_details(order_obj)).props('flat round color=blue-9 size=sm')
+
+                        # Row for desktop
+                        with ui.row().classes('hide-on-mobile w-full p-4 border-b border-gray-100 items-center hover:bg-blue-50/30 transition-colors'):
                             ui.label(str(o.fecha)).classes('flex-1 text-sm text-gray-500')
                             ui.label(o.motivo[:40] + '...' if o.motivo and len(o.motivo)>40 else str(o.motivo or 'Revisión')).classes('flex-[2] text-sm font-bold text-gray-800')
                             ui.badge(str(o.consecutivo)).props('outline').classes('flex-1 text-blue-600 font-mono self-center m-0')
@@ -316,6 +386,21 @@ def show_portal(container):
                             with ui.element('div').classes('flex-1 flex justify-end'):
                                 ui.button(icon='visibility', on_click=lambda _, order_obj=o: _view_order_details(order_obj)).props('flat round color=blue-9 size=sm')
                                 ui.badge(o.estado).classes(f'bg-{badge_color} text-{text_color} px-3 py-1 rounded-full text-[10px] font-bold ml-2')
+
+            # Bottom Navigation for Mobile
+            with ui.element('div').classes('bottom-nav md:hidden'):
+                with ui.element('div').classes('nav-item'):
+                    ui.icon('home', size='xs', color='blue-900')
+                    ui.label('Inicio')
+                with ui.element('div').classes('nav-item').on('click', lambda: ui.scroll_to('agendar-cita')):
+                    ui.icon('event', size='xs')
+                    ui.label('Citas')
+                with ui.element('div').classes('nav-item').on('click', lambda: ui.scroll_to('seguimiento-en-vivo')):
+                    ui.icon('build', size='xs')
+                    ui.label('Taller')
+                with ui.element('div').classes('nav-item').on('click', lambda: ui.scroll_to('historial-servicios')):
+                    ui.icon('history', size='xs')
+                    ui.label('Historial')
 
     except Exception as e:
         import traceback
@@ -336,7 +421,7 @@ def _handle_cal_select(parent, button, date_str, state_dict):
     state_dict['value'] = date_str
 
 def _quick_stat(icon, value, label):
-    with ui.element('div').classes('stat-card flex-1 bg-white p-6 rounded-2xl border border-gray-100 flex items-center gap-4 shadow-sm'):
+    with ui.element('div').classes('stat-card flex-1 min-w-[140px] bg-white p-6 rounded-2xl border border-gray-100 flex items-center gap-4 shadow-sm'):
         with ui.element('div').classes('stat-icon-wrap'):
             ui.label(icon).classes('text-xl')
         with ui.column().classes('gap-0'):
@@ -347,6 +432,37 @@ def _data_row(label, val):
     with ui.row().classes('w-full justify-between items-center text-sm'):
         ui.label(label).classes('text-gray-400 font-medium')
         ui.label(val).classes('font-bold text-gray-800 text-right')
+
+def _render_tracker_vertical(current_state):
+    phases = [
+        ('RECEPCIÓN', 'login'), 
+        ('DIAGNÓSTICO', 'search'), 
+        ('REPUESTOS', 'precision_manufacturing'),
+        ('APROBACIÓN', 'check_circle'), 
+        ('REPARACIÓN', 'engineering'), 
+        ('CONTROL', 'verified'), 
+        ('ENTREGA', 'verified_user')
+    ]
+    
+    current_idx = 0
+    for i, (name, _) in enumerate(phases):
+        if name == current_state: current_idx = i
+    
+    with ui.column().classes('tracker-container-mobile'):
+        for i, (name, icon) in enumerate(phases):
+            status_cls = 'done' if i < current_idx else 'active' if i == current_idx else 'pending'
+            with ui.element('div').classes(f'phase-item-v {status_cls}'):
+                with ui.element('div').classes('phase-circle-v shadow-sm'):
+                    if i < current_idx: ui.icon('check', size='xs')
+                    elif i == current_idx: ui.icon(icon, size='xs')
+                    else: ui.label(str(i+1)).classes('text-[10px] font-bold')
+                
+                with ui.column().classes('gap-0'):
+                    ui.label(name).classes('text-[11px] font-black tracking-tight')
+                    if i == current_idx:
+                        ui.label('EN PROGRESO').classes('text-[8px] font-bold text-blue-400 animate-pulse')
+                    elif i < current_idx:
+                        ui.label('COMPLETADO').classes('text-[8px] font-bold text-green-500')
 
 def _notif_item(icon, title, desc, time):
     with ui.row().classes('w-full gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100 items-start'):
@@ -371,7 +487,7 @@ def _render_tracker(current_state):
     for i, (name, _) in enumerate(phases):
         if name == current_state: current_idx = i
     
-    with ui.row().classes('w-full justify-between relative mt-4 no-wrap'):
+    with ui.row().classes('w-full justify-between relative mt-4 md:no-wrap overflow-x-auto pb-4'):
         # Línea de progreso
         ui.element('div').classes('tracker-line shadow-inner')
         ui.element('div').classes('tracker-progress shadow-lg').style(f'width: {(current_idx / (len(phases)-1)) * 100}%')

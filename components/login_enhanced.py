@@ -135,44 +135,45 @@ def show_login_enhanced():
         </div>
         ''')
         
-        # Card principal con glassmorphism - SIN restricción de altura
-        with ui.card().classes('w-full max-w-md login-card-3d').style(
-            'background: rgba(255, 255, 255, 0.95);'
+        # Card principal con glassmorphism
+        with ui.card().classes('w-full login-card-3d').style(
+            'background: rgba(255, 255, 255, 0.98);'
             'backdrop-filter: blur(20px);'
-            'border: 1px solid rgba(255, 255, 255, 0.3);'
-            'box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);'
-            'padding: 1.25rem 1.5rem;'
-            'border-radius: 24px;'
-            'margin: 10px 0;'
+            'border: 1px solid rgba(255, 255, 255, 0.5);'
+            'box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.4);'
+            'padding: 1.5rem;'
+            'border-radius: 28px;'
+            'max-width: 400px;'
+            'margin: 0 auto;'
         ):
             
-            with ui.column().classes('w-full items-center mb-3'):
-                ui.image('/assets/logo_sandoval.jpg').classes('w-16 h-16 mb-2 object-contain rounded-xl shadow-2xl logo-3d-float')
-                ui.label('MECÁNICA Y REPUESTOS').classes('text-[10px] text-blue-900 font-black tracking-[0.2em] uppercase mb-0')
+            with ui.column().classes('w-full items-center mb-4'):
+                ui.image('/assets/logo_sandoval.jpg').classes('w-20 h-20 mb-3 object-contain rounded-2xl shadow-xl logo-3d-float')
+                ui.label('MECÁNICA Y REPUESTOS').classes('text-[9px] text-blue-900 font-extrabold tracking-[0.25em] uppercase mb-0')
                 ui.label('SANDOVAL EIRL').classes('text-2xl font-black text-gray-900 tracking-tighter mb-1')
-                ui.label('Sistema Profesional de Gestión').classes('text-xs text-gray-500 font-semibold tracking-wide')
+                ui.label('Sistema Profesional de Gestión').classes('text-xs text-gray-400 font-bold tracking-wide')
 
             # Tabs con estilo mejorado
-            with ui.tabs().classes('w-full mb-2').style(
-                'background: linear-gradient(135deg, #f1f5f9, #e2e8f0);'
-                'border-radius: 12px;'
+            with ui.tabs().classes('w-full mb-4').style(
+                'background: #f8fafc;'
+                'border-radius: 14px;'
                 'padding: 4px;'
-                'box-shadow: inset 0 2px 4px rgba(0,0,0,0.06);'
+                'border: 1px solid #e2e8f0;'
             ) as tabs:
-                t_staff = ui.tab('👔 PERSONAL', icon='badge').classes('font-bold text-xs')
-                t_client = ui.tab('🚗 SOY CLIENTE', icon='directions_car').classes('font-bold text-xs')
+                t_staff = ui.tab('PERSONAL', icon='badge').classes('font-bold text-xs')
+                t_client = ui.tab('SOY CLIENTE', icon='directions_car').classes('font-bold text-xs')
 
-            error_label = ui.label('').classes('text-red-600 text-xs text-center w-full mb-1 font-semibold')
+            error_label = ui.label('').classes('text-red-600 text-[11px] text-center w-full mb-2 font-bold bg-red-50 p-2 rounded-lg border border-red-100')
             error_label.visible = False
 
             with ui.tab_panels(tabs, value=t_staff).classes('w-full bg-transparent').style('min-height: 200px;'):
                 # --- LOGIN PERSONAL ---
                 with ui.tab_panel(t_staff).classes('p-2'):
-                    ui.label('Acceso para empleados del taller').classes('text-xs text-gray-500 mb-2 text-center font-medium')
+                    ui.label('Acceso exclusivo para personal autorizado').classes('text-[11px] text-gray-400 mb-4 text-center font-bold uppercase tracking-wider')
                     
-                    with ui.column().classes('w-full gap-2'):
-                        staff_user_in = ui.input('Usuario', placeholder='Ingrese su usuario').props('outlined dense').classes('w-full').style('border-radius: 10px;')
-                        staff_pass_in = ui.input('Contraseña', password=True, password_toggle_button=True, placeholder='Ingrese su contraseña').props('outlined dense').classes('w-full').style('border-radius: 10px;')
+                    with ui.column().classes('w-full gap-3'):
+                        staff_user_in = ui.input('Usuario', placeholder='Tu nombre de usuario').props('outlined dense').classes('w-full shadow-sm').style('border-radius: 12px;')
+                        staff_pass_in = ui.input('Contraseña', password=True, password_toggle_button=True, placeholder='Tu clave segura').props('outlined dense').classes('w-full shadow-sm').style('border-radius: 12px;')
 
                     async def handle_staff_login():
                         db = get_db()
@@ -185,7 +186,8 @@ def show_login_enhanced():
                                 _set_session(user.id, user.nombre, user.rol)
                                 user.ultimo_login = datetime.now()
                                 db.commit()
-                                ui.navigate.to('/')
+                                # Forzar recarga completa para asegurar que la sesión se reconozca
+                                ui.run_javascript('window.location.href = "/"')
                             else:
                                 error_label.text = '❌ Usuario o contraseña incorrectos'
                                 error_label.visible = True
@@ -199,17 +201,17 @@ def show_login_enhanced():
                             db.close()
 
                     
-                    ui.button('🔓 Entrar al Sistema', on_click=handle_staff_login, icon='login').classes('w-full btn-sandoval h-10 text-sm font-bold shadow-xl mt-2').style('border-radius: 10px;')
+                    ui.button('ENTRAR AL SISTEMA', on_click=handle_staff_login, icon='login').classes('w-full btn-sandoval h-12 text-sm font-black shadow-xl mt-4 tracking-widest').style('border-radius: 14px;')
 
                 # --- LOGIN CLIENTE ---
                 with ui.tab_panel(t_client).classes('p-2'):
-                    ui.label('Consulte el estado de su vehículo en tiempo real').classes('text-xs text-gray-500 mb-2 text-center font-medium')
+                    ui.label('Consulta el estado de tu vehículo en tiempo real').classes('text-[11px] text-gray-400 mb-4 text-center font-bold uppercase tracking-wider')
                     
-                    with ui.column().classes('w-full gap-2'):
-                        client_placa_in = ui.input('🚗 Placa del Vehículo', placeholder='Ej: ABC-123').props('outlined dense').classes('w-full').style('border-radius: 10px;')
-                        client_pass_in = ui.input('🔑 Contraseña', password=True, password_toggle_button=True, placeholder='Su DNI o RUC').props('outlined dense').classes('w-full').style('border-radius: 10px;')
+                    with ui.column().classes('w-full gap-3'):
+                        client_placa_in = ui.input('Placa del Vehículo', placeholder='Ej: ABC-123').props('outlined dense').classes('w-full shadow-sm').style('border-radius: 12px;')
+                        client_pass_in = ui.input('Contraseña / PIN', password=True, password_toggle_button=True, placeholder='DNI o RUC').props('outlined dense').classes('w-full shadow-sm').style('border-radius: 12px;')
                     
-                    ui.label('💡 Su contraseña inicial es su DNI o RUC').classes('text-[9px] text-blue-700 mb-1 text-center bg-blue-50 p-1.5 rounded-lg border border-blue-100 mt-1')
+                    ui.label('💡 Tu contraseña inicial es tu número de DNI o RUC.').classes('text-[10px] text-blue-800 mb-4 text-center bg-blue-50/50 p-3 rounded-xl border border-blue-100/50 mt-4 leading-relaxed')
 
                     async def handle_client_login():
                         db = get_db()
@@ -244,7 +246,8 @@ def show_login_enhanced():
                             if pass_ok:
                                 from utils.auth import _set_session
                                 _set_session(v.cliente_id, '', 'cliente', is_client=True, plate=v.placa)
-                                ui.navigate.to('/')
+                                # Forzar recarga para asegurar sesión limpia
+                                ui.run_javascript('window.location.href = "/"')
                             else:
                                 error_label.text = '❌ Contraseña incorrecta. Use su DNI/RUC como contraseña inicial.'
                                 error_label.visible = True
@@ -258,7 +261,7 @@ def show_login_enhanced():
                             db.close()
 
                     
-                    ui.button('🔓 INGRESAR AL PORTAL', on_click=handle_client_login, icon='login').classes('w-full btn-sandoval h-10 text-sm font-bold shadow-xl mt-2').style('border-radius: 10px;')
+                    ui.button('INGRESAR AL PORTAL', on_click=handle_client_login, icon='login').classes('w-full btn-sandoval h-12 text-sm font-black shadow-xl mt-4 tracking-widest').style('border-radius: 14px;')
 
             # Ayuda expandible (más compacta)
             with ui.expansion('❓ Ayuda', icon='help_outline').classes('w-full mt-2').style(

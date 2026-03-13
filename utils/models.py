@@ -166,6 +166,7 @@ class Orden(Base):
 
     cliente_rel = relationship('Cliente', back_populates='ordenes')
     vehiculo_rel = relationship('Vehiculo', back_populates='ordenes')
+    computadoras = relationship('OrdenComputadora', back_populates='orden_servicio_rel', cascade='all, delete-orphan')
 
 
 class Actividad(Base):
@@ -214,6 +215,32 @@ class NotaVenta(Base):
     items          = Column(JSON, default=list)   # [{codigo, nombre, cantidad, precio, subtotal}]
 
     cliente_rel = relationship('Cliente', foreign_keys=[cliente_id])
+
+
+class OrdenComputadora(Base):
+    __tablename__ = 'ordenes_computadoras'
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    consecutivo       = Column(String(30), unique=True, nullable=False)
+    orden_servicio_id = Column(String(30), ForeignKey('ordenes.consecutivo'), nullable=False)
+    
+    # Datos del Módulo
+    modulo_nombre     = Column(String(100), nullable=False) # ECU, BCM, ABS, etc.
+    marca             = Column(String(50), default='')
+    modelo            = Column(String(50), default='')
+    serie             = Column(String(100), default='')
+    
+    # Flujo de Trabajo
+    diagnostico_lab   = Column(Text, default='')
+    trabajo_realizado = Column(Text, default='')
+    estado            = Column(String(30), default='RECIBIDO') # RECIBIDO, EN LABORATORIO, REPARADO, ENTREGADO, SIN SOLUCIÓN
+    
+    # Costos
+    costo_reparacion  = Column(Float, default=0)
+    
+    fecha_ingreso     = Column(DateTime, default=datetime.now)
+    fecha_entrega     = Column(DateTime, nullable=True)
+
+    orden_servicio_rel = relationship('Orden', back_populates='computadoras')
 
 
 
@@ -344,6 +371,31 @@ def init_db():
             conn.commit()
     except Exception:
         pass  # La columna ya existe
+
+    # Crear tabla de computadoras si no existe
+    try:
+        with engine.connect() as conn:
+            conn.execute(__import__('sqlalchemy').text("""
+                CREATE TABLE IF NOT EXISTS ordenes_computadoras (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    consecutivo VARCHAR(30) UNIQUE NOT NULL,
+                    orden_servicio_id VARCHAR(30) NOT NULL,
+                    modulo_nombre VARCHAR(100) NOT NULL,
+                    marca VARCHAR(50) DEFAULT '',
+                    modelo VARCHAR(50) DEFAULT '',
+                    serie VARCHAR(100) DEFAULT '',
+                    diagnostico_lab TEXT DEFAULT '',
+                    trabajo_realizado TEXT DEFAULT '',
+                    estado VARCHAR(30) DEFAULT 'RECIBIDO',
+                    costo_reparacion FLOAT DEFAULT 0,
+                    fecha_ingreso DATETIME,
+                    fecha_entrega DATETIME,
+                    FOREIGN KEY(orden_servicio_id) REFERENCES ordenes(consecutivo)
+                )
+            """))
+            conn.commit()
+    except Exception:
+        pass
 
     db = get_db()
     try:

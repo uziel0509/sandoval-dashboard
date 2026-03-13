@@ -73,11 +73,11 @@ def show_dashboard(container):
             _render_kpis(avg_nps, total_ingresos, len(activas), n_clientes,
                          len(completadas), len(encuestas), ventas_mes)
 
-            with ui.row().classes('w-full gap-5 mb-5'):
+            with ui.column().classes('w-full gap-5 mb-5 md:flex-row md:flex-wrap lg:flex-nowrap'):
                 _render_estados_chart(ordenes)
                 _render_active_orders(activas, clients_map)
 
-            with ui.row().classes('w-full gap-5'):
+            with ui.column().classes('w-full gap-5 md:flex-row md:flex-wrap lg:flex-nowrap'):
                 _render_satisfaction(encuestas)
                 _render_alerts(stock_alerts, activas)
                 _render_voice(encuestas)
@@ -164,11 +164,11 @@ def _render_kpis(avg_nps, total_ingresos, n_activas, n_clientes, n_completadas, 
         ('Clientes Registrados',   str(n_clientes),             'Base de fidelización',          'groups',       '#0ea5e9', '#f0f9ff'),
         ('Satisfacción Global',    f'{avg_nps:.1f}/10',         f'{n_encuestas} encuestas',      'star_rate',    '#f59e0b', '#fffbeb'),
     ]
-    with ui.row().classes('w-full gap-4 mb-5'):
+    with ui.row().classes('w-full gap-4 mb-5 justify-center md:flex-nowrap flex-wrap'):
         for titulo, valor, sub, icon, color, bg in kpis:
             with ui.card().classes(
-                    'flex-1 bg-white border border-gray-100 p-5 rounded-2xl shadow-sm '
-                    'hover:shadow-md hover:-translate-y-1 transition-all cursor-default'):
+                    'w-full md:flex-1 bg-white border border-gray-100 p-5 rounded-2xl shadow-sm '
+                    'hover:shadow-md hover:-translate-y-1 transition-all cursor-default min-w-[160px]'):
                 with ui.row().classes('w-full items-start justify-between'):
                     with ui.column().classes('gap-1 flex-1 min-w-0'):
                         ui.label(titulo).classes(
@@ -190,7 +190,7 @@ def _render_kpis(avg_nps, total_ingresos, n_activas, n_clientes, n_completadas, 
 
 def _render_estados_chart(ordenes):
     with ui.card().classes(
-            'bg-white border border-gray-100 p-6 rounded-2xl shadow-sm').style('flex:1.2'):
+            'bg-white border border-gray-100 p-6 rounded-2xl shadow-sm w-full lg:flex-[1.2]'):
         with ui.row().classes('w-full items-center justify-between mb-4'):
             with ui.column().classes('gap-0'):
                 ui.label('Estado del Taller').classes('text-base font-black text-gray-800')
@@ -282,7 +282,7 @@ def _render_estados_chart(ordenes):
 
 def _render_active_orders(activas, clients_map):
     with ui.card().classes(
-            'bg-white border border-gray-100 p-6 rounded-2xl shadow-sm').style('flex:1.8'):
+            'bg-white border border-gray-100 p-6 rounded-2xl shadow-sm w-full lg:flex-[1.8]'):
         with ui.row().classes('w-full items-center justify-between mb-4'):
             with ui.column().classes('gap-0'):
                 ui.label('Órdenes Activas').classes('text-base font-black text-gray-800')
@@ -297,35 +297,38 @@ def _render_active_orders(activas, clients_map):
 
         recientes = sorted(activas, key=lambda o: o.fecha or '', reverse=True)[:6]
 
-        # Cabeceras
-        with ui.element('div').classes('grid px-3 mb-1').style(
+        # Cabeceras (Sólo desktop)
+        with ui.element('div').classes('hide-on-mobile grid px-3 mb-1').style(
                 'grid-template-columns: 85px 1fr 90px 120px'):
             for h in ['FOLIO', 'CLIENTE', 'PLACA', 'ESTADO']:
                 ui.label(h).classes('text-[9px] font-black text-gray-300 tracking-widest')
 
         # Filas
-        for o in recientes:
-            cfg   = theme.ESTADOS_CONFIG.get(o.estado, {})
-            hex_c = cfg.get('hex', '#94a3b8')
-            nombre = clients_map.get(o.cliente_id, '—')
-            if len(nombre) > 20:
-                nombre = nombre[:20] + '…'
+        with ui.column().classes('w-full gap-2'):
+            for o in recientes:
+                cfg   = theme.ESTADOS_CONFIG.get(o.estado, {})
+                hex_c = cfg.get('hex', '#94a3b8')
+                nombre = clients_map.get(o.cliente_id, '—')
+                
+                # Vista móvil: tarjeta compacta
+                with ui.element('div').classes('md:hidden block bg-slate-50 p-3 rounded-xl border border-gray-100'):
+                    with ui.row().classes('w-full justify-between items-center mb-1'):
+                        ui.label(o.consecutivo).classes('text-[10px] font-black text-[#274495]')
+                        ui.label(o.vehiculo_placa or '—').classes('text-[10px] font-bold text-gray-400')
+                    ui.label(nombre).classes('text-xs font-bold text-gray-800 block mb-2')
+                    with ui.element('div').classes('px-2 py-0.5 rounded text-[8px] font-black text-white text-center inline-block').style(f'background:{hex_c}'):
+                        ui.label(o.estado or '—')
 
-            with ui.element('div').classes(
-                    'grid px-3 py-3 rounded-xl items-center '
-                    'hover:bg-slate-50 transition-colors border-b border-gray-50'
-            ).style('grid-template-columns: 85px 1fr 90px 120px'):
-                ui.label(o.consecutivo).classes(
-                    'text-xs font-black text-[#274495] tracking-tight')
-                ui.label(nombre).classes(
-                    'text-xs font-semibold text-gray-700 truncate')
-                ui.label(o.vehiculo_placa or '—').classes(
-                    'text-xs font-bold text-gray-400')
+                # Vista desktop: grid
                 with ui.element('div').classes(
-                        'px-2 py-1 rounded-lg text-[9px] font-black '
-                        'tracking-widest text-white text-center inline-block'
-                ).style(f'background:{hex_c}'):
-                    ui.label(o.estado or '—')
+                        'hide-on-mobile grid px-3 py-3 rounded-xl items-center '
+                        'hover:bg-slate-50 transition-colors border-b border-gray-50'
+                ).style('grid-template-columns: 85px 1fr 90px 120px'):
+                    ui.label(o.consecutivo).classes('text-xs font-black text-[#274495] tracking-tight')
+                    ui.label(nombre).classes('text-xs font-semibold text-gray-700 truncate')
+                    ui.label(o.vehiculo_placa or '—').classes('text-xs font-bold text-gray-400')
+                    with ui.element('div').classes('px-2 py-1 rounded-lg text-[9px] font-black tracking-widest text-white text-center inline-block').style(f'background:{hex_c}'):
+                        ui.label(o.estado or '—')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

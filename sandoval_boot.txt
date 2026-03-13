@@ -1,7 +1,7 @@
-[2026-03-10 16:35:22] Iniciando SANDOVAL Dashboard v2.0...
-[2026-03-10 16:35:22] Assets registrados
-[2026-03-10 16:35:22] Base de datos SQLite inicializada
-[2026-03-10 16:35:22] Theme importado
-[2026-03-10 16:35:22] Todos los componentes importados
-[2026-03-10 16:35:22] API REST y PWA registrados
-[2026-03-10 16:35:22] Iniciando servidor NiceGUI...
+[2026-03-13 12:44:14] Iniciando SANDOVAL Dashboard v2.0...
+[2026-03-13 12:44:14] Assets registrados
+[2026-03-13 12:44:14] Base de datos SQLite inicializada
+[2026-03-13 12:44:14] Theme importado
+[2026-03-13 12:44:15] Todos los componentes importados
+[2026-03-13 12:44:15] API REST y PWA registrados
+[2026-03-13 12:44:15] Iniciando servidor NiceGUI...

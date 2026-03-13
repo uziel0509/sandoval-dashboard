@@ -13,18 +13,18 @@ def show_clientes(container):
         state = {'filter_tipo': 'Todos', 'search_query': ''}
         
         # Header Corporativo Minimalista
-        with ui.row().classes('w-full items-center justify-between mb-4 fade-in py-5 px-8 bg-white border border-gray-100 rounded-xl shadow-sm'):
+        with ui.row().classes('w-full items-center justify-between mb-4 fade-in py-5 px-8 bg-white border border-gray-100 rounded-xl shadow-sm md:flex-nowrap flex-wrap gap-4'):
             with ui.row().classes('items-center gap-4'):
                 ui.icon('people', size='32px').classes('text-[#274495]')
                 ui.label('GESTIÓN DE CLIENTES').classes('text-xl font-extrabold text-[#274495] tracking-tight')
-            with ui.row().classes('gap-3'):
-                ui.button('EXCEL', icon='border_all', on_click=lambda: _export_excel(state)).classes('btn-sandoval bg-slate-100 !text-slate-700 shadow-none border border-slate-200 hover:bg-slate-200').props('unelevated')
-                ui.button('Nuevo Cliente', icon='person_add', on_click=lambda: open_client_dialog(table_container, state)).classes('btn-sandoval')
+            with ui.row().classes('gap-3 w-full md:w-auto justify-end'):
+                ui.button('EXCEL', icon='border_all', on_click=lambda: _export_excel(state)).classes('btn-sandoval bg-slate-100 !text-slate-700 shadow-none border border-slate-200 hover:bg-slate-200 flex-1 md:flex-none').props('unelevated')
+                ui.button('Nuevo Cliente', icon='person_add', on_click=lambda: open_client_dialog(table_container, state)).classes('btn-sandoval flex-1 md:flex-none')
         
         # Filter Bar White
-        with ui.row().classes('w-full bg-white p-4 border-x border-b border-gray-200 rounded-b-lg mb-6 gap-4 items-center shadow-sm'):
-            search_input = ui.input(placeholder='Buscar por nombre, DNI/RUC, email...').props('outlined dense clearable bg-color=white').classes('flex-1')
-            tipo_select = ui.select(['Todos', 'Persona', 'Empresa'], value='Todos', label='Tipo').props('outlined dense bg-color=white').classes('w-40')
+        with ui.row().classes('w-full bg-white p-4 border-x border-b border-gray-200 rounded-b-lg mb-6 gap-4 items-center shadow-sm md:flex-nowrap flex-wrap'):
+            search_input = ui.input(placeholder='Buscar por nombre, DNI/RUC, email...').props('outlined dense clearable bg-color=white').classes('flex-1 min-w-[200px]')
+            tipo_select = ui.select(['Todos', 'Persona', 'Empresa'], value='Todos', label='Tipo').props('outlined dense bg-color=white').classes('w-full md:w-40')
             
             def do_search():
                 state['search_query'] = search_input.value or ''
@@ -33,7 +33,7 @@ def show_clientes(container):
             
             search_input.on('keydown.enter', lambda: do_search())
             tipo_select.on('update:model-value', lambda: do_search())
-            ui.button('Buscar', icon='search', on_click=do_search).props('unelevated color=primary')
+            ui.button('Buscar', icon='search', on_click=do_search).props('unelevated color=primary').classes('w-full md:w-auto')
         
         db = get_db()
         try:
@@ -43,7 +43,7 @@ def show_clientes(container):
         finally:
             db.close()
         
-        with ui.row().classes('w-full gap-4 mb-6'):
+        with ui.row().classes('w-full gap-4 mb-6 md:flex-nowrap flex-wrap'):
             _stat('TOTAL CLIENTES', str(total), 'groups', 'blue-8')
             _stat('PERSONAS', str(personas), 'person', 'green-7')
             _stat('EMPRESAS', str(empresas), 'business', 'purple-7')
@@ -53,7 +53,7 @@ def show_clientes(container):
 
 def _stat(title, value, icon, color):
     # Stats White Style
-    with ui.card().classes('flex-1 bg-white border border-gray-200 p-4 shadow-sm hover:border-blue-400 transition-colors'):
+    with ui.card().classes('w-full md:flex-1 bg-white border border-gray-200 p-4 shadow-sm hover:border-blue-400 transition-colors'):
         with ui.row().classes('items-center justify-between w-full'):
             with ui.column().classes('gap-1'):
                 ui.label(title).classes('text-xs font-bold text-gray-500 tracking-wider')

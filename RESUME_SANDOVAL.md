@@ -1,4 +1,4 @@
-# Estado del Proyecto SANDOVAL (Tuulap Dashboard v2)
+# Estado del Proyecto SANDOVAL Dashboard v2.0 Pro
 Fecha: 2026-02-13
 Hora: 17:43
 

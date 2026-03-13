@@ -98,19 +98,8 @@ try:
     # ─── Página de Login con Splash Screen ───
     @ui.page('/login')
     def login_page():
-        # Detectar móvil/tablet y redirigir a la PWA
-        ui.add_body_html('''
-        <script>
-        (function(){
-            var ua = navigator.userAgent || '';
-            var isMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini|BlackBerry|Mobile/i.test(ua);
-            var isSmall  = window.innerWidth < 960;
-            if (isMobile || isSmall) {
-                window.location.replace('/app/');
-            }
-        })();
-        </script>
-        ''')
+        # No redirigir a PWA, usar NiceGUI responsive
+        pass
         try:
             from components.login_enhanced import show_login_enhanced
             from components.splash_screen import show_splash
