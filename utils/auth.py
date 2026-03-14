@@ -121,18 +121,7 @@ def show_login_page():
         ui.navigate.to('/')
         return
 
-    ui.add_head_html('''
-    <script>
-        (function() {
-            var ua = navigator.userAgent || '';
-            var isMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini|BlackBerry|Mobile/i.test(ua);
-            if (isMobile) {
-                window.location.replace('/app/');
-            }
-        })();
-    </script>
-    <style>body { background-color: #f8fafc; }</style>
-    ''')
+    ui.add_head_html('<style>body { background-color: #f8fafc; }</style>')
     
     with ui.column().classes('w-full min-h-screen items-center justify-center p-4'):
         with ui.card().classes('w-full max-w-md bg-white border border-gray-100 p-8 card-sandoval'):

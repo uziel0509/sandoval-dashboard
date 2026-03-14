@@ -10,6 +10,8 @@ import traceback
 import datetime
 import os
 from dotenv import load_dotenv
+from fastapi import Request
+from fastapi.responses import RedirectResponse
 load_dotenv()
 
 # Configurar NiceGUI para máxima estabilidad
@@ -97,9 +99,12 @@ try:
 
     # ─── Página de Login con Splash Screen ───
     @ui.page('/login')
-    def login_page():
+    def login_page(request: Request = None):
+        if request:
+            ua = request.headers.get('user-agent', '').lower()
+            if any(x in ua for x in ['android', 'iphone', 'ipad', 'ipod', 'iemobile', 'mobile']):
+                return RedirectResponse('/app/')
         # No redirigir a PWA, usar NiceGUI responsive
-        pass
         try:
             from components.login_enhanced import show_login_enhanced
             from components.splash_screen import show_splash
@@ -125,18 +130,12 @@ try:
 
     # ─── Dashboard Principal ───
     @ui.page('/')
-    def main_page():
-        ui.add_head_html('''
-        <script>
-            (function() {
-                var ua = navigator.userAgent || '';
-                var isMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini|BlackBerry|Mobile/i.test(ua);
-                if (isMobile) {
-                    window.location.replace('/app/');
-                }
-            })();
-        </script>
-        ''')
+    def main_page(request: Request = None):
+        if request:
+            ua = request.headers.get('user-agent', '').lower()
+            if any(x in ua for x in ['android', 'iphone', 'ipad', 'ipod', 'iemobile', 'mobile']):
+                return RedirectResponse('/app/')
+                
         try:
             user = get_current_user()
             if not user:
