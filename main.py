@@ -126,6 +126,17 @@ try:
     # ─── Dashboard Principal ───
     @ui.page('/')
     def main_page():
+        ui.add_head_html('''
+        <script>
+            (function() {
+                var ua = navigator.userAgent || '';
+                var isMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini|BlackBerry|Mobile/i.test(ua);
+                if (isMobile) {
+                    window.location.replace('/app/');
+                }
+            })();
+        </script>
+        ''')
         try:
             user = get_current_user()
             if not user:
