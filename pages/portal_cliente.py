@@ -174,7 +174,7 @@ def show_portal(container):
 
             # 3. TRACKER DE SEGUIMIENTO (Si hay orden activa)
             if active_order:
-                with ui.element('div').classes('card-premium w-full mt-4').id('seguimiento-en-vivo'):
+                with ui.element('div').classes('card-premium w-full mt-4').props('id="seguimiento-en-vivo"'):
                     with ui.row().classes('w-full justify-between items-center mb-8'):
                         with ui.column().classes('gap-0'):
                             ui.label('SEGUIMIENTO EN VIVO').classes('text-[10px] font-black text-blue-800 tracking-widest uppercase opacity-50')
@@ -257,7 +257,7 @@ def show_portal(container):
             # 5. AGENDAR CITA + NOTIFICACIONES (Vertical Stack)
             with ui.column().classes('w-full gap-6 mt-4'):
                 # Agendar Cita (VINCULADO AL DISEÑO PREMIUM)
-                with ui.element('div').classes('card-premium w-full').id('agendar-cita'):
+                with ui.element('div').classes('card-premium w-full').props('id="agendar-cita"'):
                     with ui.row().classes('items-center gap-3 mb-6'):
                         with ui.element('div').classes('w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-800 text-xl'):
                             ui.label('📅')
@@ -344,7 +344,7 @@ def show_portal(container):
                         _notif_item('visibility', 'Diagnóstico subido', 'Ya puede revisar el informe técnico.', 'Hoy 08:00 AM')
 
             # 6. HISTORIAL DE SERVICIOS
-            with ui.element('div').classes('card-premium w-full mt-4 overflow-hidden').id('historial-servicios'):
+            with ui.element('div').classes('card-premium w-full mt-4 overflow-hidden').props('id="historial-servicios"'):
                 ui.label('📂 Historial de Servicios').classes('text-lg font-bold text-blue-900 mb-6')
                 
                 # Encabezados de tabla con NiceGUI puro
