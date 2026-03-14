@@ -38,7 +38,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔑 Tu ID secreto de Telegram es: `{user_id}`\n(Pásamelo para blindar el bot a tu cuenta).\n\n"
         f"Puedes:\n"
         f"1️⃣ Preguntarme sobre el taller (inventario, repuestos, clientes).\n"
-        f"2️⃣ Enviarme una foto de una factura para subirla al sistema web."
+        f"2️⃣ Enviarme una foto de una factura para subirla al sistema web.\n"
+        f"3️⃣ Enviarme una **NOTA DE VOZ** si no puedes escribir."
     )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -69,7 +70,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         client = get_groq_client()
         response = client.chat.completions.create(
-            model="meta-llama/llama-4-scout-17b-16e-instruct", # Modelo inteligente de Groq
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": full_prompt},
                 {"role": "user", "content": user_text}
@@ -178,7 +179,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         # Pasar por el OCR del LLM
         response = client.chat.completions.create(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            model="llama-3.2-90b-vision-preview",
             messages=[{
                 "role": "user",
                 "content": [
@@ -254,12 +255,75 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error procesando factura telegram: {e}")
         await query.edit_message_text(f"❌ Falló la visión artificial. Error técnico: {str(e)}")
 
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if ALLOWED_USERS and user_id not in ALLOWED_USERS:
+        return
+        
+    processing_msg = await update.message.reply_text("🎙️ Escuchando audio...")
+    
+    try:
+        # Descargar el audio de Telegram
+        voice = update.message.voice or update.message.audio
+        file = await context.bot.get_file(voice.file_id)
+        
+        os.makedirs('static/audios', exist_ok=True)
+        fname = f"tg_audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.file_id}.ogg"
+        fpath = os.path.join('static/audios', fname)
+        await file.download_to_drive(fpath)
+        
+        # Procesar con Groq Whisper
+        client = get_groq_client()
+        with open(fpath, "rb") as file_to_transcribe:
+            transcription = client.audio.transcriptions.create(
+                file=(fpath, file_to_transcribe.read()),
+                model="whisper-large-v3",
+                prompt="El usuario habla sobre mecánica automotriz, clientes, repuestos e inventario.",
+                response_format="json",
+                language="es",
+            )
+            
+        user_text = transcription.text.strip()
+        if not user_text:
+            await processing_msg.edit_text("❌ No se pudo entender el audio o está vacío.")
+            return
+
+        await processing_msg.edit_text(f"🗣️ *Escuché:* _{user_text}_\n\n⏳ Analizando...", parse_mode="Markdown")
+        
+        # Inyectar el texto reconocido a la IA (reutilizamos contexto)
+        system_prompt = """
+        Eres el asistente exclusivo del Taller Sandoval. Tu única función es ayudar con temas 
+        relacionados a mecánica automotriz, inventario de repuestos, gestión de clientes, gastos 
+        del taller y operaciones diarias. Responde mensajes de forma concisa.
+        """
+        context_data = get_context_data()
+        full_prompt = f"{system_prompt}\n\nCONTEXTO DEL TALLER:\n{context_data}"
+        
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": full_prompt},
+                {"role": "user", "content": user_text}
+            ],
+            max_tokens=1000,
+            temperature=0.3
+        )
+        reply = response.choices[0].message.content
+        
+        # Enviar respuesta final
+        await update.message.reply_text(reply)
+        
+    except Exception as e:
+        logger.error(f"Error AI Audio: {e}")
+        await processing_msg.edit_text("❌ Hubo un error entendiendo tu nota de voz.")
+
 def run_telegram_bot():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
     app.add_handler(CallbackQueryHandler(button_callback))
     
     logger.info("🤖 Motores del Bot de Telegram Iniciados...")
