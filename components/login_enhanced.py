@@ -11,6 +11,16 @@ def show_login_enhanced():
     """Renderiza login mejorado con animaciones 3D"""
     
     ui.add_head_html('''
+    <script>
+        // Redirigir a PWA móvil si se detecta un celular
+        (function() {
+            var ua = navigator.userAgent || '';
+            var isMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini|BlackBerry|Mobile/i.test(ua);
+            if (isMobile) {
+                window.location.replace('/app/');
+            }
+        })();
+    </script>
     <style>
         body { 
             background: linear-gradient(135deg, #0f172a 0%, #1e293b 30%, #274495 100%);
