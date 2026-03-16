@@ -403,7 +403,7 @@ def _open_nueva_factura(list_container):
                         state['imagen_path'] = fpath
                         img_container.clear()
                         with img_container:
-                            ui.image(fpath).classes('w-full max-h-40 object-contain rounded-xl border border-gray-200')
+                            ui.image(fpath).classes('w-full rounded-xl border border-gray-200').style('max-height: 250px; object-fit: contain;')
                             ui.label('✅ Imagen lista').classes('text-xs text-green-600 font-bold')
                         
                         import theme
@@ -417,7 +417,7 @@ def _open_nueva_factura(list_container):
                 ui.upload(
                     auto_upload=True, multiple=False,
                     on_upload=handle_upload_sync
-                ).props('accept=image/* flat color=primary').classes('w-full')
+                ).props('accept=image/* flat color=primary').classes('w-full').style('max-height: 100px; display: none !important;' if state.get('imagen_path') else 'max-height: 100px')
 
                 ui.separator()
 

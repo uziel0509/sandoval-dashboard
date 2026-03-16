@@ -227,7 +227,7 @@ def analizar_factura_imagen(image_path: str) -> dict:
         mime_type = mime_map.get(ext, 'image/jpeg')
         
         response = client.chat.completions.create(
-            model="llama-3.2-11b-vision-preview",
+            model="llama-3.2-11b-vision-preview", # Modelo de vision estable de Groq
             messages=[{
                 "role": "user",
                 "content": [
@@ -549,7 +549,7 @@ def analizar_factura_historica_imagen(file_path: str) -> dict:
             encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
         client = get_groq_client()
         response = client.chat.completions.create(
-            model="llama-3.2-90b-vision-preview",
+            model="llama-3.2-11b-vision-preview",
             messages=[{
                 "role": "user",
                 "content": [
