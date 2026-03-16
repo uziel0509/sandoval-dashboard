@@ -482,7 +482,17 @@ def _open_nueva_factura(list_container):
                                             ui.label(item.get('nombre', '')).classes('flex-1 text-xs text-gray-700')
                                             ui.label(f"×{item.get('cantidad', 1)}").classes('text-xs text-gray-400')
                                             ui.label(f"S/{float(item.get('precio_unitario', 0)):,.2f}").classes('text-xs font-bold text-gray-800')
-                            ia_status.set_text('✅ ¡Datos rellenados por la IA! Revisa y confirma.')
+                                            
+                            # Verificación automática de duplicados
+                            duplicado = False
+                            if datos.get('proveedor') and datos.get('numero_factura'):
+                                duplicado = _check_duplicate_factura(datos['proveedor'], datos['numero_factura'])
+                                
+                            if duplicado:
+                                ia_status.set_text('⚠️ ATENCIÓN: Esta factura ya se subió anteriormente.')
+                                theme.notify_warning('⚠️ Cuidado: Esta factura ya existe en el sistema.')
+                            else:
+                                ia_status.set_text('✅ ¡Datos rellenados por la IA! Revisa y confirma.')
                         else:
                             err = datos.get('error', 'sin respuesta') if datos else 'sin respuesta'
                             ia_status.set_text(f'⚠️ IA no pudo leer ({err[:50]}). Rellena tú los datos.')
