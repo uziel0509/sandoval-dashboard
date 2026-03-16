@@ -248,6 +248,41 @@ def analizar_factura_imagen(image_path: str) -> dict:
         return {"error": str(e)}
 
 
+def analizar_intencion_cotizacion(texto: str) -> dict:
+    """Evalúa si el texto es para cotizar y devuelve los datos estructurados"""
+    try:
+        client = get_groq_client()
+        prompt = """Determina si el texto es una solicitud para CREAR o HACER UNA COTIZACIÓN o presupuesto.
+Si ES una cotización, responde ÚNICAMENTE con JSON válido:
+{
+  "is_cotizacion": true,
+  "placa": "XYZ-123",
+  "cliente_nombre": "Juan",
+  "telefono": "999999999",
+  "kilometraje": "10000",
+  "items": [
+     {"nombre": "Cambio aceite", "cantidad": 1, "precio": 120, "tipo": "servicio"}
+  ]
+}
+Si un dato no se menciona, pon "". Deduce precios y cantidades implícitas si es posible.
+Si NO es una solicitud de cotización, responde ÚNICAMENTE: {"is_cotizacion": false}"""
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": texto}
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=1000,
+            temperature=0.1,
+        )
+        return json.loads(response.choices[0].message.content.strip())
+    except Exception as e:
+        logger.error(f"Error AI intencion cotizacion: {e}")
+        return {"is_cotizacion": False}
+
+
 def get_context_data() -> dict:
     """
     Obtiene todos los datos históricos y en tiempo real del taller
