@@ -227,7 +227,7 @@ def analizar_factura_imagen(image_path: str) -> dict:
         mime_type = mime_map.get(ext, 'image/jpeg')
         
         response = client.chat.completions.create(
-            model="llama-3.2-90b-vision-preview",
+            model="llama-3.2-11b-vision-preview",
             messages=[{
                 "role": "user",
                 "content": [
