@@ -20,11 +20,13 @@ def get_groq_client() -> Groq:
     from utils.models import get_config
     api_key = get_config('groq_api_key', '')
     if api_key:
-        api_key = api_key.strip()
+        api_key = api_key.strip().strip("'").strip('"')
     if not api_key:
-        api_key = os.getenv('GROQ_API_KEY', '').strip()
+        api_key = os.getenv('GROQ_API_KEY', '').strip().strip("'").strip('"')
     if not api_key:
         raise ValueError("API Key de Groq no configurada. Ve a Configuración → IA Sandoval.")
+    if not api_key.startswith('gsk_'):
+        raise ValueError("API Key INVALIDA. Debe empezar con 'gsk_'. Verifica que la copiaste bien.")
     return Groq(api_key=api_key)
 
 
