@@ -227,7 +227,7 @@ def analizar_factura_imagen(image_path: str) -> dict:
         mime_type = mime_map.get(ext, 'image/jpeg')
         
         response = client.chat.completions.create(
-            model="llama-3.2-11b-vision-preview", # Modelo de vision estable de Groq
+            model="meta-llama/llama-4-scout-17b-16e-instruct", # Modelo de vision estable de Groq
             messages=[{
                 "role": "user",
                 "content": [
@@ -549,7 +549,7 @@ def analizar_factura_historica_imagen(file_path: str) -> dict:
             encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
         client = get_groq_client()
         response = client.chat.completions.create(
-            model="llama-3.2-11b-vision-preview",
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             messages=[{
                 "role": "user",
                 "content": [
@@ -568,3 +568,43 @@ def analizar_factura_historica_imagen(file_path: str) -> dict:
     except Exception as e:
         logger.error(f"[HISTORICO] Error analizando factura: {e}")
         return {"error": str(e)}
+
+
+def analizar_edicion_cotizacion(texto: str, items_actuales: list) -> dict:
+    """
+    Determina si el texto es una edición de cotización existente.
+    Retorna: {'es_edicion': bool, 'items': [...lista actualizada...]}
+    """
+    try:
+        client = get_groq_client()
+        items_json = json.dumps(items_actuales, ensure_ascii=False)
+        prompt = f"""Tienes una cotización activa con estos ítems:
+{items_json}
+
+El usuario dice: "{texto}"
+
+Determina si el usuario quiere MODIFICAR esta cotización (agregar, quitar o cambiar precio/cantidad de ítems).
+Si SÍ es una modificación, responde ÚNICAMENTE con JSON:
+{{
+  "es_edicion": true,
+  "items": [lista completa actualizada con los cambios aplicados]
+}}
+
+Cada ítem debe tener: nombre, cantidad, precio (precio unitario), tipo ("repuesto" o "mano_obra").
+
+Si NO es una modificación (es una consulta, saludo u otra cosa), responde ÚNICAMENTE:
+{{"es_edicion": false}}
+
+NO incluyas texto adicional fuera del JSON."""
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            max_tokens=1000,
+            temperature=0.1,
+        )
+        return json.loads(response.choices[0].message.content.strip())
+    except Exception as e:
+        logger.error(f"Error analizar_edicion_cotizacion: {e}")
+        return {"es_edicion": False}

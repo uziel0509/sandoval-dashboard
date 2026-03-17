@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.models import get_db, ItemInventario, Vehiculo, Cliente, Orden
 from components.facturas import _save_factura, _agregar_items_a_inventario
-from utils.groq_service import get_groq_client, FACTURA_PROMPT, get_context_data, analizar_intencion_cotizacion
+from utils.groq_service import get_groq_client, FACTURA_PROMPT, get_context_data, analizar_intencion_cotizacion, analizar_edicion_cotizacion
 
 load_dotenv()
 
@@ -44,6 +44,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _process_bot_message(user_text: str, update: Update, context: ContextTypes.DEFAULT_TYPE, processing_msg):
     try:
+        # ── Si hay cotización activa, intentar editarla primero ──
+        cot_activa = context.user_data.get('cotizacion_activa')
+        if cot_activa:
+            edicion = analizar_edicion_cotizacion(user_text, cot_activa['items'])
+            if edicion.get('es_edicion'):
+                # Aplicar cambios
+                items_actualizados = edicion.get('items', cot_activa['items'])
+                total = sum(int(i.get('cantidad',1)) * float(i.get('precio',0)) for i in items_actualizados)
+                cot_activa['items'] = items_actualizados
+                cot_activa['total'] = total
+                context.user_data['cotizacion_activa'] = cot_activa
+                context.user_data['pending_cotizacion'] = cot_activa
+
+                resumen = "\n".join([
+                    f"• {i.get('nombre','?')} x{i.get('cantidad',1)} → S/ {float(i.get('precio',0))*int(i.get('cantidad',1)):.2f}"
+                    for i in items_actualizados
+                ])
+                keyboard = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("✅ Confirmar cambios", callback_data="confirmar_cotizacion"),
+                    InlineKeyboardButton("❌ Cancelar", callback_data="cancelar_cotizacion"),
+                ]])
+                await processing_msg.edit_text(
+                    f"✏️ *Cotización actualizada:*\n\n{resumen}\n\n💰 *Total: S/ {total:.2f}*",
+                    reply_markup=keyboard, parse_mode="Markdown"
+                )
+                return
+
         # Analizar intención de cotización
         intencion = analizar_intencion_cotizacion(user_text)
         if intencion.get('is_cotizacion'):
@@ -65,6 +92,7 @@ async def _process_bot_message(user_text: str, update: Update, context: ContextT
                 
             # Guardamos la data
             context.user_data['pending_cotizacion'] = intencion
+            context.user_data['cotizacion_activa'] = intencion  # guardar para posible edición
             
             # Calcula el total iterando los items
             total = sum(float(i.get('precio', 0)) * int(i.get('cantidad', 1)) for i in intencion.get('items', []))
@@ -176,6 +204,45 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     data = query.data
     
+    # ── Cotización: cancelar ──
+    if data == 'cancelar_cotizacion':
+        context.user_data.pop('pending_cotizacion', None)
+        context.user_data.pop('cotizacion_activa', None)
+        await query.edit_message_text("❌ Cotización cancelada / descartada.")
+        return
+
+    # ── Cotización: confirmar cambios de edición (re-confirmar) ──
+    if data == 'confirmar_cotizacion':
+        cot_data = context.user_data.get('pending_cotizacion')
+        if not cot_data:
+            await query.edit_message_text("⚠️ Sesión expirada. Vuelve a dictar la cotización.")
+            return
+        # Continuar al bloque confirmar_cotizacion_ok
+        data = 'confirmar_cotizacion_ok'
+
+    if data == 'confirmar_cotizacion_ok':
+        cot_data = context.user_data.get('pending_cotizacion')
+        if not cot_data:
+            await query.edit_message_text("⚠️ Sesión expirada. Vuelve a dictar la cotización.")
+            return
+        try:
+            res_msg, pdf_path = _crear_cotizacion_desde_bot(cot_data)
+            context.user_data.pop('pending_cotizacion', None)
+            if pdf_path and os.path.exists(pdf_path):
+                await context.bot.send_document(
+                    chat_id=update.effective_chat.id,
+                    document=open(pdf_path, 'rb'),
+                    caption=res_msg,
+                    parse_mode='Markdown'
+                )
+                await query.edit_message_text("📄 PDF listo para reenviar al cliente.")
+            else:
+                await query.edit_message_text(res_msg, parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Error creando cotización TG: {e}", exc_info=True)
+            await query.edit_message_text(f"❌ Error interno al generar la cotización: {str(e)}")
+        return
+
     if data == 'cancelar_factura' or data == 'discard_factura':
         context.user_data.pop('pending_factura', None)
         await query.edit_message_text("❌ Subida de recibo cancelada.")
@@ -257,7 +324,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         # Pasar por el OCR del LLM
         response = client.chat.completions.create(
-            model="llama-3.2-90b-vision-preview",
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             messages=[{
                 "role": "user",
                 "content": [
@@ -339,16 +406,18 @@ def _crear_cotizacion_desde_bot(data: dict):
     from utils.models import Actividad
     db = get_db()
     try:
-        # 1. Cliente
+        # 1. Cliente — buscar SOLO por placa, nunca crear cliente nuevo automáticamente
         cliente_id = None
-        if data.get('cliente_nombre'):
-            c = db.query(Cliente).filter(Cliente.nombre.like(f"%{data['cliente_nombre']}%")).first()
-            if not c:
-                c = Cliente(nombre=data['cliente_nombre'], telefono=data.get('telefono', ''), email="", tipo='Persona')
-                db.add(c)
-                db.commit()
-                db.refresh(c)
-            cliente_id = c.id
+        nombre_cotizacion = data.get('cliente_nombre', 'Cliente sin registrar')
+        placa_busqueda = (data.get('placa') or '').upper().replace('-', '').replace(' ', '')
+        if placa_busqueda:
+            v_existente = db.query(Vehiculo).filter_by(placa=placa_busqueda).first()
+            if v_existente and v_existente.cliente_id:
+                cliente_id = v_existente.cliente_id
+                c = db.query(Cliente).filter_by(id=cliente_id).first()
+                if c:
+                    nombre_cotizacion = f"{c.nombre} {c.apellidos or ''}".strip()
+        # Si no encontró por placa, usar el nombre que dio sin crear nada en DB
             
         # 2. Vehiculo
         placa = (data.get('placa') or '').upper().replace('-', '')
@@ -399,7 +468,27 @@ def _crear_cotizacion_desde_bot(data: dict):
         db.commit()
         
         # 5. PDF
-        pdf_path = generate_cotizacion(consecutivo)
+        # Generar PDF con los argumentos correctos
+        order_dict = {
+            'consecutivo': consecutivo,
+            'km': data.get('kilometraje', ''),
+            'motivo': 'Cotización vía Telegram',
+        }
+        client_dict = {
+            'nombre': nombre_cotizacion,
+            'apellidos': '',
+            'id': str(cliente_id) if cliente_id else '',
+            'telefono': data.get('telefono', ''),
+        }
+        vehicle_dict = {
+            'placa': placa if placa else '',
+            'marca': '',
+            'modelo': '',
+        }
+        import os
+        os.makedirs('/var/www/sandoval/pdfs', exist_ok=True)
+        pdf_path = f'/var/www/sandoval/pdfs/{consecutivo}.pdf'
+        generate_cotizacion(order_dict, client_dict, vehicle_dict, items_procesados, pdf_path)
         return f"✅ *Cotización {consecutivo} Generada Exitosamente* y guardada en tu sistema web.", pdf_path
     except Exception as e:
         db.rollback()
