@@ -68,7 +68,7 @@ def _procesar_datos(ordenes, clientes, vehiculos, inventario):
     data['total_ingresos'] = sum(
         float(item.get('total', 0) or 0)
         for o in ordenes
-        for item in (o.items_cotizacion or [])
+        for item in (__import__("json").loads(o.items_cotizacion) if isinstance(o.items_cotizacion, str) else (o.items_cotizacion or []))
     )
     
     # Órdenes por estado
@@ -80,7 +80,7 @@ def _procesar_datos(ordenes, clientes, vehiculos, inventario):
     data['ingresos_completados'] = sum(
         float(item.get('total', 0) or 0)
         for o in completadas
-        for item in (o.items_cotizacion or [])
+        for item in (__import__("json").loads(o.items_cotizacion) if isinstance(o.items_cotizacion, str) else (o.items_cotizacion or []))
     )
     
     # Ticket promedio
@@ -100,7 +100,7 @@ def _procesar_datos(ordenes, clientes, vehiculos, inventario):
                 else:
                     fecha_dt = o.fecha
                 mes = fecha_dt.strftime('%Y-%m')
-                for item in (o.items_cotizacion or []):
+                for item in (__import__("json").loads(o.items_cotizacion) if isinstance(o.items_cotizacion, str) else (o.items_cotizacion or [])):
                     ingresos_mes[mes] += float(item.get('total', 0) or 0)
             except:
                 pass
@@ -109,7 +109,7 @@ def _procesar_datos(ordenes, clientes, vehiculos, inventario):
     # Servicios más populares
     servicios = []
     for o in ordenes:
-        for item in (o.items_cotizacion or []):
+        for item in (__import__("json").loads(o.items_cotizacion) if isinstance(o.items_cotizacion, str) else (o.items_cotizacion or [])):
             servicios.append(item.get('descripcion', 'Sin descripción'))
     data['servicios_populares'] = Counter(servicios).most_common(10)
     
@@ -118,7 +118,7 @@ def _procesar_datos(ordenes, clientes, vehiculos, inventario):
     for o in ordenes:
         if o.tecnico:
             tecnicos_stats[o.tecnico]['ordenes'] += 1
-            for item in (o.items_cotizacion or []):
+            for item in (__import__("json").loads(o.items_cotizacion) if isinstance(o.items_cotizacion, str) else (o.items_cotizacion or [])):
                 tecnicos_stats[o.tecnico]['ingresos'] += float(item.get('total', 0) or 0)
     data['tecnicos_stats'] = dict(tecnicos_stats)
     

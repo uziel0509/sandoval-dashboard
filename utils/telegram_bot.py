@@ -401,12 +401,83 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"❌ Falló la visión artificial. Error técnico: {str(e)}")
 
 def _crear_cotizacion_desde_bot(data: dict):
+    from utils.models import Cotizacion, CotizacionItem, log_actividad
+    db = get_db()
+    try:
+        # Buscar cliente SOLO por placa, nunca crear cliente nuevo
+        cliente_id = None
+        nombre_cotizacion = data.get('cliente_nombre', 'Cliente sin registrar')
+        placa_busqueda = (data.get('placa') or '').upper().replace('-', '').replace(' ', '')
+        if placa_busqueda:
+            v_existente = db.query(Vehiculo).filter_by(placa=placa_busqueda).first()
+            if v_existente and v_existente.cliente_id:
+                cliente_id = v_existente.cliente_id
+                c = db.query(Cliente).filter_by(id=cliente_id).first()
+                if c:
+                    nombre_cotizacion = f"{c.nombre} {c.apellidos or ''}".strip()
+
+        # Generar número de cotización
+        hoy = datetime.now().strftime('%Y%m')
+        count = db.query(Cotizacion).filter(Cotizacion.numero.like(f'COT-{hoy}%')).count()
+        numero = f'COT-{hoy}-{count + 1:04d}'
+
+        # Calcular total
+        items = data.get('items', [])
+        total = sum(int(i.get('cantidad',1)) * float(i.get('precio',0)) for i in items)
+
+        # Crear cotización en tabla Cotizacion (NO en Orden)
+        cot = Cotizacion(
+            numero=numero,
+            nombre_cliente=nombre_cotizacion,
+            cliente_id=cliente_id,
+            nota=f"Placa: {placa_busqueda}" if placa_busqueda else '',
+            total=total,
+            estado='PENDIENTE',
+            creado_por='Jarvis (Telegram)',
+        )
+        db.add(cot)
+        db.flush()
+
+        for i in items:
+            qty = int(i.get('cantidad', 1))
+            price = float(i.get('precio', 0))
+            db.add(CotizacionItem(
+                cotizacion_id=cot.id,
+                descripcion=i.get('nombre', ''),
+                tipo=i.get('tipo', 'repuesto'),
+                cantidad=qty,
+                precio_unitario=price,
+                subtotal=qty * price,
+            ))
+
+        db.commit()
+        log_actividad(f'Cotización {numero} creada vía Telegram', 'cotizaciones', f'Cliente: {nombre_cotizacion}')
+
+        # Generar PDF
+        import os
+        os.makedirs('/var/www/sandoval/pdfs', exist_ok=True)
+        pdf_path = None
+        try:
+            from utils.pdf_cotizacion import generar_pdf_cotizacion
+            pdf_path = generar_pdf_cotizacion(cot.id)
+        except Exception as e:
+            print(f"[BOT] Error PDF: {e}")
+
+        return f"✅ *Cotización {numero}* creada\n👤 Cliente: {nombre_cotizacion}\n💰 Total: S/ {total:.2f}\n📋 Ya aparece en el dashboard.", pdf_path
+
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+def _crear_cotizacion_desde_bot_OLD(data: dict):
+    # Versión legacy - NO usar
     from sqlalchemy import text
     from utils.pdf_generator import generate_cotizacion
     from utils.models import Actividad
     db = get_db()
     try:
-        # 1. Cliente — buscar SOLO por placa, nunca crear cliente nuevo automáticamente
         cliente_id = None
         nombre_cotizacion = data.get('cliente_nombre', 'Cliente sin registrar')
         placa_busqueda = (data.get('placa') or '').upper().replace('-', '').replace(' ', '')

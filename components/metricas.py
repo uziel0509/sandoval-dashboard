@@ -45,7 +45,10 @@ def show_dashboard(container):
             total_ingresos = sum(
                 float(it.get('total', 0) or 0)
                 for o in ordenes
-                for it in (o.items_cotizacion or [])
+                for it in (
+                    __import__('json').loads(o.items_cotizacion)
+                    if isinstance(o.items_cotizacion, str) else (o.items_cotizacion or [])
+                )
             )
             activas      = [o for o in ordenes if o.estado not in ('ARCHIVADO', 'ENTREGA')]
             completadas  = [o for o in ordenes if o.estado in ('ARCHIVADO', 'ENTREGA')]
