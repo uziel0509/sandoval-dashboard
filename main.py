@@ -57,7 +57,7 @@ try:
     
     from utils.auth import get_current_user, show_login_page, logout, tiene_permiso, _set_session
     from components import (
-        sidebar, clientes, proveedores, ordenes_servicio, cotizaciones,
+        sidebar, clientes, proveedores, ordenes_servicio, cotizaciones, creditos,
         inventario, metricas, vehiculos, reportes, configuracion,
         usuarios, citas, rentabilidad, notas_venta,
         facturas, asistente_ia
@@ -187,8 +187,8 @@ try:
                     ordenes_servicio.show_ordenes(content_area)
                 elif page_name == 'cotizaciones':
                     cotizaciones.show_cotizaciones(content_area)
-                elif page_name == 'cotizaciones':
-                    cotizaciones.show_cotizaciones(content_area)
+                elif page_name == 'creditos':
+                    creditos.show_creditos(content_area)
                 elif page_name == 'inventario':
                     inventario.show_inventario(content_area)
                 elif page_name == 'notas_venta':
