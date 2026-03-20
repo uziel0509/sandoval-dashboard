@@ -608,3 +608,62 @@ NO incluyas texto adicional fuera del JSON."""
     except Exception as e:
         logger.error(f"Error analizar_edicion_cotizacion: {e}")
         return {"es_edicion": False}
+
+
+# ─── CRÉDITOS / FIADO ──────────────────────────────────────────────────────
+
+def analizar_intencion_credito(texto: str) -> dict:
+    """
+    Detecta si el texto es sobre créditos/fiado:
+    - crear_credito: 'Mario debe 150 soles, llevó 2 filtros'
+    - registrar_abono: 'Mario abonó 40 soles, pagó con yape'
+    - ver_creditos: 'créditos pendientes', 'quién me debe'
+    - crear_nota_venta: 'nota de venta para Pedro, 3 filtros a 25 soles'
+    """
+    try:
+        client = get_groq_client()
+        prompt = """Analiza el texto y determina la intención. Responde ÚNICAMENTE con JSON válido.
+
+INTENCIONES POSIBLES:
+
+1. crear_credito - alguien se lleva algo fiado/al crédito
+JSON: {"intencion": "crear_credito", "cliente_nombre": "Mario Flores", "telefono": "999888777", "descripcion": "2 filtros de aceite, 1 bujía", "total": 150.0, "nota": "paga el viernes"}
+
+2. registrar_abono - alguien abona/paga parte de su deuda
+JSON: {"intencion": "registrar_abono", "cliente_nombre": "Mario Flores", "monto": 40.0, "metodo_pago": "yape", "nota": "abono parcial"}
+
+3. ver_creditos - quieren ver quién debe o los créditos pendientes
+JSON: {"intencion": "ver_creditos", "filtro": "pendientes"}
+
+4. crear_nota_venta - venta directa (no al crédito)
+JSON: {"intencion": "crear_nota_venta", "cliente_nombre": "Pedro", "items": [{"nombre": "filtro de aceite", "cantidad": 3, "precio": 25.0}], "total": 75.0}
+
+5. ninguna - no es sobre créditos ni ventas
+JSON: {"intencion": "ninguna"}
+
+REGLAS:
+- Si dice 'fiado', 'al crédito', 'anotarlo', 'debe', 'le fío' → crear_credito
+- Si dice 'abonó', 'pagó', 'canceló', 'entregó', 'depositó' → registrar_abono
+- Si dice 'quién debe', 'pendientes', 'créditos', 'deudas' → ver_creditos
+- Si dice 'nota de venta', 'venta', 'vendí' → crear_nota_venta
+- Si no hay total numérico explícito, pon 0.0
+- Extrae nombre completo del cliente si se menciona
+- Extrae método de pago: efectivo, yape, plin, transferencia, etc.
+
+Texto a analizar: """
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt + texto}],
+            temperature=0.1,
+            max_tokens=400,
+        )
+        raw = response.choices[0].message.content.strip()
+        # Limpiar markdown
+        if '```' in raw:
+            raw = raw.split('```')[1] if '```json' not in raw else raw.split('```json')[1].split('```')[0]
+        raw = raw.strip()
+        return json.loads(raw)
+    except Exception as e:
+        logger.error(f"Error analizar_intencion_credito: {e}")
+        return {"intencion": "ninguna"}
