@@ -94,12 +94,21 @@ def refresh_table(container, state):
                 </q-td>
             ''')
             
-            table.on('edit', lambda e: open_vehicle_dialog(container, state, (e.args['placa'] if isinstance(e.args, dict) else e.args[0]['placa'])))
+            def _get_placa(args):
+                try:
+                    if isinstance(args, dict): return args.get('placa','')
+                    if isinstance(args, list) and len(args) > 0:
+                        a = args[0]
+                        return a.get('placa','') if isinstance(a, dict) else ''
+                    return str(args) if args else ''
+                except: return ''
+
+            table.on('edit', lambda e: open_vehicle_dialog(container, state, _get_placa(e.args)))
             table.on('delete', lambda e: theme.confirm_dialog(
-                'Eliminar', f'¿Eliminar vehículo {e.args["placa"] if isinstance(e.args, dict) else e.args[0]["placa"]}?',
-                on_confirm=lambda p=(e.args['placa'] if isinstance(e.args, dict) else e.args[0]['placa']): (delete_vehicle(p), refresh_table(container, state))
+                'Eliminar', f'¿Eliminar vehículo {_get_placa(e.args)}?',
+                on_confirm=lambda p=_get_placa(e.args): (delete_vehicle(p), refresh_table(container, state))
             ))
-            table.on('history', lambda e: show_vehicle_history((e.args['placa'] if isinstance(e.args, dict) else e.args[0]['placa'])))
+            table.on('history', lambda e: show_vehicle_history(_get_placa(e.args)))
     finally:
         db.close()
 
