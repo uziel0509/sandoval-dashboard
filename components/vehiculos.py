@@ -238,6 +238,9 @@ def open_vehicle_dialog(table_container, state, edit_placa=None, on_success=None
             # Propietario (Select opcional si viene de la orden, pero útil)
             cliente_sel = ui.select(client_opts, value=existing.get('cliente_id', '') if existing else None, label='Propietario', with_input=True).props('outlined dense use-input prepend-icon=person bg-color=white').classes('w-full')
             
+            with ui.row().classes('w-full gap-3'):
+                resp_input = ui.input(value=existing.get('responsable', '') if existing else '', placeholder='Nombre del responsable').props('outlined dense prepend-icon=person_pin bg-color=white').classes('flex-1')
+                tel_resp_input = ui.input(value=existing.get('tel_responsable', '') if existing else '', placeholder='Teléfono responsable').props('outlined dense prepend-icon=phone bg-color=white').classes('w-44')
             obs_input = ui.textarea(value=existing.get('observaciones', '') if existing else '').props('outlined dense prepend-icon=list rows=2 placeholder="Observaciones" bg-color=white').classes('w-full')
 
         # Footer Actions
@@ -273,6 +276,8 @@ def open_vehicle_dialog(table_container, state, edit_placa=None, on_success=None
                             marca=(marca_sel.value or '').strip(), modelo=(modelo_sel.value or '').strip(),
                             año=(año_input.value or '').strip(), color=(color_input.value or '').strip(),
                             tipo=tipo_sel.value, vin=(vin_input.value or '').strip(),
+                            responsable=(resp_input.value or '').strip(),
+                            tel_responsable=(tel_resp_input.value or '').strip(),
                             observaciones=(obs_input.value or '').strip()
                         )
                         db.add(new_v)

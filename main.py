@@ -216,8 +216,17 @@ try:
                     ui.label(f"Error cargando {page_name}").classes("text-red-500 text-xl font-bold")
                     ui.label(str(e)).classes("text-red-400 font-mono text-sm")
         
-        sidebar.create_sidebar(drawer, on_navigate=render_content)
-        render_content('dashboard')
+        if is_client:
+            # Cliente: sin sidebar admin, solo portal + botón cerrar sesión
+            with drawer:
+                with ui.column().classes('w-full h-full flex flex-col'):
+                    with ui.row().classes('w-full items-center justify-between px-4 py-3 bg-[#274495]'):
+                        ui.label('Mi Portal').classes('text-white font-black text-lg')
+                        ui.button('Cerrar Sesión', icon='logout', on_click=lambda: [logout(), ui.navigate.to('/')]).props('flat color=white dense').classes('text-xs')
+            render_content('dashboard')
+        else:
+            sidebar.create_sidebar(drawer, on_navigate=render_content)
+            render_content('dashboard')
     
     
     # ─── Iniciar servidor ───

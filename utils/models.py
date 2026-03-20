@@ -95,6 +95,8 @@ class Vehiculo(Base):
     año = Column(String(10), default='')
     color = Column(String(30), default='')
     tipo = Column(String(30), default='Sedán')
+    responsable     = Column(String(100), default='')
+    tel_responsable = Column(String(30), default='')
     vin = Column(String(50), default='')
     observaciones = Column(Text, default='')
 

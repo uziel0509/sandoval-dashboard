@@ -130,16 +130,22 @@ def _crear_credito_bot(data: dict) -> bool:
                 nota TEXT DEFAULT '', fecha_venta TEXT DEFAULT '',
                 fecha_amortizacion TEXT DEFAULT '', creado_por TEXT DEFAULT '')
         """))
+        import json as _json
+        items = data.get('items', [])
+        desc  = data.get('descripcion', '')
+        if not desc and items:
+            desc = ', '.join(f"{it.get('cantidad',1)}x {it['nombre']} S/{float(it.get('precio',0)):.2f}" for it in items)
         db.execute(text("""
             INSERT INTO creditos
-            (cliente_nombre, telefono, descripcion, total, pendiente, estado, nota, fecha_venta, creado_por)
-            VALUES (:cn, :tel, :desc, :total, :total, 'PENDIENTE', :nota, :fecha, 'Bot Telegram')
+            (cliente_nombre, telefono, descripcion, items_json, total, pendiente, estado, nota, fecha_venta, creado_por)
+            VALUES (:cn, :tel, :desc, :items, :total, :total, 'PENDIENTE', :nota, :fecha, 'Bot Telegram')
         """), {
-            'cn': data.get('cliente_nombre', ''),
-            'tel': data.get('telefono', ''),
-            'desc': data.get('descripcion', ''),
+            'cn':    data.get('cliente_nombre', ''),
+            'tel':   data.get('telefono', ''),
+            'desc':  desc,
+            'items': _json.dumps(items),
             'total': float(data.get('total', 0)),
-            'nota': data.get('nota', ''),
+            'nota':  data.get('nota', ''),
             'fecha': datetime.now().isoformat()
         })
         db.commit()
@@ -185,25 +191,70 @@ async def _handle_credito_intent(intencion: dict, update: Update, context: Conte
     # ── CREAR CRÉDITO ────────────────────────────────────────────────────
     if tipo == 'crear_credito':
         nombre = intencion.get('cliente_nombre', '').strip()
-        total = float(intencion.get('total', 0))
-        desc = intencion.get('descripcion', '').strip()
+        items  = intencion.get('items', [])
+        desc   = intencion.get('descripcion', '').strip()
 
-        if not nombre or total <= 0:
+        if not nombre:
             await processing_msg.edit_text(
-                "⚠️ No pude detectar bien el crédito.\n\n"
-                "Dime así: *'Pedro Quispe se llevó 2 filtros y 1 bujía, total 150 soles al fiado'*",
+                "⚠️ No pude detectar el nombre del cliente.\n\n"
+                "Dime así: *'Pedro Quispe se llevó 2 filtros a 25 soles cada uno, al fiado'*",
                 parse_mode='Markdown')
             return True
 
+        # Si hay items con precio, calcular total desde items
+        if items:
+            for it in items:
+                # Si no tiene precio, buscar en inventario
+                if float(it.get('precio', 0)) == 0:
+                    try:
+                        from utils.models import ItemInventario
+                        db2 = get_db()
+                        try:
+                            prod = db2.query(ItemInventario).filter(
+                                ItemInventario.nombre.ilike(f"%{it['nombre']}%")
+                            ).first()
+                            if prod:
+                                it['precio'] = float(prod.precio)
+                                it['item_id'] = prod.codigo
+                        finally:
+                            db2.close()
+                    except Exception:
+                        pass
+            total = sum(float(it.get('precio',0)) * int(it.get('cantidad',1)) for it in items)
+            intencion['total'] = total
+            intencion['items'] = items
+        else:
+            total = float(intencion.get('total', 0))
+
+        if total <= 0 and not items:
+            await processing_msg.edit_text(
+                "⚠️ No detecté el monto ni los productos.\n\n"
+                "Dime así: *'Mario Flores se llevó 2 filtros a 25 soles y 1 bujía a 15 soles, al fiado'*",
+                parse_mode='Markdown')
+            return True
+
+        # Construir mensaje con detalle de items y precios
+        items_txt = ""
+        if items:
+            for it in items:
+                precio = float(it.get('precio', 0))
+                cant   = int(it.get('cantidad', 1))
+                subtot = precio * cant
+                precio_txt = f"S/ {precio:.2f} c/u" if precio > 0 else "*(precio pendiente)*"
+                items_txt += f"  • {cant}x {it['nombre']} — {precio_txt} = S/ {subtot:.2f}\n"
+        else:
+            items_txt = f"  • {desc or 'Sin detalle'}\n"
+
         context.user_data['pending_credito'] = intencion
         msg = (
-            f"💳 *Nuevo Crédito / Fiado Detectado*\n\n"
+            f"💳 *Nuevo Crédito / Fiado*\n\n"
             f"👤 *Cliente:* {nombre}\n"
-            f"📱 *Teléfono:* {intencion.get('telefono','—') or '—'}\n"
-            f"📦 *Descripción:* {desc or '—'}\n"
-            f"💰 *Total:* S/ {total:.2f}\n"
+            f"📱 *Teléfono:* {intencion.get('telefono','—') or '—'}\n\n"
+            f"📦 *Productos:*\n{items_txt}\n"
+            f"💰 *Total: S/ {total:.2f}*\n"
             f"📝 *Nota:* {intencion.get('nota','—') or '—'}\n\n"
-            f"¿Confirmas registrar este crédito?"
+            f"¿Confirmas registrar este crédito?\n"
+            f"_Si algún precio está mal, cancela y dicta de nuevo con el precio correcto_"
         )
         keyboard = [
             [InlineKeyboardButton("✅ Confirmar Crédito", callback_data='confirmar_credito')],

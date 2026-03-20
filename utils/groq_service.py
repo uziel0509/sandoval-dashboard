@@ -627,7 +627,8 @@ def analizar_intencion_credito(texto: str) -> dict:
 INTENCIONES POSIBLES:
 
 1. crear_credito - alguien se lleva algo fiado/al crédito
-JSON: {"intencion": "crear_credito", "cliente_nombre": "Mario Flores", "telefono": "999888777", "descripcion": "2 filtros de aceite, 1 bujía", "total": 150.0, "nota": "paga el viernes"}
+JSON: {"intencion": "crear_credito", "cliente_nombre": "Mario Flores", "telefono": "999888777", "descripcion": "2 filtros de aceite, 1 bujía", "total": 150.0, "nota": "paga el viernes", "items": [{"nombre": "filtro de aceite", "cantidad": 2, "precio": 25.0}, {"nombre": "bujía", "cantidad": 1, "precio": 15.0}]}
+IMPORTANTE: Si se mencionan precios por producto, extráelos en "items". Si no se menciona precio individual, pon 0.0 en precio. Si se menciona total global sin desglose, pon los items sin precio y el total en "total".
 
 2. registrar_abono - alguien abona/paga parte de su deuda
 JSON: {"intencion": "registrar_abono", "cliente_nombre": "Mario Flores", "monto": 40.0, "metodo_pago": "yape", "nota": "abono parcial"}
