@@ -42,6 +42,341 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"3️⃣ Enviarme una **NOTA DE VOZ** si no puedes escribir."
     )
 
+# ═══════════════════════════════════════════════════════════════════
+#  CRÉDITOS / FIADO - Funciones auxiliares del bot
+# ═══════════════════════════════════════════════════════════════════
+
+def _buscar_creditos_por_nombre(nombre: str) -> list:
+    """Busca créditos activos por nombre de cliente"""
+    from sqlalchemy import text
+    db = get_db()
+    try:
+        rows = db.execute(text("""
+            SELECT * FROM creditos
+            WHERE LOWER(cliente_nombre) LIKE :nombre
+            AND estado IN ('PENDIENTE', 'PARCIAL', 'VENCIDO')
+            ORDER BY fecha_venta DESC
+        """), {'nombre': f'%{nombre.lower()}%'}).fetchall()
+        return [dict(r._mapping) for r in rows]
+    except Exception:
+        return []
+    finally:
+        db.close()
+
+
+def _get_todos_creditos_pendientes() -> list:
+    """Obtiene todos los créditos pendientes"""
+    from sqlalchemy import text
+    db = get_db()
+    try:
+        rows = db.execute(text("""
+            SELECT * FROM creditos
+            WHERE estado IN ('PENDIENTE', 'PARCIAL', 'VENCIDO')
+            ORDER BY fecha_venta DESC LIMIT 20
+        """)).fetchall()
+        return [dict(r._mapping) for r in rows]
+    except Exception:
+        return []
+    finally:
+        db.close()
+
+
+def _registrar_abono_bot(credito_id: int, monto: float, nota: str) -> bool:
+    """Registra un abono y actualiza el estado del crédito"""
+    from sqlalchemy import text
+    from datetime import date
+    db = get_db()
+    try:
+        db.execute(text("""
+            INSERT INTO abonos_credito (credito_id, monto, nota, fecha)
+            VALUES (:cid, :monto, :nota, :fecha)
+        """), {'cid': credito_id, 'monto': monto, 'nota': nota, 'fecha': datetime.now().isoformat()})
+        db.commit()
+        # Recalcular estado
+        cred = db.execute(text("SELECT * FROM creditos WHERE id=:id"), {'id': credito_id}).fetchone()
+        if cred:
+            cred = dict(cred._mapping)
+            ab = db.execute(text("SELECT COALESCE(SUM(monto),0) as t FROM abonos_credito WHERE credito_id=:cid"), {'cid': credito_id}).fetchone()
+            total_ab = float(ab._mapping['t'])
+            pendiente = round(float(cred['total']) - total_ab, 2)
+            vencido = cred.get('fecha_amortizacion','') and cred.get('fecha_amortizacion','') < date.today().isoformat()
+            if pendiente <= 0: estado = 'PAGADO'
+            elif vencido: estado = 'VENCIDO'
+            elif total_ab > 0: estado = 'PARCIAL'
+            else: estado = 'PENDIENTE'
+            db.execute(text("UPDATE creditos SET pendiente=:p, estado=:e WHERE id=:id"),
+                {'p': max(pendiente, 0), 'e': estado, 'id': credito_id})
+            db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error registrar_abono_bot: {e}")
+        return False
+    finally:
+        db.close()
+
+
+def _crear_credito_bot(data: dict) -> bool:
+    """Crea un crédito desde el bot"""
+    from sqlalchemy import text
+    db = get_db()
+    try:
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS creditos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, cliente_nombre TEXT NOT NULL,
+                telefono TEXT DEFAULT '', descripcion TEXT DEFAULT '',
+                items_json TEXT DEFAULT '[]', total REAL DEFAULT 0,
+                pendiente REAL DEFAULT 0, estado TEXT DEFAULT 'PENDIENTE',
+                nota TEXT DEFAULT '', fecha_venta TEXT DEFAULT '',
+                fecha_amortizacion TEXT DEFAULT '', creado_por TEXT DEFAULT '')
+        """))
+        db.execute(text("""
+            INSERT INTO creditos
+            (cliente_nombre, telefono, descripcion, total, pendiente, estado, nota, fecha_venta, creado_por)
+            VALUES (:cn, :tel, :desc, :total, :total, 'PENDIENTE', :nota, :fecha, 'Bot Telegram')
+        """), {
+            'cn': data.get('cliente_nombre', ''),
+            'tel': data.get('telefono', ''),
+            'desc': data.get('descripcion', ''),
+            'total': float(data.get('total', 0)),
+            'nota': data.get('nota', ''),
+            'fecha': datetime.now().isoformat()
+        })
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error crear_credito_bot: {e}")
+        return False
+    finally:
+        db.close()
+
+
+def _formato_credito(c: dict) -> str:
+    """Formatea un crédito para mostrar en Telegram"""
+    estado_emoji = {'PENDIENTE': '🟡', 'PARCIAL': '🔵', 'PAGADO': '✅', 'VENCIDO': '🔴'}.get(c.get('estado',''), '⚪')
+    return (
+        f"{estado_emoji} *{c.get('cliente_nombre','—')}*\n"
+        f"   📱 {c.get('telefono','—')}\n"
+        f"   💰 Total: S/ {float(c.get('total',0)):.2f} | Pendiente: *S/ {float(c.get('pendiente',0)):.2f}*\n"
+        f"   📦 {str(c.get('descripcion',''))[:60]}\n"
+        f"   🆔 ID: `{c.get('id')}`"
+    )
+
+
+async def _handle_credito_intent(intencion: dict, update: Update, context: ContextTypes.DEFAULT_TYPE, processing_msg):
+    """Maneja todas las intenciones relacionadas con créditos desde el bot"""
+
+    tipo = intencion.get('intencion', 'ninguna')
+
+    # ── VER CRÉDITOS PENDIENTES ──────────────────────────────────────────
+    if tipo == 'ver_creditos':
+        creditos = _get_todos_creditos_pendientes()
+        if not creditos:
+            await processing_msg.edit_text("✅ No hay créditos pendientes registrados.")
+            return True
+        texto = "📋 *Créditos Pendientes*\n\n"
+        for c in creditos[:10]:
+            texto += _formato_credito(c) + "\n\n"
+        texto += f"_Total: {len(creditos)} crédito(s) activo(s)_"
+        await processing_msg.edit_text(texto, parse_mode='Markdown')
+        return True
+
+    # ── CREAR CRÉDITO ────────────────────────────────────────────────────
+    if tipo == 'crear_credito':
+        nombre = intencion.get('cliente_nombre', '').strip()
+        total = float(intencion.get('total', 0))
+        desc = intencion.get('descripcion', '').strip()
+
+        if not nombre or total <= 0:
+            await processing_msg.edit_text(
+                "⚠️ No pude detectar bien el crédito.\n\n"
+                "Dime así: *'Pedro Quispe se llevó 2 filtros y 1 bujía, total 150 soles al fiado'*",
+                parse_mode='Markdown')
+            return True
+
+        context.user_data['pending_credito'] = intencion
+        msg = (
+            f"💳 *Nuevo Crédito / Fiado Detectado*\n\n"
+            f"👤 *Cliente:* {nombre}\n"
+            f"📱 *Teléfono:* {intencion.get('telefono','—') or '—'}\n"
+            f"📦 *Descripción:* {desc or '—'}\n"
+            f"💰 *Total:* S/ {total:.2f}\n"
+            f"📝 *Nota:* {intencion.get('nota','—') or '—'}\n\n"
+            f"¿Confirmas registrar este crédito?"
+        )
+        keyboard = [
+            [InlineKeyboardButton("✅ Confirmar Crédito", callback_data='confirmar_credito')],
+            [InlineKeyboardButton("❌ Cancelar", callback_data='cancelar_credito')]
+        ]
+        await processing_msg.edit_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        return True
+
+    # ── REGISTRAR ABONO ──────────────────────────────────────────────────
+    if tipo == 'registrar_abono':
+        nombre = intencion.get('cliente_nombre', '').strip()
+        monto = float(intencion.get('monto', 0))
+
+        if not nombre or monto <= 0:
+            await processing_msg.edit_text(
+                "⚠️ No pude detectar bien el abono.\n\n"
+                "Dime así: *'Mario Flores abonó 40 soles, pagó con yape'*",
+                parse_mode='Markdown')
+            return True
+
+        creditos = _buscar_creditos_por_nombre(nombre)
+
+        if not creditos:
+            await processing_msg.edit_text(
+                f"❌ No encontré créditos activos para *{nombre}*.\n\n"
+                f"Verifica el nombre o consulta con: _'ver créditos pendientes'_",
+                parse_mode='Markdown')
+            return True
+
+        if len(creditos) == 1:
+            # Solo uno — confirmar directo
+            c = creditos[0]
+            context.user_data['pending_abono'] = {
+                'credito_id': c['id'],
+                'monto': monto,
+                'nota': intencion.get('metodo_pago', '') or intencion.get('nota', ''),
+                'cliente': c['cliente_nombre'],
+                'pendiente_actual': float(c['pendiente'])
+            }
+            msg = (
+                f"💰 *Registrar Abono*\n\n"
+                f"👤 *Cliente:* {c['cliente_nombre']}\n"
+                f"📱 *Tel:* {c.get('telefono','—')}\n"
+                f"💸 *Pendiente actual:* S/ {float(c['pendiente']):.2f}\n"
+                f"✅ *Abono a registrar:* S/ {monto:.2f}\n"
+                f"💳 *Método:* {intencion.get('metodo_pago','—') or '—'}\n"
+                f"📊 *Nuevo pendiente:* S/ {max(0, float(c['pendiente'])-monto):.2f}\n\n"
+                f"¿Confirmas el abono?"
+            )
+            keyboard = [
+                [InlineKeyboardButton("✅ Confirmar Abono", callback_data='confirmar_abono')],
+                [InlineKeyboardButton("❌ Cancelar", callback_data='cancelar_abono')]
+            ]
+            await processing_msg.edit_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            # Varios clientes con ese nombre — mostrar lista para elegir
+            context.user_data['abono_pendiente_datos'] = {'monto': monto, 'intencion': intencion}
+            texto = f"🔍 Encontré *{len(creditos)}* créditos para *{nombre}*.\nElige cuál:\n\n"
+            keyboard = []
+            for c in creditos[:5]:
+                texto += f"🆔 `{c['id']}` — {c['cliente_nombre']} | Debe: S/ {float(c['pendiente']):.2f}\n"
+                keyboard.append([InlineKeyboardButton(
+                    f"#{c['id']} {c['cliente_nombre']} — S/ {float(c['pendiente']):.2f}",
+                    callback_data=f"sel_credito_{c['id']}"
+                )])
+            keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data='cancelar_abono')])
+            await processing_msg.edit_text(texto, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        return True
+
+    return False
+
+
+async def _handle_credito_callbacks(data: str, query, context) -> bool:
+    """Maneja los callbacks de créditos en button_callback"""
+
+    # ── CONFIRMAR CRÉDITO ────────────────────────────────────────────
+    if data == 'confirmar_credito':
+        cred_data = context.user_data.pop('pending_credito', None)
+        if not cred_data:
+            await query.edit_message_text("⚠️ Sesión expirada. Vuelve a dictar el crédito.")
+            return True
+        ok = _crear_credito_bot(cred_data)
+        if ok:
+            await query.edit_message_text(
+                f"✅ *Crédito registrado correctamente*\n\n"
+                f"👤 {cred_data.get('cliente_nombre')}\n"
+                f"💰 S/ {float(cred_data.get('total',0)):.2f} pendiente\n\n"
+                f"_Puedes ver todos los créditos en el dashboard o preguntando 'créditos pendientes'_",
+                parse_mode='Markdown')
+        else:
+            await query.edit_message_text("❌ Error al guardar el crédito. Intenta de nuevo.")
+        return True
+
+    # ── CANCELAR CRÉDITO ─────────────────────────────────────────────
+    if data == 'cancelar_credito':
+        context.user_data.pop('pending_credito', None)
+        await query.edit_message_text("❌ Crédito cancelado.")
+        return True
+
+    # ── CONFIRMAR ABONO ──────────────────────────────────────────────
+    if data == 'confirmar_abono':
+        abono = context.user_data.pop('pending_abono', None)
+        if not abono:
+            await query.edit_message_text("⚠️ Sesión expirada. Vuelve a registrar el abono.")
+            return True
+        nota = abono.get('nota', '') or ''
+        ok = _registrar_abono_bot(abono['credito_id'], abono['monto'], nota)
+        if ok:
+            nuevo_pendiente = max(0, abono['pendiente_actual'] - abono['monto'])
+            estado_msg = "✅ *¡Crédito PAGADO completamente!*" if nuevo_pendiente <= 0 else f"📊 Nuevo pendiente: *S/ {nuevo_pendiente:.2f}*"
+            await query.edit_message_text(
+                f"✅ *Abono registrado*\n\n"
+                f"👤 {abono['cliente']}\n"
+                f"💰 Abono: S/ {abono['monto']:.2f}\n"
+                f"💳 Método: {nota or '—'}\n"
+                f"{estado_msg}",
+                parse_mode='Markdown')
+        else:
+            await query.edit_message_text("❌ Error al registrar el abono. Intenta de nuevo.")
+        return True
+
+    # ── CANCELAR ABONO ───────────────────────────────────────────────
+    if data == 'cancelar_abono':
+        context.user_data.pop('pending_abono', None)
+        context.user_data.pop('abono_pendiente_datos', None)
+        await query.edit_message_text("❌ Abono cancelado.")
+        return True
+
+    # ── SELECCIONAR CRÉDITO cuando hay varios con mismo nombre ────────
+    if data.startswith('sel_credito_'):
+        credito_id = int(data.replace('sel_credito_', ''))
+        datos = context.user_data.pop('abono_pendiente_datos', None)
+        if not datos:
+            await query.edit_message_text("⚠️ Sesión expirada.")
+            return True
+        from sqlalchemy import text as sqlt
+        db = get_db()
+        try:
+            cred = db.execute(sqlt("SELECT * FROM creditos WHERE id=:id"), {'id': credito_id}).fetchone()
+            if not cred:
+                await query.edit_message_text("❌ Crédito no encontrado.")
+                return True
+            cred = dict(cred._mapping)
+        finally:
+            db.close()
+        monto = float(datos['monto'])
+        intencion = datos['intencion']
+        context.user_data['pending_abono'] = {
+            'credito_id': credito_id,
+            'monto': monto,
+            'nota': intencion.get('metodo_pago','') or intencion.get('nota',''),
+            'cliente': cred['cliente_nombre'],
+            'pendiente_actual': float(cred['pendiente'])
+        }
+        msg = (
+            f"💰 *Confirmar Abono*\n\n"
+            f"👤 *Cliente:* {cred['cliente_nombre']}\n"
+            f"💸 *Pendiente actual:* S/ {float(cred['pendiente']):.2f}\n"
+            f"✅ *Abono:* S/ {monto:.2f}\n"
+            f"💳 *Método:* {intencion.get('metodo_pago','—') or '—'}\n"
+            f"📊 *Nuevo pendiente:* S/ {max(0, float(cred['pendiente'])-monto):.2f}\n\n"
+            f"¿Confirmas?"
+        )
+        keyboard = [
+            [InlineKeyboardButton("✅ Confirmar Abono", callback_data='confirmar_abono')],
+            [InlineKeyboardButton("❌ Cancelar", callback_data='cancelar_abono')]
+        ]
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        return True
+
+    return False
+
+
 async def _process_bot_message(user_text: str, update: Update, context: ContextTypes.DEFAULT_TYPE, processing_msg):
     try:
         # ── Primero verificar si es sobre créditos/fiado ──
@@ -633,338 +968,3 @@ def run_telegram_bot():
 
 if __name__ == '__main__':
     run_telegram_bot()
-
-
-# ═══════════════════════════════════════════════════════════════════
-#  CRÉDITOS / FIADO - Funciones auxiliares del bot
-# ═══════════════════════════════════════════════════════════════════
-
-def _buscar_creditos_por_nombre(nombre: str) -> list:
-    """Busca créditos activos por nombre de cliente"""
-    from sqlalchemy import text
-    db = get_db()
-    try:
-        rows = db.execute(text("""
-            SELECT * FROM creditos
-            WHERE LOWER(cliente_nombre) LIKE :nombre
-            AND estado IN ('PENDIENTE', 'PARCIAL', 'VENCIDO')
-            ORDER BY fecha_venta DESC
-        """), {'nombre': f'%{nombre.lower()}%'}).fetchall()
-        return [dict(r._mapping) for r in rows]
-    except Exception:
-        return []
-    finally:
-        db.close()
-
-
-def _get_todos_creditos_pendientes() -> list:
-    """Obtiene todos los créditos pendientes"""
-    from sqlalchemy import text
-    db = get_db()
-    try:
-        rows = db.execute(text("""
-            SELECT * FROM creditos
-            WHERE estado IN ('PENDIENTE', 'PARCIAL', 'VENCIDO')
-            ORDER BY fecha_venta DESC LIMIT 20
-        """)).fetchall()
-        return [dict(r._mapping) for r in rows]
-    except Exception:
-        return []
-    finally:
-        db.close()
-
-
-def _registrar_abono_bot(credito_id: int, monto: float, nota: str) -> bool:
-    """Registra un abono y actualiza el estado del crédito"""
-    from sqlalchemy import text
-    from datetime import date
-    db = get_db()
-    try:
-        db.execute(text("""
-            INSERT INTO abonos_credito (credito_id, monto, nota, fecha)
-            VALUES (:cid, :monto, :nota, :fecha)
-        """), {'cid': credito_id, 'monto': monto, 'nota': nota, 'fecha': datetime.now().isoformat()})
-        db.commit()
-        # Recalcular estado
-        cred = db.execute(text("SELECT * FROM creditos WHERE id=:id"), {'id': credito_id}).fetchone()
-        if cred:
-            cred = dict(cred._mapping)
-            ab = db.execute(text("SELECT COALESCE(SUM(monto),0) as t FROM abonos_credito WHERE credito_id=:cid"), {'cid': credito_id}).fetchone()
-            total_ab = float(ab._mapping['t'])
-            pendiente = round(float(cred['total']) - total_ab, 2)
-            vencido = cred.get('fecha_amortizacion','') and cred.get('fecha_amortizacion','') < date.today().isoformat()
-            if pendiente <= 0: estado = 'PAGADO'
-            elif vencido: estado = 'VENCIDO'
-            elif total_ab > 0: estado = 'PARCIAL'
-            else: estado = 'PENDIENTE'
-            db.execute(text("UPDATE creditos SET pendiente=:p, estado=:e WHERE id=:id"),
-                {'p': max(pendiente, 0), 'e': estado, 'id': credito_id})
-            db.commit()
-        return True
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error registrar_abono_bot: {e}")
-        return False
-    finally:
-        db.close()
-
-
-def _crear_credito_bot(data: dict) -> bool:
-    """Crea un crédito desde el bot"""
-    from sqlalchemy import text
-    db = get_db()
-    try:
-        db.execute(text("""
-            CREATE TABLE IF NOT EXISTS creditos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, cliente_nombre TEXT NOT NULL,
-                telefono TEXT DEFAULT '', descripcion TEXT DEFAULT '',
-                items_json TEXT DEFAULT '[]', total REAL DEFAULT 0,
-                pendiente REAL DEFAULT 0, estado TEXT DEFAULT 'PENDIENTE',
-                nota TEXT DEFAULT '', fecha_venta TEXT DEFAULT '',
-                fecha_amortizacion TEXT DEFAULT '', creado_por TEXT DEFAULT '')
-        """))
-        db.execute(text("""
-            INSERT INTO creditos
-            (cliente_nombre, telefono, descripcion, total, pendiente, estado, nota, fecha_venta, creado_por)
-            VALUES (:cn, :tel, :desc, :total, :total, 'PENDIENTE', :nota, :fecha, 'Bot Telegram')
-        """), {
-            'cn': data.get('cliente_nombre', ''),
-            'tel': data.get('telefono', ''),
-            'desc': data.get('descripcion', ''),
-            'total': float(data.get('total', 0)),
-            'nota': data.get('nota', ''),
-            'fecha': datetime.now().isoformat()
-        })
-        db.commit()
-        return True
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error crear_credito_bot: {e}")
-        return False
-    finally:
-        db.close()
-
-
-def _formato_credito(c: dict) -> str:
-    """Formatea un crédito para mostrar en Telegram"""
-    estado_emoji = {'PENDIENTE': '🟡', 'PARCIAL': '🔵', 'PAGADO': '✅', 'VENCIDO': '🔴'}.get(c.get('estado',''), '⚪')
-    return (
-        f"{estado_emoji} *{c.get('cliente_nombre','—')}*\n"
-        f"   📱 {c.get('telefono','—')}\n"
-        f"   💰 Total: S/ {float(c.get('total',0)):.2f} | Pendiente: *S/ {float(c.get('pendiente',0)):.2f}*\n"
-        f"   📦 {str(c.get('descripcion',''))[:60]}\n"
-        f"   🆔 ID: `{c.get('id')}`"
-    )
-
-
-async def _handle_credito_intent(intencion: dict, update: Update, context: ContextTypes.DEFAULT_TYPE, processing_msg):
-    """Maneja todas las intenciones relacionadas con créditos desde el bot"""
-
-    tipo = intencion.get('intencion', 'ninguna')
-
-    # ── VER CRÉDITOS PENDIENTES ──────────────────────────────────────────
-    if tipo == 'ver_creditos':
-        creditos = _get_todos_creditos_pendientes()
-        if not creditos:
-            await processing_msg.edit_text("✅ No hay créditos pendientes registrados.")
-            return True
-        texto = "📋 *Créditos Pendientes*\n\n"
-        for c in creditos[:10]:
-            texto += _formato_credito(c) + "\n\n"
-        texto += f"_Total: {len(creditos)} crédito(s) activo(s)_"
-        await processing_msg.edit_text(texto, parse_mode='Markdown')
-        return True
-
-    # ── CREAR CRÉDITO ────────────────────────────────────────────────────
-    if tipo == 'crear_credito':
-        nombre = intencion.get('cliente_nombre', '').strip()
-        total = float(intencion.get('total', 0))
-        desc = intencion.get('descripcion', '').strip()
-
-        if not nombre or total <= 0:
-            await processing_msg.edit_text(
-                "⚠️ No pude detectar bien el crédito.\n\n"
-                "Dime así: *'Pedro Quispe se llevó 2 filtros y 1 bujía, total 150 soles al fiado'*",
-                parse_mode='Markdown')
-            return True
-
-        context.user_data['pending_credito'] = intencion
-        msg = (
-            f"💳 *Nuevo Crédito / Fiado Detectado*\n\n"
-            f"👤 *Cliente:* {nombre}\n"
-            f"📱 *Teléfono:* {intencion.get('telefono','—') or '—'}\n"
-            f"📦 *Descripción:* {desc or '—'}\n"
-            f"💰 *Total:* S/ {total:.2f}\n"
-            f"📝 *Nota:* {intencion.get('nota','—') or '—'}\n\n"
-            f"¿Confirmas registrar este crédito?"
-        )
-        keyboard = [
-            [InlineKeyboardButton("✅ Confirmar Crédito", callback_data='confirmar_credito')],
-            [InlineKeyboardButton("❌ Cancelar", callback_data='cancelar_credito')]
-        ]
-        await processing_msg.edit_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        return True
-
-    # ── REGISTRAR ABONO ──────────────────────────────────────────────────
-    if tipo == 'registrar_abono':
-        nombre = intencion.get('cliente_nombre', '').strip()
-        monto = float(intencion.get('monto', 0))
-
-        if not nombre or monto <= 0:
-            await processing_msg.edit_text(
-                "⚠️ No pude detectar bien el abono.\n\n"
-                "Dime así: *'Mario Flores abonó 40 soles, pagó con yape'*",
-                parse_mode='Markdown')
-            return True
-
-        creditos = _buscar_creditos_por_nombre(nombre)
-
-        if not creditos:
-            await processing_msg.edit_text(
-                f"❌ No encontré créditos activos para *{nombre}*.\n\n"
-                f"Verifica el nombre o consulta con: _'ver créditos pendientes'_",
-                parse_mode='Markdown')
-            return True
-
-        if len(creditos) == 1:
-            # Solo uno — confirmar directo
-            c = creditos[0]
-            context.user_data['pending_abono'] = {
-                'credito_id': c['id'],
-                'monto': monto,
-                'nota': intencion.get('metodo_pago', '') or intencion.get('nota', ''),
-                'cliente': c['cliente_nombre'],
-                'pendiente_actual': float(c['pendiente'])
-            }
-            msg = (
-                f"💰 *Registrar Abono*\n\n"
-                f"👤 *Cliente:* {c['cliente_nombre']}\n"
-                f"📱 *Tel:* {c.get('telefono','—')}\n"
-                f"💸 *Pendiente actual:* S/ {float(c['pendiente']):.2f}\n"
-                f"✅ *Abono a registrar:* S/ {monto:.2f}\n"
-                f"💳 *Método:* {intencion.get('metodo_pago','—') or '—'}\n"
-                f"📊 *Nuevo pendiente:* S/ {max(0, float(c['pendiente'])-monto):.2f}\n\n"
-                f"¿Confirmas el abono?"
-            )
-            keyboard = [
-                [InlineKeyboardButton("✅ Confirmar Abono", callback_data='confirmar_abono')],
-                [InlineKeyboardButton("❌ Cancelar", callback_data='cancelar_abono')]
-            ]
-            await processing_msg.edit_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            # Varios clientes con ese nombre — mostrar lista para elegir
-            context.user_data['abono_pendiente_datos'] = {'monto': monto, 'intencion': intencion}
-            texto = f"🔍 Encontré *{len(creditos)}* créditos para *{nombre}*.\nElige cuál:\n\n"
-            keyboard = []
-            for c in creditos[:5]:
-                texto += f"🆔 `{c['id']}` — {c['cliente_nombre']} | Debe: S/ {float(c['pendiente']):.2f}\n"
-                keyboard.append([InlineKeyboardButton(
-                    f"#{c['id']} {c['cliente_nombre']} — S/ {float(c['pendiente']):.2f}",
-                    callback_data=f"sel_credito_{c['id']}"
-                )])
-            keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data='cancelar_abono')])
-            await processing_msg.edit_text(texto, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        return True
-
-    return False
-
-
-async def _handle_credito_callbacks(data: str, query, context) -> bool:
-    """Maneja los callbacks de créditos en button_callback"""
-
-    # ── CONFIRMAR CRÉDITO ────────────────────────────────────────────
-    if data == 'confirmar_credito':
-        cred_data = context.user_data.pop('pending_credito', None)
-        if not cred_data:
-            await query.edit_message_text("⚠️ Sesión expirada. Vuelve a dictar el crédito.")
-            return True
-        ok = _crear_credito_bot(cred_data)
-        if ok:
-            await query.edit_message_text(
-                f"✅ *Crédito registrado correctamente*\n\n"
-                f"👤 {cred_data.get('cliente_nombre')}\n"
-                f"💰 S/ {float(cred_data.get('total',0)):.2f} pendiente\n\n"
-                f"_Puedes ver todos los créditos en el dashboard o preguntando 'créditos pendientes'_",
-                parse_mode='Markdown')
-        else:
-            await query.edit_message_text("❌ Error al guardar el crédito. Intenta de nuevo.")
-        return True
-
-    # ── CANCELAR CRÉDITO ─────────────────────────────────────────────
-    if data == 'cancelar_credito':
-        context.user_data.pop('pending_credito', None)
-        await query.edit_message_text("❌ Crédito cancelado.")
-        return True
-
-    # ── CONFIRMAR ABONO ──────────────────────────────────────────────
-    if data == 'confirmar_abono':
-        abono = context.user_data.pop('pending_abono', None)
-        if not abono:
-            await query.edit_message_text("⚠️ Sesión expirada. Vuelve a registrar el abono.")
-            return True
-        nota = abono.get('nota', '') or ''
-        ok = _registrar_abono_bot(abono['credito_id'], abono['monto'], nota)
-        if ok:
-            nuevo_pendiente = max(0, abono['pendiente_actual'] - abono['monto'])
-            estado_msg = "✅ *¡Crédito PAGADO completamente!*" if nuevo_pendiente <= 0 else f"📊 Nuevo pendiente: *S/ {nuevo_pendiente:.2f}*"
-            await query.edit_message_text(
-                f"✅ *Abono registrado*\n\n"
-                f"👤 {abono['cliente']}\n"
-                f"💰 Abono: S/ {abono['monto']:.2f}\n"
-                f"💳 Método: {nota or '—'}\n"
-                f"{estado_msg}",
-                parse_mode='Markdown')
-        else:
-            await query.edit_message_text("❌ Error al registrar el abono. Intenta de nuevo.")
-        return True
-
-    # ── CANCELAR ABONO ───────────────────────────────────────────────
-    if data == 'cancelar_abono':
-        context.user_data.pop('pending_abono', None)
-        context.user_data.pop('abono_pendiente_datos', None)
-        await query.edit_message_text("❌ Abono cancelado.")
-        return True
-
-    # ── SELECCIONAR CRÉDITO cuando hay varios con mismo nombre ────────
-    if data.startswith('sel_credito_'):
-        credito_id = int(data.replace('sel_credito_', ''))
-        datos = context.user_data.pop('abono_pendiente_datos', None)
-        if not datos:
-            await query.edit_message_text("⚠️ Sesión expirada.")
-            return True
-        from sqlalchemy import text as sqlt
-        db = get_db()
-        try:
-            cred = db.execute(sqlt("SELECT * FROM creditos WHERE id=:id"), {'id': credito_id}).fetchone()
-            if not cred:
-                await query.edit_message_text("❌ Crédito no encontrado.")
-                return True
-            cred = dict(cred._mapping)
-        finally:
-            db.close()
-        monto = float(datos['monto'])
-        intencion = datos['intencion']
-        context.user_data['pending_abono'] = {
-            'credito_id': credito_id,
-            'monto': monto,
-            'nota': intencion.get('metodo_pago','') or intencion.get('nota',''),
-            'cliente': cred['cliente_nombre'],
-            'pendiente_actual': float(cred['pendiente'])
-        }
-        msg = (
-            f"💰 *Confirmar Abono*\n\n"
-            f"👤 *Cliente:* {cred['cliente_nombre']}\n"
-            f"💸 *Pendiente actual:* S/ {float(cred['pendiente']):.2f}\n"
-            f"✅ *Abono:* S/ {monto:.2f}\n"
-            f"💳 *Método:* {intencion.get('metodo_pago','—') or '—'}\n"
-            f"📊 *Nuevo pendiente:* S/ {max(0, float(cred['pendiente'])-monto):.2f}\n\n"
-            f"¿Confirmas?"
-        )
-        keyboard = [
-            [InlineKeyboardButton("✅ Confirmar Abono", callback_data='confirmar_abono')],
-            [InlineKeyboardButton("❌ Cancelar", callback_data='cancelar_abono')]
-        ]
-        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        return True
-
-    return False
