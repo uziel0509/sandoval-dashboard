@@ -332,8 +332,8 @@ def _vw_dashboard(cli, vehs, ords, ord_act, citas_fut, es_empresa):
     for o in ord_hist[:4]:
         total = _total(o)
         hist_rows += f'''<tr class="hist-row">
-  <td style="font-size:12px;font-weight:600;color:#334155">{_esc(o.numero_orden or '')}</td>
-  <td><div style="font-size:13px;font-weight:500;color:#0f172a">{_esc((o.descripcion or '')[:50])}</div>
+  <td style="font-size:12px;font-weight:600;color:#334155">{_esc(o.consecutivo or '')}</td>
+  <td><div style="font-size:13px;font-weight:500;color:#0f172a">{_esc((o.motivo or '')[:50])}</div>
       <div style="font-size:11px;color:#64748b;margin-top:1px">{_esc(o.vehiculo_placa or '')} · {_esc(str(o.fecha)[:10] if o.fecha else '')}</div></td>
   <td style="font-size:13px;font-weight:700;color:#0f172a">S/ {total:,.0f}</td>
   <td>{_badge(o.estado)}</td>
@@ -366,8 +366,8 @@ def _vw_dashboard(cli, vehs, ords, ord_act, citas_fut, es_empresa):
   <div class="orden-card">
     <div class="orden-top">
       <div>
-        <div class="orden-num">{_esc(o.numero_orden or '')}</div>
-        <div class="orden-title">{_esc((o.descripcion or '')[:80])}</div>
+        <div class="orden-num">{_esc(o.consecutivo or '')}</div>
+        <div class="orden-title">{_esc((o.motivo or '')[:80])}</div>
         <div class="orden-meta">
           <div class="orden-meta-item">📅 {_esc(str(o.fecha)[:10] if o.fecha else '')}</div>
           <div class="orden-meta-item">🔧 {_esc(o.tecnico or 'Sin asignar')}</div>
@@ -406,7 +406,7 @@ def _vw_dashboard(cli, vehs, ords, ord_act, citas_fut, es_empresa):
         hora  = str(c.hora or '')[:5] if hasattr(c,'hora') and c.hora else ''
         citas_html += f'''<div class="cita-item">
   <div class="cita-date-box"><div class="cita-day">{day}</div><div class="cita-mon">{mon}</div></div>
-  <div><div class="cita-info-title">{_esc(c.descripcion or 'Cita programada')}</div>
+  <div><div class="cita-info-title">{_esc(c.motivo or 'Cita programada')}</div>
     <div class="cita-info-sub">{hora}{' · ' if hora else ''}{_esc(placa)}</div></div>
   <span class="cita-tag {conf}">{tag_txt}</span>
 </div>'''
@@ -465,8 +465,8 @@ def _vw_ordenes(ord_act):
         cards += f'''<div class="orden-card">
   <div class="orden-top">
     <div>
-      <div class="orden-num">{_esc(o.numero_orden or '')}</div>
-      <div class="orden-title">{_esc((o.descripcion or '')[:80])}</div>
+      <div class="orden-num">{_esc(o.consecutivo or '')}</div>
+      <div class="orden-title">{_esc((o.motivo or '')[:80])}</div>
       <div class="orden-meta">
         <div class="orden-meta-item">🚗 {_esc(o.vehiculo_placa or '')}</div>
         <div class="orden-meta-item">📅 {_esc(str(o.fecha)[:10] if o.fecha else '')}</div>
@@ -491,8 +491,8 @@ def _vw_historial(ords):
     for o in ord_hist:
         total = _total(o)
         rows += f'''<tr class="hist-row">
-  <td style="font-size:12px;font-weight:600;color:#334155">{_esc(o.numero_orden or '')}</td>
-  <td><div style="font-size:13px;font-weight:500;color:#0f172a">{_esc((o.descripcion or '')[:60])}</div>
+  <td style="font-size:12px;font-weight:600;color:#334155">{_esc(o.consecutivo or '')}</td>
+  <td><div style="font-size:13px;font-weight:500;color:#0f172a">{_esc((o.motivo or '')[:60])}</div>
       <div style="font-size:11px;color:#64748b;margin-top:1px">{_esc(o.vehiculo_placa or '')} · {_esc(str(o.fecha)[:10] if o.fecha else '')} · {_esc(o.tecnico or '')}</div></td>
   <td style="font-size:13px;font-weight:700;color:#0f172a">S/ {total:,.0f}</td>
   <td>{_badge(o.estado)}</td>
@@ -524,7 +524,7 @@ def _vw_citas(citas_all):
             hora  = str(c.hora or '')[:5] if hasattr(c,'hora') and c.hora else ''
             out += f'''<div class="cita-item">
   <div class="cita-date-box"><div class="cita-day">{day}</div><div class="cita-mon">{mon}</div></div>
-  <div style="flex:1"><div class="cita-info-title">{_esc(c.descripcion or 'Cita programada')}</div>
+  <div style="flex:1"><div class="cita-info-title">{_esc(c.motivo or 'Cita programada')}</div>
     <div class="cita-info-sub">{hora}{' · ' if hora else ''}{_esc(placa)}</div></div>
   <span class="cita-tag {conf}">{tag_txt}</span>
 </div>'''
