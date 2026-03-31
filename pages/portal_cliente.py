@@ -311,7 +311,7 @@ def _vw_dashboard(cli, vehs, ords, ord_act, citas_fut, es_empresa):
         estado = ord_v.estado if ord_v else 'Sin orden'
         pct = _fleet_bar_pct(estado)
         col = _fleet_bar_color(estado)
-        modelo = f"{v.marca or ''} {v.modelo or ''} {v.anio or ''}".strip()
+        modelo = f"{v.marca or ''} {v.modelo or ''} {getattr(v,'año','') or ''}".strip()
         fleet_rows += f'''<tr class="fleet-row">
   <td><div class="fleet-placa">{_esc(v.placa)}</div><div class="fleet-model">{_esc(modelo)}</div></td>
   <td><div class="fleet-bar-wrap"><div class="fleet-bar" style="width:{pct}%;background:{col}"></div></div><div class="fleet-phase">{_esc(estado)}</div></td>
@@ -433,7 +433,7 @@ def _vw_flota(vehs, ord_act):
         estado = ord_v.estado if ord_v else 'Sin orden activa'
         pct = _fleet_bar_pct(estado)
         col = _fleet_bar_color(estado)
-        modelo = f"{v.marca or ''} {v.modelo or ''} {v.anio or ''}".strip()
+        modelo = f"{v.marca or ''} {v.modelo or ''} {getattr(v,'año','') or ''}".strip()
         rows += f'''<tr class="fleet-row">
   <td><div class="fleet-placa">{_esc(v.placa)}</div><div class="fleet-model">{_esc(modelo)}</div></td>
   <td><div class="fleet-bar-wrap"><div class="fleet-bar" style="width:{pct}%;background:{col}"></div></div><div class="fleet-phase">{_esc(estado)}</div></td>
