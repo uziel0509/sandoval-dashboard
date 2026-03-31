@@ -66,6 +66,7 @@ try:
     from pages.reporte_entrega import reporte_entrega_page
     from pages.encuesta import encuesta_page
     from pages import portal_cliente
+    from pages.portal_cliente import show_portal_page
     log_boot("Todos los componentes importados")
 
     # ─── REST API para la PWA móvil ───
@@ -113,6 +114,11 @@ try:
         except ImportError:
             show_login_page()
 
+    # ─── Portal del Cliente (página dedicada, sin frame admin) ───
+    @ui.page('/portal')
+    def portal_page():
+        show_portal_page()
+
     # ─── Página de Aprobación Pública (sin login) ───
     @ui.page('/aprobacion/{token}')
     def public_approval(token: str):
@@ -144,6 +150,9 @@ try:
                 return
             
             log_boot(f"{user['nombre']} ({user['rol']}) abrió dashboard")
+            if user.get('rol') == 'cliente':
+                ui.navigate.to('/portal')
+                return
             _build_dashboard(user)
             
         except Exception as e:

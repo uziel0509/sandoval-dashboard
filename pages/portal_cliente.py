@@ -1,518 +1,714 @@
 """
-SANDOVAL Dashboard - Portal del Cliente v5.0 (Premium Corporate Design)
-Diseño premium con sidebar, flota completa, historial y orden activa.
+SANDOVAL Dashboard - Portal del Cliente v9.4
+REGLA: ui.element() para TODOS los contenedores flex/grid.
+       ui.html() SOLO para contenido hoja (badges, texto, spans).
 """
-import json
-from datetime import datetime, timedelta
+
+import unicodedata
+from datetime import datetime
 from nicegui import ui
 from utils.models import get_db, Cliente, Vehiculo, Orden, Cita
 from utils.auth import get_current_user
-import theme
 
+# ─── Helpers ─────────────────────────────────────────────────────────────────
 
-# ─── CSS GLOBAL ──────────────────────────────────────────────────────────────
-PORTAL_CSS = """
-<style>
-.portal-wrap { width:100%; background:#f0f4f8; min-height:100vh; font-family:inherit }
-.p-sidebar { width:220px; background:#0f1f4a; min-height:calc(100vh - 56px);
-             position:fixed; top:56px; left:0; padding:16px 0; overflow-y:auto; z-index:10 }
-.p-main { margin-left:220px; padding:28px 32px; min-height:calc(100vh - 56px) }
-.p-topbar { background:#0f1f4a; height:56px; display:flex; align-items:center;
-            justify-content:space-between; padding:0 28px;
-            position:fixed; top:0; left:0; right:0; z-index:20 }
-.p-brand { color:#fff; font-size:14px; font-weight:500; line-height:1.2 }
-.p-brand span { color:#7aa2e0; font-size:11px; font-weight:400; display:block }
-.p-logo { width:32px; height:32px; background:#274495; border-radius:8px;
-          display:flex; align-items:center; justify-content:center;
-          color:#fff; font-size:14px; font-weight:500; flex-shrink:0 }
-.p-user-chip { background:#ffffff15; border:0.5px solid #ffffff25; border-radius:20px;
-               padding:5px 14px; display:flex; align-items:center; gap:7px }
-.p-user-dot { width:7px; height:7px; background:#34d399; border-radius:50% }
-.p-user-name { color:#e0e8f5; font-size:12px; font-weight:500 }
-.p-logout { background:transparent; border:0.5px solid #ffffff30; border-radius:6px;
-            color:#ffffff60; font-size:11px; padding:5px 12px; cursor:pointer; transition:.15s }
-.p-logout:hover { color:#fff; border-color:#ffffff60 }
-.nav-section { font-size:9px; font-weight:500; color:#4a6fa5; letter-spacing:1.5px;
-               text-transform:uppercase; padding:0 20px; margin:14px 0 4px }
-.nav-item { display:flex; align-items:center; gap:10px; padding:9px 20px;
-            cursor:pointer; transition:.15s; border-left:2px solid transparent }
-.nav-item:hover { background:#ffffff08 }
-.nav-item.active { background:#274495; border-left:2px solid #60a5fa }
-.nav-label { font-size:13px; color:#a0b8d8 }
-.nav-item.active .nav-label { color:#fff; font-weight:500 }
-.nav-badge { margin-left:auto; background:#ef4444; color:#fff; font-size:9px;
-             font-weight:500; padding:2px 6px; border-radius:10px }
-.p-page-title { font-size:22px; font-weight:500; color:#0f172a; margin-bottom:2px }
-.p-page-sub { font-size:13px; color:#64748b; margin-bottom:20px }
-.p-kpi-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr));
-              gap:12px; margin-bottom:24px }
-.p-kpi { background:#fff; border:0.5px solid #e2e8f0; border-radius:12px;
-         padding:16px; position:relative; overflow:hidden }
-.p-kpi::before { content:''; position:absolute; top:0; left:0; right:0; height:3px }
-.p-kpi.c1::before { background:#274495 }
-.p-kpi.c2::before { background:#059669 }
-.p-kpi.c3::before { background:#d97706 }
-.p-kpi.c4::before { background:#7c3aed }
-.p-kpi-num { font-size:24px; font-weight:500; color:#0f172a; line-height:1; margin-top:10px }
-.p-kpi-label { font-size:12px; color:#64748b; margin-top:3px }
-.p-card { background:#fff; border:0.5px solid #e2e8f0; border-radius:12px; padding:20px }
-.p-section-title { font-size:13px; font-weight:500; color:#0f172a;
-                   margin-bottom:12px; margin-top:20px }
-.p-fleet-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px }
-.p-fleet-card { background:#fff; border:0.5px solid #e2e8f0; border-radius:12px;
-                padding:14px; cursor:pointer; transition:.15s; position:relative }
-.p-fleet-card:hover { border-color:#93c5fd; background:#fafbff }
-.p-fleet-card.sel { border:1.5px solid #3b82f6; background:#eff6ff }
-.p-fleet-plate { font-size:15px; font-weight:500; color:#0f172a }
-.p-fleet-model { font-size:11px; color:#94a3b8; margin:2px 0 4px }
-.p-fleet-resp { font-size:12px; color:#475569; font-weight:500; margin-bottom:8px }
-.p-fleet-bar { height:4px; background:#f1f5f9; border-radius:2px; overflow:hidden; margin-bottom:5px }
-.p-fleet-fill { height:100%; border-radius:2px }
-.p-fleet-phase { font-size:10px; color:#94a3b8 }
-.p-badge { font-size:10px; font-weight:500; padding:2px 8px; border-radius:10px;
-           position:absolute; top:10px; right:10px }
-.p-phases { display:grid; grid-template-columns:repeat(7,1fr); gap:0;
-            position:relative; margin-bottom:24px }
-.p-phases::before { content:''; position:absolute; top:15px; left:6%; right:6%;
-                    height:2px; background:#e2e8f0; z-index:0 }
-.p-ph { display:flex; flex-direction:column; align-items:center; gap:5px;
-        position:relative; z-index:2 }
-.p-ph-c { width:30px; height:30px; border-radius:50%; display:flex;
-          align-items:center; justify-content:center; font-size:11px;
-          border:2px solid #e2e8f0; background:#fff }
-.p-ph.done .p-ph-c { background:#274495; border-color:#274495; color:#fff }
-.p-ph.active .p-ph-c { background:#3b82f6; border-color:#93c5fd; color:#fff;
-                        box-shadow:0 0 0 4px #dbeafe }
-.p-ph.pending .p-ph-c { background:#f8fafc; color:#94a3b8 }
-.p-ph-lbl { font-size:9px; color:#94a3b8; text-align:center; white-space:nowrap }
-.p-ph.done .p-ph-lbl { color:#274495 }
-.p-ph.active .p-ph-lbl { color:#3b82f6; font-weight:500 }
-.p-history-head { display:grid; grid-template-columns:100px 1fr 80px 80px 110px;
-                  padding:10px 16px; background:#f8fafc;
-                  border-bottom:0.5px solid #e2e8f0; border-radius:10px 10px 0 0 }
-.p-history-head span { font-size:10px; font-weight:500; color:#94a3b8;
-                        letter-spacing:.8px; text-transform:uppercase }
-.p-history-row { display:grid; grid-template-columns:100px 1fr 80px 80px 110px;
-                 padding:12px 16px; border-bottom:0.5px solid #f1f5f9;
-                 align-items:center; transition:.1s }
-.p-history-row:hover { background:#fafbff }
-.p-history-row:last-child { border-bottom:none }
-.p-status { font-size:11px; font-weight:500; padding:3px 10px;
-            border-radius:20px; display:inline-block }
-.p-tab-pills { display:flex; gap:6px; margin-bottom:16px;
-               background:#fff; border:0.5px solid #e2e8f0;
-               border-radius:10px; padding:4px; width:fit-content }
-.p-tab-pill { font-size:12px; font-weight:500; padding:6px 14px; border-radius:7px;
-              cursor:pointer; color:#64748b; background:transparent;
-              border:none; transition:.15s }
-.p-tab-pill.active { background:#274495; color:#fff }
-.p-ev-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px }
-.p-ev-thumb { width:64px; height:64px; border-radius:8px; background:#f1f5f9;
-              border:0.5px solid #e2e8f0; display:flex; align-items:center;
-              justify-content:center; font-size:11px; color:#94a3b8;
-              cursor:pointer; overflow:hidden; flex-shrink:0 }
-</style>
-"""
+def _norm(t):
+    return unicodedata.normalize('NFD', str(t)).encode('ascii', 'ignore').decode().lower()
 
-# ─── FASES ───────────────────────────────────────────────────────────────────
-PHASES = ['RECEPCIÓN','DIAGNÓSTICO','REPUESTOS','APROBACIÓN','REPARACIÓN','CONTROL','ENTREGA']
+def _badge(estado):
+    e = _norm(estado)
+    if   'recep'  in e:                       bg,c = '#f1f5f9','#475569'
+    elif 'diagn'  in e:                       bg,c = '#f5f3ff','#6b21a8'
+    elif 'repar'  in e or 'taller' in e:      bg,c = '#fef3c7','#92400e'
+    elif 'lista'  in e or 'list'   in e:      bg,c = '#dbeafe','#1e40af'
+    elif 'entreg' in e or 'archiv' in e:      bg,c = '#dcfce7','#166534'
+    else:                                      bg,c = '#f1f5f9','#475569'
+    return (f'<span style="background:{bg};color:{c};font-size:11px;font-weight:600;'
+            f'padding:3px 10px;border-radius:20px;display:inline-block;white-space:nowrap">{estado}</span>')
 
-def _phase_idx(estado):
-    estado_u = (estado or '').upper()
-    for i, p in enumerate(PHASES):
-        if p in estado_u or estado_u in p:
-            return i
-    return 0
+FASES = ['Recepción','Diagnóstico','Cotización','Reparación','Listo','Entrega']
 
-def _safe_json(data):
-    if not data: return []
-    if isinstance(data, list): return data
-    if isinstance(data, str):
-        try: return json.loads(data)
-        except: return []
-    return []
+def _fase_idx(estado):
+    e = _norm(estado)
+    if 'recep'  in e:                    return 0
+    if 'diagn'  in e:                    return 1
+    if 'cotiz'  in e or 'aprob' in e:   return 2
+    if 'repar'  in e or 'taller' in e:  return 3
+    if 'lista'  in e or 'list'  in e:   return 4
+    return 5
 
-def _status_badge(estado):
-    m = {
-        'ENTREGA':    ('background:#d1fae5;color:#065f46','Entregada'),
-        'ARCHIVADO':  ('background:#d1fae5;color:#065f46','Completada'),
-        'CONTROL':    ('background:#dbeafe;color:#1e40af','Control Q.'),
-        'REPARACIÓN': ('background:#dbeafe;color:#1e40af','En reparación'),
-        'APROBACIÓN': ('background:#fef3c7;color:#92400e','Aprobación'),
-        'REPUESTOS':  ('background:#fef3c7;color:#92400e','Repuestos'),
-        'DIAGNÓSTICO':('background:#fef3c7;color:#92400e','Diagnóstico'),
-        'RECEPCIÓN':  ('background:#f3f4f6;color:#374151','Recepción'),
-    }
-    for k,(style,lbl) in m.items():
-        if k in (estado or '').upper():
-            return style, lbl
-    return 'background:#f3f4f6;color:#374151', estado or '—'
+def _total(o):
+    try: return sum(float(i.get('subtotal', 0)) for i in (o.items_cotizacion or []))
+    except: return 0.0
 
-def _fleet_badge(estado):
-    e = (estado or '').upper()
-    if 'ENTREGA' in e or 'ARCHIV' in e:
-        return '#d1fae5','#065f46','Entregada'
-    if 'CONTROL' in e or 'REPARA' in e:
-        return '#dbeafe','#1e40af','En taller'
-    if 'APROB' in e or 'REPUES' in e or 'DIAGN' in e:
-        return '#fef3c7','#92400e','En proceso'
-    if 'RECEP' in e:
-        return '#f3f4f6','#374151','Recepción'
-    return '#f1f5f9','#64748b','Disponible'
+# ─── CSS base (solo estilos que no son layout) ───────────────────────────────
 
-def _fleet_bar_color(estado):
-    e = (estado or '').upper()
-    if 'ENTREGA' in e or 'ARCHIV' in e: return '#10b981'
-    if 'CONTROL' in e or 'REPARA' in e: return '#3b82f6'
-    if 'DIAGN' in e or 'REPUES' in e or 'APROB' in e: return '#f59e0b'
-    return '#94a3b8'
+PORTAL_CSS = '''<style>
+  /* reset NiceGUI/Quasar overrides for portal */
+  body, html { background:#f0f4f8 !important }
+  .q-header { background:#fff !important; box-shadow:0 1px 3px rgba(0,0,0,.06) !important }
+  .q-drawer { background:#fff !important; border-right:1px solid #e2e8f0 !important; box-shadow:none !important }
+  .q-page { background:#f0f4f8 !important; padding:0 !important }
+  .nicegui-content { padding:0 !important; max-width:none !important; animation:none !important }
+  /* reset theme h1/h2 overrides */
+  h1,h2,h3 { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important;
+    font-weight:inherit !important; font-size:inherit !important;
+    letter-spacing:inherit !important; text-shadow:none !important; color:inherit !important }
+  /* nav item */
+  .pni { border-left:2.5px solid transparent; cursor:pointer; transition:.12s; margin:1px 0 }
+  .pni:hover { background:#f8fafc }
+  .pni.on { background:#eff6ff; border-left-color:#2563eb }
+  .pni.on .pnl { color:#2563eb !important; font-weight:600 !important }
+  .pni:hover .pnl { color:#1e293b }
+  .pnl { font-size:13px; font-weight:500; color:#64748b; flex:1 }
+  .pnb { background:#eff6ff; color:#2563eb; font-size:9.5px; font-weight:700;
+    padding:2px 7px; border-radius:10px }
+  /* card */
+  .pc { background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:20px; margin-bottom:20px }
+  .poc { background:#fff; border:1px solid #e2e8f0; border-radius:14px;
+    padding:20px; margin-bottom:20px; border-left:4px solid #2563eb }
+  /* kpi */
+  .pkpi { background:#fff; border:1px solid #e2e8f0; border-radius:14px;
+    padding:18px 18px 16px; position:relative; overflow:hidden; transition:.2s }
+  .pkpi:hover { box-shadow:0 4px 16px rgba(0,0,0,.07); transform:translateY(-1px) }
+  .pkpi::after { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:14px 14px 0 0 }
+  .k1::after { background:linear-gradient(90deg,#2563eb,#60a5fa) }
+  .k2::after { background:linear-gradient(90deg,#16a34a,#4ade80) }
+  .k3::after { background:linear-gradient(90deg,#d97706,#fbbf24) }
+  .k4::after { background:linear-gradient(90deg,#7c3aed,#c084fc) }
+  /* table */
+  .pt { width:100%; border-collapse:collapse }
+  .pt thead th { font-size:10px; font-weight:700; color:#94a3b8; letter-spacing:.8px;
+    text-transform:uppercase; padding:10px 14px; background:#f8fafc;
+    border-bottom:1px solid #e2e8f0; text-align:left }
+  .pt tbody tr:hover td { background:#fafbff }
+  .pt tbody td { padding:11px 14px; border-bottom:1px solid #f1f5f9; vertical-align:middle }
+  .pt tbody tr:last-child td { border-bottom:none }
+  /* placa */
+  .pp { font-size:13px; font-weight:700; color:#0f172a; background:#f1f5f9;
+    display:inline-block; padding:3px 9px; border-radius:6px; letter-spacing:.5px }
+  /* back button */
+  .pb2 { cursor:pointer; transition:.15s }
+  .pb2:hover { border-color:#94a3b8 !important; color:#0f172a !important }
+  /* logout button */
+  .plogout { padding:7px 14px; border-radius:8px; background:#fff; border:1px solid #e2e8f0;
+    font-size:12px; color:#64748b; cursor:pointer; font-weight:500; transition:.15s }
+  .plogout:hover { color:#0f172a; border-color:#94a3b8 }
+</style>'''
 
+# ─── Phases widget (usa ui.element para flex) ────────────────────────────────
 
-# ─── PORTAL PRINCIPAL ────────────────────────────────────────────────────────
-def show_portal(container):
+def _render_phases(estado):
+    fi  = _fase_idx(estado)
+    pct = int(fi / (len(FASES) - 1) * 100) if fi > 0 else 0
+    with ui.element('div').style('display:flex;position:relative;padding:0 4px;margin:16px 0'):
+        # progress bars (absolute, inside flex wrapper)
+        ui.html(
+            f'<div style="position:absolute;top:14px;left:20px;right:20px;height:2px;background:#e2e8f0;z-index:0"></div>'
+            f'<div style="position:absolute;top:14px;left:20px;height:2px;background:#2563eb;z-index:1;width:{pct}%"></div>'
+        )
+        for i, name in enumerate(FASES):
+            if i < fi:
+                cs = 'background:#2563eb;border:2px solid #2563eb;color:#fff'
+                ls = 'color:#2563eb;font-weight:600'; txt = '✓'
+            elif i == fi:
+                cs = 'background:#fff;border:2px solid #2563eb;color:#2563eb;box-shadow:0 0 0 4px #dbeafe'
+                ls = 'color:#2563eb;font-weight:700'; txt = str(i + 1)
+            else:
+                cs = 'background:#f8fafc;border:2px solid #e2e8f0;color:#94a3b8'
+                ls = 'color:#94a3b8'; txt = str(i + 1)
+            with ui.element('div').style(
+                'flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;'
+                'position:relative;z-index:2'
+            ):
+                ui.html(
+                    f'<div style="width:28px;height:28px;border-radius:50%;{cs};'
+                    f'display:flex;align-items:center;justify-content:center;'
+                    f'font-size:11px;font-weight:700">{txt}</div>'
+                    f'<div style="font-size:9.5px;{ls};text-align:center;white-space:nowrap">{name}</div>'
+                )
+
+# ─── Page entry ──────────────────────────────────────────────────────────────
+
+def show_portal_page():
     user = get_current_user()
     if not user or user.get('rol') != 'cliente':
-        with container:
-            ui.label('Acceso no autorizado').classes('text-red-500 p-10')
+        ui.navigate.to('/login')
         return
 
     db = get_db()
     try:
-        user_id    = user.get('id')
-        user_plate = user.get('placa','')
-        cliente    = db.query(Cliente).filter_by(id=user_id).first()
-        if not cliente:
-            with container:
-                ui.label('Cliente no encontrado').classes('text-red-500 p-10')
-            return
+        client_id = user.get('id')
+        cli = db.query(Cliente).filter_by(id=client_id).first()
+        if not cli:
+            ui.navigate.to('/login'); return
 
-        # Todos los vehículos del cliente
-        vehiculos  = db.query(Vehiculo).filter_by(cliente_id=user_id).all()
-        todas_placas = [v.placa for v in vehiculos]
-
-        # Todas las órdenes de la flota
-        ordenes_flota = []
-        for placa in todas_placas:
-            ords = db.query(Orden).filter_by(vehiculo_placa=placa).order_by(Orden.fecha.desc()).all()
-            ordenes_flota.extend(ords)
-        ordenes_flota.sort(key=lambda o: str(o.fecha or ''), reverse=True)
-
-        # Orden activa de la moto propia
-        ordenes_prop = [o for o in ordenes_flota if o.vehiculo_placa == user_plate]
-        orden_activa = next((o for o in ordenes_prop if o.estado not in ('ARCHIVADO','ENTREGA')), None)
-
-        # KPIs flota
-        total_motos  = len(vehiculos)
-        en_taller    = sum(1 for o in ordenes_flota
-                          if o.estado not in ('ARCHIVADO','ENTREGA')
-                          and o.vehiculo_placa in todas_placas
-                          and o == next((x for x in ordenes_flota if x.vehiculo_placa==o.vehiculo_placa), None))
-        listas       = sum(1 for o in ordenes_flota if 'ENTREGA' in (o.estado or '').upper()
-                          and str(o.fecha or '').startswith(datetime.now().strftime('%Y-%m-%d')))
-
-        # Calcular inversión del mes
-        mes_actual = datetime.now().strftime('%Y-%m')
-        inv_mes = sum(
-            sum(float(it.get('total',0) or 0) for it in _safe_json(o.items_cotizacion))
-            for o in ordenes_flota if str(o.fecha or '').startswith(mes_actual)
-        )
-
+        es_empresa = (cli.tipo or 'Persona').lower() in ('empresa', 'corporativo', 'corporativa')
+        vehs       = db.query(Vehiculo).filter_by(cliente_id=client_id).all()
+        placas     = [v.placa for v in vehs]
+        ords       = (db.query(Orden)
+                       .filter(Orden.vehiculo_placa.in_(placas))
+                       .order_by(Orden.fecha.desc()).all()) if placas else []
+        citas_all  = db.query(Cita).filter_by(cliente_id=client_id).order_by(Cita.fecha_cita).all()
+        ahora      = datetime.now().strftime('%Y-%m-%d')
+        citas_fut  = [c for c in citas_all if c.fecha_cita >= ahora]
+        ord_act    = [o for o in ords if o.estado not in ('ARCHIVADO','ENTREGA','ENTREGADO')]
+        ord_hist   = [o for o in ords if o.estado     in ('ARCHIVADO','ENTREGA','ENTREGADO')]
+        nombre     = cli.nombre if es_empresa else f"{cli.nombre} {cli.apellidos or ''}".strip()
+        initials   = ''.join(p[0].upper() for p in nombre.split()[:2]) or 'C'
+        _view      = {'v': 'dashboard', 'd': None}
     except Exception as e:
-        import traceback
-        with container:
-            ui.label(f'Error: {e}').classes('text-red-500 p-10')
-            ui.label(traceback.format_exc()).classes('text-xs font-mono p-10')
-        db.close()
-        return
+        ui.label(f'Error: {e}').classes('text-red-500 p-10'); return
 
-    # ── Inyectar CSS ──────────────────────────────────────────────────────────
     ui.add_head_html(PORTAL_CSS)
 
-    view_ref = {'current': 'dashboard'}
+    # ── HEADER ────────────────────────────────────────────────────────────────
+    with ui.header().style('height:64px;padding:0'):
+        with ui.row().style(
+            'height:64px;width:100%;flex-wrap:nowrap;align-items:center;'
+            'justify-content:space-between;padding:0 24px 0 0'
+        ):
+            # Logo + brand
+            with ui.element('div').style(
+                'display:flex;align-items:center;gap:12px;width:240px;height:100%;'
+                'padding:0 20px;border-right:1px solid #e2e8f0;flex-shrink:0;box-sizing:border-box'
+            ):
+                ui.html(
+                    '<div style="width:36px;height:36px;background:#2563eb;border-radius:10px;'
+                    'display:flex;align-items:center;justify-content:center;'
+                    'font-weight:800;font-size:16px;color:#fff;flex-shrink:0;'
+                    'box-shadow:0 2px 8px rgba(37,99,235,.35)">S</div>'
+                )
+                with ui.element('div'):
+                    ui.html('<div style="font-size:14px;font-weight:700;color:#0f172a;line-height:1.2">SANDOVAL</div>'
+                            '<div style="font-size:11px;color:#64748b">Portal del Cliente</div>')
 
-    with container:
-        # ── TOPBAR ────────────────────────────────────────────────────────────
-        with ui.element('div').classes('p-topbar'):
-            with ui.row().classes('items-center gap-3'):
-                ui.element('div').classes('p-logo').style('display:flex;align-items:center;justify-content:center').bind_text_from(cliente, 'nombre', lambda n: n[0].upper() if n else 'C')
-                with ui.column().classes('gap-0'):
-                    ui.label('Mecánica Sandoval EIRL').classes('p-brand')
-                    ui.label(f'Portal Corporativo — {cliente.nombre}').style('color:#7aa2e0;font-size:11px')
-            with ui.row().classes('items-center gap-2'):
-                with ui.element('div').classes('p-user-chip'):
-                    ui.element('div').classes('p-user-dot')
-                    ui.label(cliente.nombre).classes('p-user-name')
-                ui.button('Cerrar sesión', on_click=lambda: _logout()).classes('p-logout').props('flat no-caps')
+            # User chip + logout
+            with ui.element('div').style('display:flex;align-items:center;gap:10px'):
+                with ui.element('div').style(
+                    'display:flex;align-items:center;gap:9px;padding:6px 14px 6px 8px;'
+                    'border-radius:24px;background:#f8fafc;border:1px solid #e2e8f0'
+                ):
+                    ui.html(
+                        f'<div style="width:30px;height:30px;border-radius:50%;background:#2563eb;'
+                        f'display:flex;align-items:center;justify-content:center;'
+                        f'font-size:12px;font-weight:700;color:#fff;flex-shrink:0">{initials}</div>'
+                    )
+                    with ui.element('div'):
+                        ui.html(
+                            f'<div style="font-size:12px;font-weight:600;color:#0f172a">{nombre}</div>'
+                            f'<div style="font-size:10px;color:#64748b">{"Empresa" if es_empresa else "Cliente"}</div>'
+                        )
+                ui.html(
+                    '<button class="plogout" onclick="window.location.href=\'/login\'">'
+                    'Cerrar sesión</button>'
+                )
 
-        # ── CONTENEDOR PRINCIPAL ──────────────────────────────────────────────
-        with ui.element('div').style('display:flex;margin-top:56px'):
+    # ── SIDEBAR (drawer NiceGUI — Quasar maneja el push automático) ──────────
+    with ui.left_drawer(value=True).props('width=240 bordered').style(
+        'background:#fff;padding-top:16px;padding-bottom:24px'
+    ) as drawer_el:
+        pass
 
-            # ── SIDEBAR ───────────────────────────────────────────────────────
-            sidebar = ui.element('div').classes('p-sidebar')
-            main_area = ui.column().style('margin-left:220px;padding:28px 32px;width:100%;min-height:calc(100vh - 56px)')
+    # ── MAIN ──────────────────────────────────────────────────────────────────
+    with ui.element('div').style('padding:28px 32px;background:#f0f4f8;min-height:calc(100vh - 64px)') as main_el:
+        pass
 
-            nav_items = {}
-            with sidebar:
-                ui.element('div').classes('nav-section').style('padding:0 20px;margin:14px 0 4px;font-size:9px;font-weight:500;color:#4a6fa5;letter-spacing:1.5px;text-transform:uppercase').set_text('Principal')
+    def refresh():
+        _fill_drawer(drawer_el, _view, cli, es_empresa, vehs, ord_act, refresh)
+        _fill_main(main_el, _view, cli, vehs, ords, ord_act, ord_hist, citas_all, citas_fut, db, refresh)
 
-                def make_nav(icon_svg, label, view_name, badge=None):
-                    with ui.element('div').classes('nav-item').on('click', lambda v=view_name: switch_view(v)) as item:
-                        ui.html(icon_svg)
-                        ui.label(label).classes('nav-label')
-                        if badge:
-                            ui.element('span').classes('nav-badge').set_text(str(badge))
-                    nav_items[view_name] = item
-                    return item
-
-                make_nav('<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#60a5fa" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>', 'Dashboard', 'dashboard')
-                make_nav('<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#a0b8d8" stroke-width="2"><path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v5"/><circle cx="16" cy="17" r="2"/><circle cx="7" cy="17" r="2"/><path d="M5 17H14"/></svg>', 'Mi Flota', 'flota', total_motos)
-                make_nav('<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#a0b8d8" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>', 'Historial', 'historial')
-
-                ui.html('<div class="nav-section">Mi vehículo</div>')
-                make_nav('<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#a0b8d8" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>', 'Orden activa', 'orden')
-                make_nav('<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#a0b8d8" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>', 'Agendar cita', 'cita')
-
-            # ── VISTAS ────────────────────────────────────────────────────────
-            views = {}
-            with main_area:
-                # DASHBOARD
-                with ui.column().classes('w-full') as v_dashboard:
-                    ui.label('Dashboard').classes('p-page-title')
-                    ui.label(f'Bienvenido, {cliente.nombre} — resumen de tu flota').classes('p-page-sub')
-                    with ui.element('div').classes('p-kpi-grid'):
-                        _kpi('c1', total_motos, 'Motos en flota', '#274495')
-                        _kpi('c2', en_taller, 'En taller ahora', '#059669')
-                        _kpi('c3', listas, 'Entregadas hoy', '#d97706')
-                        _kpi('c4', f'S/ {inv_mes:,.0f}', 'Inversión este mes', '#7c3aed')
-
-                    ui.html('<div class="p-section-title">Estado de flota — vista rápida</div>')
-                    with ui.element('div').classes('p-fleet-grid'):
-                        for v in vehiculos[:5]:
-                            orden_v = next((o for o in ordenes_flota
-                                           if o.vehiculo_placa == v.placa
-                                           and o.estado not in ('ARCHIVADO',)), None)
-                            _fleet_card(v, orden_v, lambda vn=v.placa: switch_view('orden'))
-                        if len(vehiculos) > 5:
-                            with ui.element('div').style('background:#fff;border:0.5px dashed #e2e8f0;border-radius:12px;display:flex;align-items:center;justify-content:center;min-height:100px;cursor:pointer').on('click', lambda: switch_view('flota')):
-                                with ui.column().style('text-align:center;gap:4px'):
-                                    ui.label(f'+{len(vehiculos)-5} más').style('font-size:14px;color:#94a3b8')
-                                    ui.label('Ver todas').style('font-size:11px;color:#cbd5e1')
-
-                    ui.html('<div class="p-section-title">Últimas órdenes</div>')
-                    with ui.element('div').style('background:#fff;border:0.5px solid #e2e8f0;border-radius:12px;overflow:hidden'):
-                        _history_header()
-                        for o in ordenes_flota[:5]:
-                            veh_o = next((v for v in vehiculos if v.placa == o.vehiculo_placa), None)
-                            _history_row(o, veh_o)
-                views['dashboard'] = v_dashboard
-
-                # FLOTA
-                with ui.column().classes('w-full') as v_flota:
-                    v_flota.set_visibility(False)
-                    ui.label('Mi Flota').classes('p-page-title')
-                    ui.label(f'{total_motos} vehículos registrados').classes('p-page-sub')
-                    with ui.element('div').classes('p-fleet-grid'):
-                        for v in vehiculos:
-                            orden_v = next((o for o in ordenes_flota
-                                           if o.vehiculo_placa == v.placa
-                                           and o.estado not in ('ARCHIVADO',)), None)
-                            _fleet_card(v, orden_v, lambda: None, big=True)
-                views['flota'] = v_flota
-
-                # HISTORIAL
-                with ui.column().classes('w-full') as v_hist:
-                    v_hist.set_visibility(False)
-                    ui.label('Historial de servicios').classes('p-page-title')
-                    ui.label('Todas las órdenes de tu flota').classes('p-page-sub')
-                    with ui.element('div').style('background:#fff;border:0.5px solid #e2e8f0;border-radius:12px;overflow:hidden'):
-                        _history_header()
-                        for o in ordenes_flota:
-                            veh_o = next((v for v in vehiculos if v.placa == o.vehiculo_placa), None)
-                            _history_row(o, veh_o)
-                views['historial'] = v_hist
-
-                # ORDEN ACTIVA
-                with ui.column().classes('w-full') as v_orden:
-                    v_orden.set_visibility(False)
-                    if orden_activa:
-                        veh_prop = next((v for v in vehiculos if v.placa == user_plate), None)
-                        ui.label(f'Orden activa — {user_plate}').classes('p-page-title')
-                        resp = getattr(veh_prop, 'responsable', '') if veh_prop else ''
-                        ui.label(f'{getattr(veh_prop,"marca","")} {getattr(veh_prop,"modelo","")} · Responsable: {resp or "—"}').classes('p-page-sub')
-                        _orden_detalle(orden_activa)
-                    else:
-                        ui.label('Sin orden activa').classes('p-page-title')
-                        ui.label(f'El vehículo {user_plate} no tiene órdenes activas actualmente.').classes('p-page-sub')
-                        with ui.element('div').classes('p-card').style('text-align:center;padding:40px'):
-                            ui.icon('check_circle', size='48px').style('color:#10b981')
-                            ui.label('Todo al día').style('font-size:16px;font-weight:500;color:#0f172a;margin-top:8px;display:block')
-                            ui.label('Tu vehículo fue atendido y entregado.').style('font-size:13px;color:#64748b;display:block')
-                views['orden'] = v_orden
-
-                # CITA
-                with ui.column().classes('w-full') as v_cita:
-                    v_cita.set_visibility(False)
-                    ui.label('Agendar cita').classes('p-page-title')
-                    ui.label('Solicita una revisión para tu vehículo').classes('p-page-sub')
-                    with ui.element('div').classes('p-card').style('max-width:500px'):
-                        veh_opts = {v.placa: f'{v.marca} {v.modelo} — {v.placa}' for v in vehiculos}
-                        veh_sel  = ui.select(veh_opts, label='Vehículo', value=user_plate if user_plate in veh_opts else None).props('outlined dense').classes('w-full mb-3')
-                        fecha_in = ui.input('Fecha deseada').props('outlined dense type=date').classes('w-full mb-3')
-                        hora_sel = ui.select(['08:00 AM','09:00 AM','10:00 AM','11:00 AM','02:00 PM','03:00 PM','04:00 PM'], label='Hora', value='08:00 AM').props('outlined dense').classes('w-full mb-3')
-                        serv_sel = ui.select(['Mantenimiento General','Cambio de Aceite','Revisión de Frenos','Diagnóstico Eléctrico','Revisión Preventiva','Otro'], label='Servicio', value='Mantenimiento General').props('outlined dense').classes('w-full mb-3')
-                        desc_in  = ui.textarea('Descripción (opcional)').props('outlined dense rows=2').classes('w-full mb-4')
-
-                        async def solicitar_cita():
-                            if not fecha_in.value or not veh_sel.value:
-                                ui.notify('Selecciona fecha y vehículo', type='warning')
-                                return
-                            db2 = get_db()
-                            try:
-                                db2.add(Cita(cliente_id=user_id, vehiculo_placa=veh_sel.value,
-                                            fecha_cita=fecha_in.value, hora=hora_sel.value,
-                                            motivo=f'[{serv_sel.value}] {desc_in.value}'))
-                                db2.commit()
-                                ui.notify('¡Cita solicitada con éxito!', type='positive')
-                                desc_in.value = ''
-                            except Exception as ex:
-                                ui.notify(f'Error: {ex}', type='negative')
-                            finally:
-                                db2.close()
-
-                        ui.button('Confirmar cita', icon='event', on_click=solicitar_cita).classes('btn-sandoval w-full')
-                views['cita'] = v_cita
-
-            # ── Activar dashboard al inicio ───────────────────────────────────
-            nav_items['dashboard'].classes(add='active')
-
-            def switch_view(name):
-                for k, v in views.items():
-                    v.set_visibility(k == name)
-                for k, n in nav_items.items():
-                    if k == name:
-                        n.classes(add='active')
-                    else:
-                        n.classes(remove='active')
-                view_ref['current'] = name
-
+    refresh()
     db.close()
 
 
-def _logout():
-    from utils.auth import logout
-    logout()
-    ui.navigate.to('/')
+def show_portal(container):
+    """Fallback desde el frame admin → redirige a ruta dedicada."""
+    ui.navigate.to('/portal')
 
 
-# ─── HELPERS UI ──────────────────────────────────────────────────────────────
-def _kpi(cls, value, label, color):
-    with ui.element('div').classes(f'p-kpi {cls}'):
-        ui.label(str(value)).classes('p-kpi-num')
-        ui.label(label).classes('p-kpi-label')
+# ─── Drawer fill ─────────────────────────────────────────────────────────────
+
+def _fill_drawer(drawer_el, _view, cli, es_empresa, vehs, ord_act, refresh):
+    drawer_el.clear()
+    with drawer_el:
+        # Empresa card
+        if es_empresa:
+            en_t = sum(1 for o in ord_act if _norm(o.estado) not in ('lista', 'listo'))
+            lst  = sum(1 for o in ord_act if _norm(o.estado)     in ('lista', 'listo'))
+            with ui.element('div').style(
+                'margin:0 12px 16px;padding:12px 14px;'
+                'background:linear-gradient(135deg,#eff6ff,#f0f9ff);'
+                'border:1px solid #bfdbfe;border-radius:10px'
+            ):
+                ui.html(
+                    '<div style="font-size:9px;font-weight:700;color:#2563eb;'
+                    'text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Empresa</div>'
+                    f'<div style="font-size:13px;font-weight:700;color:#0f172a">{cli.nombre}</div>'
+                    f'<div style="font-size:11px;color:#64748b;margin-top:2px">RUC {cli.id}</div>'
+                )
+                with ui.element('div').style('display:flex;gap:16px;margin-top:8px'):
+                    for lbl, val in [('Vehículos', len(vehs)), ('En taller', en_t), ('Listos', lst)]:
+                        with ui.element('div').style('text-align:center'):
+                            ui.html(
+                                f'<div style="font-size:20px;font-weight:700;color:#2563eb;line-height:1">{val}</div>'
+                                f'<div style="font-size:9px;color:#64748b;margin-top:2px">{lbl}</div>'
+                            )
+
+        def nav(v):
+            _view['v'] = v; _view['d'] = None; refresh()
+
+        _sb_sec('Principal')
+        _nb('dashboard',   '🏠', 'Dashboard',       _view, nav)
+        _nb('flota',       '🚗', 'Mi Flota',         _view, nav, str(len(vehs)) if len(vehs) > 1 else None)
+        _sb_sec('Servicios')
+        _nb('ordenes',     '🔧', 'Órdenes Activas', _view, nav, str(len(ord_act)) if ord_act else None)
+        _nb('historial',   '📋', 'Historial',        _view, nav)
+        _nb('citas',       '📅', 'Citas',             _view, nav)
+        if es_empresa:
+            _sb_sec('Empresa')
+            _nb('empresa',      '🏢', 'Mi Empresa',   _view, nav)
+            _nb('responsables', '👥', 'Responsables', _view, nav)
+        _sb_sec('Cuenta')
+        _nb('perfil', '👤', 'Mi Perfil', _view, nav)
 
 
-def _fleet_card(v, orden, on_click_fn, big=False):
-    estado = orden.estado if orden else None
-    bg, fg, lbl = _fleet_badge(estado)
-    bar_color   = _fleet_bar_color(estado)
-    idx = _phase_idx(estado) if estado else 0
-    pct = int((idx / max(len(PHASES)-1,1)) * 100) if estado else 0
-    resp = getattr(v, 'responsable', '') or '—'
-    phase_lbl = f'Fase {idx+1}/{len(PHASES)} — {estado}' if estado else 'Sin orden activa'
+def _sb_sec(txt):
+    ui.html(
+        f'<div style="font-size:9.5px;font-weight:700;color:#94a3b8;letter-spacing:1.2px;'
+        f'text-transform:uppercase;padding:0 20px;margin:20px 0 6px">{txt}</div>'
+    )
 
-    with ui.element('div').classes('p-fleet-card').on('click', on_click_fn):
-        with ui.row().style('display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px'):
-            ui.label(v.placa).classes('p-fleet-plate')
-        ui.label(f'{v.marca} {v.modelo} {v.año}'.strip()).classes('p-fleet-model')
-        ui.label(resp).classes('p-fleet-resp')
-        with ui.element('div').classes('p-fleet-bar'):
-            ui.element('div').classes('p-fleet-fill').style(f'width:{pct}%;background:{bar_color}')
-        ui.label(phase_lbl).classes('p-fleet-phase')
-        ui.element('span').classes('p-badge').style(f'background:{bg};color:{fg}').set_text(lbl)
+def _nb(view, icon, label, _view, nav_fn, badge=None):
+    on = 'on' if _view['v'] == view else ''
+    with ui.element('div').classes(f'pni {on}').style(
+        'display:flex;align-items:center;gap:10px;padding:9px 16px 9px 20px'
+    ).on('click', lambda v=view: nav_fn(v)):
+        ui.html(f'<span style="font-size:18px;line-height:1;flex-shrink:0">{icon}</span>')
+        ui.html(f'<span class="pnl">{label}</span>')
+        if badge:
+            ui.html(f'<span class="pnb">{badge}</span>')
 
 
-def _history_header():
-    with ui.element('div').classes('p-history-head'):
-        for h in ['Orden','Descripción','Vehículo','Monto','Estado']:
-            ui.element('span').set_text(h)
+# ─── Main fill ────────────────────────────────────────────────────────────────
+
+def _fill_main(main_el, _view, cli, vehs, ords, ord_act, ord_hist, citas_all, citas_fut, db, refresh):
+    main_el.clear()
+    with main_el:
+        v = _view['v']
+        if   v == 'dashboard':    _vw_dash(_view, cli, vehs, ord_act, ord_hist, citas_fut, refresh)
+        elif v == 'flota':        _vw_flota(vehs, ord_act)
+        elif v == 'ordenes':      _vw_ordenes(_view, ord_act, refresh)
+        elif v == 'historial':    _vw_hist(ord_hist)
+        elif v == 'citas':        _vw_citas(citas_all, citas_fut)
+        elif v == 'empresa':      _vw_empresa(cli, vehs, ord_act)
+        elif v == 'responsables': _vw_resps(vehs, ord_act)
+        elif v == 'perfil':       _vw_perfil(cli, db)
+        elif v == 'detalle':      _vw_detalle(_view, ords, vehs, refresh)
 
 
-def _history_row(o, veh):
-    style, lbl = _status_badge(o.estado)
-    total = sum(float(it.get('total',0) or 0) for it in _safe_json(o.items_cotizacion))
-    resp  = getattr(veh, 'responsable', '') or '—' if veh else '—'
-    with ui.element('div').classes('p-history-row'):
-        ui.label(str(o.consecutivo or '—')).style('font-size:12px;color:#475569;font-weight:500')
-        with ui.column().style('gap:1px'):
-            ui.label((o.motivo or 'Revisión')[:45]).style('font-size:13px;font-weight:500;color:#0f172a')
-            ui.label(f'{str(o.fecha or "")[:10]} · {resp}').style('font-size:11px;color:#94a3b8')
-        ui.label(o.vehiculo_placa or '—').style('font-size:12px;color:#64748b')
-        ui.label(f'S/ {total:,.0f}').style('font-size:13px;font-weight:500;color:#0f172a')
-        ui.element('span').classes('p-status').style(style).set_text(lbl)
+def _ph(title, sub=''):
+    with ui.element('div').style('margin-bottom:24px'):
+        ui.html(
+            f'<div style="font-size:22px;font-weight:700;color:#0f172a;letter-spacing:-.4px">{title}</div>'
+            + (f'<div style="font-size:13px;color:#64748b;margin-top:4px">{sub}</div>' if sub else '')
+        )
 
 
-def _orden_detalle(o):
-    idx = _phase_idx(o.estado)
-    with ui.element('div').classes('p-card'):
-        # Header orden
-        with ui.row().style('display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px'):
-            with ui.column().style('gap:3px'):
-                ui.label(str(o.consecutivo)).style('font-size:12px;color:#94a3b8')
-                ui.label(o.motivo or 'Orden de servicio').style('font-size:16px;font-weight:500;color:#0f172a')
-                ui.label(f'Ingreso: {str(o.fecha or "—")[:10]} · KM: {o.km or "—"} · Técnico: {o.tecnico or "—"}').style('font-size:12px;color:#64748b')
-            with ui.element('div').style('background:#eff6ff;border:0.5px solid #bfdbfe;border-radius:8px;padding:8px 14px;text-align:right'):
-                ui.label('Entrega estimada').style('font-size:10px;color:#3b82f6;font-weight:500')
-                ui.label(str(getattr(o,'proximo_mantenimiento','') or 'Por confirmar')).style('font-size:14px;font-weight:500;color:#1e40af')
+# ─── Dashboard ───────────────────────────────────────────────────────────────
 
-        # Tracker fases
-        with ui.element('div').classes('p-phases'):
-            for i, phase in enumerate(PHASES):
-                status = 'done' if i < idx else ('active' if i == idx else 'pending')
-                with ui.element('div').classes(f'p-ph {status}'):
-                    icon = '✓' if i < idx else ('⚙' if i == idx else str(i+1))
-                    ui.element('div').classes('p-ph-c').set_text(icon)
-                    ui.element('div').classes('p-ph-lbl').set_text(phase.capitalize())
+def _vw_dash(_view, cli, vehs, ord_act, ord_hist, citas_fut, refresh):
+    _ph(f'Bienvenido, {cli.nombre.split()[0]}',
+        f'Resumen de su cuenta · {datetime.now().strftime("%d/%m/%Y")}')
 
-        # Detalle en 2 columnas
-        with ui.row().style('display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px'):
-            with ui.element('div').style('background:#f8fafc;border-radius:10px;padding:14px'):
-                ui.label('DIAGNÓSTICO TÉCNICO').style('font-size:10px;font-weight:500;color:#94a3b8;letter-spacing:.8px;margin-bottom:6px;display:block')
-                ui.label(o.diagnostico or 'Diagnóstico en proceso...').style('font-size:13px;color:#334155;line-height:1.6')
+    # KPI 4 col
+    with ui.element('div').style(
+        'display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px'
+    ):
+        _kpi('k1', '🚗', str(len(vehs)),      'Vehículos', 'Registrados', '#eff6ff')
+        _kpi('k2', '🔧', str(len(ord_act)),    'Activos',   'En servicio', '#f0fdf4')
+        _kpi('k3', '📋', str(len(ord_hist)),   'Servicios', 'Completados', '#fffbeb')
+        _kpi('k4', '📅', str(len(citas_fut)),  'Citas',     'Próximas',    '#f5f3ff')
 
-            with ui.element('div').style('background:#f8fafc;border-radius:10px;padding:14px'):
-                ui.label('REPUESTOS Y SERVICIOS').style('font-size:10px;font-weight:500;color:#94a3b8;letter-spacing:.8px;margin-bottom:6px;display:block')
-                items = _safe_json(o.items_cotizacion)
-                if items:
-                    total = 0
-                    for it in items:
-                        val = float(it.get('total',0) or 0)
-                        total += val
-                        with ui.row().style('display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px'):
-                            ui.label(it.get('nombre', it.get('item','—'))).style('color:#475569')
-                            ui.label(f'S/ {val:,.2f}').style('font-weight:500;color:#0f172a')
-                    with ui.row().style('display:flex;justify-content:space-between;font-size:13px;padding-top:6px;border-top:0.5px solid #e2e8f0;margin-top:4px'):
-                        ui.label('Total').style('font-weight:500;color:#0f172a')
-                        ui.label(f'S/ {total:,.2f}').style('font-weight:500;color:#274495')
-                else:
-                    ui.label('Cotización en preparación...').style('font-size:12px;color:#94a3b8;font-style:italic')
+    # Orden activa
+    if ord_act:
+        _orden_card(_view, ord_act[0], refresh)
 
-        # Evidencias
-        import os
-        medios = []
-        fev = _safe_json(o.fotos_evidencia) if o.fotos_evidencia else []
-        for m in fev:
-            path = m.get('path') if isinstance(m, dict) else m
-            if path: medios.append(path)
+    # Grid 2 col
+    with ui.element('div').style(
+        'display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px'
+    ):
+        # Flota mini
+        with ui.element('div').classes('pc').style('margin-bottom:0'):
+            ui.html('<div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:14px">Mi Flota</div>')
+            if vehs:
+                with ui.element('table').classes('pt'):
+                    ui.html('<thead><tr><th>Placa</th><th>Modelo</th><th>Estado</th></tr></thead>')
+                    with ui.element('tbody'):
+                        for v in vehs[:5]:
+                            ov  = next((o for o in ord_act if o.vehiculo_placa == v.placa), None)
+                            est = _badge(ov.estado) if ov else '<span style="color:#94a3b8">—</span>'
+                            ui.html(
+                                f'<tr><td><span class="pp">{v.placa}</span></td>'
+                                f'<td><div style="font-size:12px;font-weight:600;color:#0f172a">{v.marca} {v.modelo}</div>'
+                                f'<div style="font-size:11px;color:#64748b">{v.año}</div></td>'
+                                f'<td>{est}</td></tr>'
+                            )
+            else:
+                ui.html('<p style="color:#94a3b8;text-align:center;padding:20px">Sin vehículos</p>')
 
-        if medios:
-            ui.label('EVIDENCIA FOTOGRÁFICA').style('font-size:10px;font-weight:500;color:#94a3b8;letter-spacing:.8px;margin-bottom:8px;display:block')
-            with ui.element('div').classes('p-ev-row'):
-                for path in medios[:8]:
-                    ext = os.path.splitext(path)[1].lower()
-                    with ui.element('div').classes('p-ev-thumb'):
-                        if ext in ['.mp4','.mov','.avi','.webm']:
-                            ui.video(path).style('width:100%;height:100%;object-fit:cover')
+        # Citas próximas
+        with ui.element('div').classes('pc').style('margin-bottom:0'):
+            ui.html('<div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:4px">Próximas Citas</div>')
+            if citas_fut:
+                for c in citas_fut[:4]: _cita_item(c)
+            else:
+                ui.html('<p style="color:#94a3b8;text-align:center;padding:20px">Sin citas programadas</p>')
+
+    # Historial reciente
+    if ord_hist:
+        with ui.element('div').classes('pc'):
+            ui.html('<div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:14px">Historial Reciente</div>')
+            with ui.element('table').classes('pt'):
+                ui.html('<thead><tr><th>Orden</th><th>Descripción</th><th>Fecha</th><th>Estado</th><th>Total</th></tr></thead>')
+                with ui.element('tbody'):
+                    for o in ord_hist[:5]:
+                        t = _total(o)
+                        ui.html(
+                            f'<tr><td style="font-size:12px;font-weight:600;color:#334155">{o.consecutivo}</td>'
+                            f'<td><div style="font-size:13px;font-weight:500;color:#0f172a">{(o.motivo or "Servicio")[:40]}</div>'
+                            f'<div style="font-size:11px;color:#64748b">{o.vehiculo_placa}</div></td>'
+                            f'<td style="font-size:12px;color:#64748b">{o.fecha}</td>'
+                            f'<td>{_badge(o.estado)}</td>'
+                            f'<td style="font-size:13px;font-weight:700;color:#0f172a">{"S/ "+f"{t:,.2f}" if t else "—"}</td></tr>'
+                        )
+
+
+def _kpi(cls, icon, num, lbl, tag, icon_bg):
+    with ui.element('div').classes(f'pkpi {cls}'):
+        with ui.element('div').style(
+            'display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px'
+        ):
+            with ui.element('div').style(
+                f'width:40px;height:40px;border-radius:10px;background:{icon_bg};'
+                f'display:flex;align-items:center;justify-content:center;font-size:20px'
+            ):
+                ui.html(icon)
+            ui.html(
+                f'<span style="font-size:10px;font-weight:600;padding:3px 8px;'
+                f'border-radius:20px;background:#f8fafc;color:#64748b">{tag}</span>'
+            )
+        ui.html(
+            f'<div style="font-size:26px;font-weight:700;color:#0f172a;line-height:1;letter-spacing:-.5px">{num}</div>'
+            f'<div style="font-size:12px;color:#64748b;margin-top:4px">{lbl}</div>'
+        )
+
+
+def _cita_item(c, past=False):
+    try:
+        dt  = datetime.strptime(c.fecha_cita, '%Y-%m-%d')
+        day = dt.strftime('%d'); mon = dt.strftime('%b').upper()
+    except:
+        day, mon = '--', '---'
+    bg  = '#f8fafc' if past else '#eff6ff'
+    col = '#64748b' if past else '#2563eb'
+    tb  = '#fef3c7' if c.estado == 'programada' else ('#f1f5f9' if past else '#dcfce7')
+    tc  = '#92400e' if c.estado == 'programada' else ('#475569' if past else '#166534')
+    with ui.element('div').style(
+        'display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid #f1f5f9'
+    ):
+        with ui.element('div').style(
+            f'min-width:46px;height:52px;background:{bg};border-radius:10px;'
+            f'display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0'
+        ):
+            ui.html(
+                f'<div style="font-size:20px;font-weight:800;color:{col};line-height:1">{day}</div>'
+                f'<div style="font-size:9px;font-weight:700;color:{col};text-transform:uppercase">{mon}</div>'
+            )
+        with ui.element('div').style('flex:1;min-width:0'):
+            hora_txt = f'🕐 {c.hora or "Por confirmar"}'
+            if c.vehiculo_placa: hora_txt += f' · {c.vehiculo_placa}'
+            ui.html(
+                f'<div style="font-size:13px;font-weight:600;color:#0f172a">{c.motivo or "Cita"}</div>'
+                f'<div style="font-size:12px;color:#64748b;margin-top:2px">{hora_txt}</div>'
+            )
+        ui.html(
+            f'<span style="background:{tb};color:{tc};font-size:10px;font-weight:600;'
+            f'padding:3px 9px;border-radius:20px;white-space:nowrap">{c.estado.capitalize()}</span>'
+        )
+
+
+def _orden_card(_view, orden, refresh):
+    t = _total(orden)
+    with ui.element('div').classes('poc'):
+        with ui.element('div').style(
+            'display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px'
+        ):
+            with ui.element('div'):
+                ui.html(
+                    f'<div style="font-size:11px;color:#64748b;margin-bottom:4px">'
+                    f'Orden activa · {orden.consecutivo}</div>'
+                    f'<div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:6px">'
+                    f'{orden.motivo or "Servicio en curso"}</div>'
+                )
+                with ui.element('div').style('display:flex;gap:16px;flex-wrap:wrap'):
+                    ui.html(f'<span style="font-size:12px;color:#64748b">🚗 {orden.vehiculo_placa}</span>')
+                    ui.html(f'<span style="font-size:12px;color:#64748b">📅 {orden.fecha}</span>')
+                    if orden.tecnico:
+                        ui.html(f'<span style="font-size:12px;color:#64748b">🔧 {orden.tecnico}</span>')
+                    if t:
+                        ui.html(f'<span style="font-size:12px;color:#64748b">💰 S/ {t:,.2f}</span>')
+            ui.html(_badge(orden.estado))
+        _render_phases(orden.estado)
+        def _go(o=orden):
+            _view['v'] = 'detalle'; _view['d'] = o.consecutivo; refresh()
+        ui.button('Ver detalle completo', icon='arrow_forward', on_click=_go).props('flat').classes('text-blue-600 text-xs mt-1')
+
+
+# ─── Flota ───────────────────────────────────────────────────────────────────
+
+def _vw_flota(vehs, ord_act):
+    _ph('Mi Flota', f'{len(vehs)} vehículo{"s" if len(vehs)!=1 else ""} registrado{"s" if len(vehs)!=1 else ""}')
+    with ui.element('div').classes('pc'):
+        if vehs:
+            with ui.element('table').classes('pt'):
+                ui.html('<thead><tr><th>Placa</th><th>Vehículo</th><th>Tipo</th><th>Estado</th><th>Orden</th></tr></thead>')
+                with ui.element('tbody'):
+                    for v in vehs:
+                        ov = next((o for o in ord_act if o.vehiculo_placa == v.placa), None)
+                        ui.html(
+                            f'<tr><td><span class="pp">{v.placa}</span></td>'
+                            f'<td><div style="font-size:13px;font-weight:600;color:#0f172a">{v.marca} {v.modelo}</div>'
+                            f'<div style="font-size:11px;color:#64748b">{v.año} · {v.color}</div></td>'
+                            f'<td style="font-size:12px;color:#64748b">{v.tipo}</td>'
+                            f'<td>{_badge(ov.estado) if ov else "<span style=\'color:#94a3b8\'>—</span>"}</td>'
+                            f'<td style="font-size:12px;color:#64748b">{ov.consecutivo if ov else "—"}</td></tr>'
+                        )
+        else:
+            ui.html('<p style="color:#94a3b8;text-align:center;padding:30px">Sin vehículos</p>')
+
+
+# ─── Órdenes activas ─────────────────────────────────────────────────────────
+
+def _vw_ordenes(_view, ord_act, refresh):
+    _ph('Órdenes Activas', f'{len(ord_act)} en proceso')
+    if not ord_act:
+        with ui.element('div').classes('pc'):
+            ui.html('<p style="color:#94a3b8;text-align:center;padding:40px">No hay órdenes activas.</p>')
+        return
+    for o in ord_act:
+        _orden_card(_view, o, refresh)
+
+
+# ─── Historial ───────────────────────────────────────────────────────────────
+
+def _vw_hist(ord_hist):
+    _ph('Historial de Servicios', f'{len(ord_hist)} completado{"s" if len(ord_hist)!=1 else ""}')
+    with ui.element('div').classes('pc'):
+        if ord_hist:
+            with ui.element('table').classes('pt'):
+                ui.html('<thead><tr><th>Orden</th><th>Descripción</th><th>Placa</th><th>Fecha</th><th>Estado</th><th>Total</th></tr></thead>')
+                with ui.element('tbody'):
+                    for o in ord_hist:
+                        t = _total(o)
+                        ui.html(
+                            f'<tr><td style="font-size:12px;font-weight:600;color:#334155">{o.consecutivo}</td>'
+                            f'<td><div style="font-size:13px;font-weight:500;color:#0f172a">{(o.motivo or "Servicio")[:40]}</div>'
+                            f'<div style="font-size:11px;color:#64748b">{(o.diagnostico or "")[:35]}</div></td>'
+                            f'<td><span class="pp">{o.vehiculo_placa}</span></td>'
+                            f'<td style="font-size:12px;color:#64748b">{o.fecha}</td>'
+                            f'<td>{_badge(o.estado)}</td>'
+                            f'<td style="font-size:13px;font-weight:700;color:#0f172a">{"S/ "+f"{t:,.2f}" if t else "—"}</td></tr>'
+                        )
+        else:
+            ui.html('<p style="color:#94a3b8;text-align:center;padding:30px">Sin historial</p>')
+
+
+# ─── Citas ───────────────────────────────────────────────────────────────────
+
+def _vw_citas(citas_all, citas_fut):
+    ahora = datetime.now().strftime('%Y-%m-%d')
+    past  = sorted([c for c in citas_all if c.fecha_cita < ahora], key=lambda x: x.fecha_cita, reverse=True)
+    _ph('Mis Citas', f'{len(citas_fut)} próxima{"s" if len(citas_fut)!=1 else ""}')
+    with ui.element('div').style('display:grid;grid-template-columns:1fr 1fr;gap:20px'):
+        with ui.element('div').classes('pc').style('margin-bottom:0'):
+            ui.html('<div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:4px">Próximas</div>')
+            if citas_fut:
+                for c in citas_fut: _cita_item(c)
+            else:
+                ui.html('<p style="color:#94a3b8;text-align:center;padding:20px">Sin citas próximas</p>')
+        with ui.element('div').classes('pc').style('margin-bottom:0'):
+            ui.html('<div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:4px">Historial</div>')
+            if past:
+                for c in past[:10]: _cita_item(c, past=True)
+            else:
+                ui.html('<p style="color:#94a3b8;text-align:center;padding:20px">Sin historial</p>')
+
+
+# ─── Empresa ─────────────────────────────────────────────────────────────────
+
+def _vw_empresa(cli, vehs, ord_act):
+    _ph(cli.nombre, f'RUC {cli.id}')
+    en_t = sum(1 for o in ord_act if _norm(o.estado) not in ('lista', 'listo'))
+    lst  = sum(1 for o in ord_act if _norm(o.estado)     in ('lista', 'listo'))
+    with ui.element('div').style('display:grid;grid-template-columns:1fr 1fr;gap:20px'):
+        with ui.element('div').classes('pc').style('margin-bottom:0'):
+            ui.html('<div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:14px;'
+                    'padding-bottom:8px;border-bottom:1px solid #e2e8f0">Datos Generales</div>')
+            for lbl, val in [('RUC', cli.id), ('Razón Social', cli.nombre),
+                              ('Email', cli.email or '—'), ('Teléfono', cli.telefono or '—'),
+                              ('Dirección', cli.direccion or '—')]:
+                with ui.element('div').style('display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9'):
+                    ui.html(f'<span style="font-size:12px;color:#94a3b8">{lbl}</span>'
+                            f'<span style="font-size:13px;font-weight:600;color:#0f172a">{val}</span>')
+        with ui.element('div').classes('pc').style('margin-bottom:0'):
+            ui.html('<div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:14px;'
+                    'padding-bottom:8px;border-bottom:1px solid #e2e8f0">Estadísticas</div>')
+            for lbl, val in [('Total vehículos', len(vehs)), ('En servicio', len(ord_act)),
+                              ('En reparación', en_t), ('Listos para recoger', lst)]:
+                with ui.element('div').style('display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #f1f5f9'):
+                    ui.html(f'<span style="font-size:13px;color:#64748b">{lbl}</span>'
+                            f'<span style="font-size:20px;font-weight:700;color:#2563eb">{val}</span>')
+
+
+# ─── Responsables ────────────────────────────────────────────────────────────
+
+def _vw_resps(vehs, ord_act):
+    _ph('Responsables', 'Vehículos y estado actual')
+    with ui.element('div').style('display:grid;grid-template-columns:repeat(2,1fr);gap:16px'):
+        for v in vehs:
+            ov  = next((o for o in ord_act if o.vehiculo_placa == v.placa), None)
+            with ui.element('div').style(
+                'background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;'
+                'display:flex;align-items:center;gap:14px'
+            ):
+                ui.html(
+                    f'<div style="width:44px;height:44px;border-radius:50%;background:#eff6ff;'
+                    f'display:flex;align-items:center;justify-content:center;'
+                    f'font-size:14px;font-weight:700;color:#2563eb;flex-shrink:0">{v.placa[:2]}</div>'
+                )
+                with ui.element('div').style('flex:1;min-width:0'):
+                    ui.html(
+                        f'<div style="font-size:13px;font-weight:700;color:#0f172a">{v.placa}</div>'
+                        f'<div style="font-size:11px;color:#64748b;margin-top:2px">{v.marca} {v.modelo} · {v.año}</div>'
+                    )
+                    with ui.element('div').style('margin-top:6px'):
+                        if ov:
+                            ui.html(_badge(ov.estado))
+                            if ov.tecnico:
+                                ui.html(f'<div style="font-size:11px;color:#64748b;margin-top:4px">Técnico: {ov.tecnico}</div>')
                         else:
-                            ui.image(path).style('width:100%;height:100%;object-fit:cover').on('click', lambda p=path: ui.navigate.to(p))
-                if len(medios) > 8:
-                    ui.element('div').classes('p-ev-thumb').set_text(f'+{len(medios)-8}')
+                            ui.html('<span style="color:#94a3b8;font-size:12px">Sin orden activa</span>')
+
+
+# ─── Perfil ──────────────────────────────────────────────────────────────────
+
+def _vw_perfil(cli, db):
+    _ph('Mi Perfil', 'Información de su cuenta')
+    with ui.element('div').style('display:grid;grid-template-columns:1fr 1fr;gap:20px'):
+        with ui.element('div').classes('pc').style('margin-bottom:0'):
+            ui.html('<div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:14px;'
+                    'padding-bottom:8px;border-bottom:1px solid #e2e8f0">Datos Personales</div>')
+            for lbl, val in [('DNI / RUC', cli.id), ('Nombre', cli.nombre),
+                              ('Apellidos', cli.apellidos or '—'), ('Tipo', cli.tipo or 'Persona'),
+                              ('Email', cli.email or '—'), ('Teléfono', cli.telefono or '—')]:
+                with ui.element('div').style('display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9'):
+                    ui.html(f'<span style="font-size:12px;color:#94a3b8">{lbl}</span>'
+                            f'<span style="font-size:13px;font-weight:600;color:#0f172a">{val}</span>')
+
+        with ui.element('div').classes('pc').style('margin-bottom:0'):
+            ui.html('<div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:14px;'
+                    'padding-bottom:8px;border-bottom:1px solid #e2e8f0">Cambiar Contraseña</div>'
+                    '<p style="font-size:12px;color:#64748b;margin-bottom:12px">Su contraseña inicial es su DNI o RUC.</p>')
+            np_in = ui.input('Nueva contraseña', password=True, password_toggle_button=True).props('outlined dense').classes('w-full')
+            cp_in = ui.input('Confirmar', password=True).props('outlined dense').classes('w-full mt-2')
+            msg   = ui.label('').classes('text-xs mt-1')
+            def _cambiar():
+                np = (np_in.value or '').strip(); cp = (cp_in.value or '').strip()
+                if len(np) < 4:  msg.text = 'Mínimo 4 caracteres'; msg.style('color:#ef4444'); return
+                if np != cp:     msg.text = 'No coinciden';         msg.style('color:#ef4444'); return
+                try:
+                    from utils.models import hash_password
+                    db2 = get_db()
+                    c2  = db2.query(Cliente).filter_by(id=cli.id).first()
+                    if c2: c2.pin_acceso = hash_password(np); db2.commit()
+                    db2.close()
+                    msg.text = '✓ Contraseña actualizada'; msg.style('color:#16a34a')
+                    np_in.value = ''; cp_in.value = ''
+                except Exception as e:
+                    msg.text = f'Error: {e}'; msg.style('color:#ef4444')
+            ui.button('Actualizar contraseña', on_click=_cambiar).props('flat').classes('text-blue-600 text-xs mt-3')
+
+
+# ─── Detalle ─────────────────────────────────────────────────────────────────
+
+def _vw_detalle(_view, ords, vehs, refresh):
+    orden = next((o for o in ords if o.consecutivo == _view.get('d')), None)
+
+    def _back(): _view['v'] = 'dashboard'; _view['d'] = None; refresh()
+    with ui.element('div').style(
+        'display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;'
+        'background:#fff;border:1px solid #e2e8f0;font-size:12px;font-weight:600;color:#64748b;'
+        'cursor:pointer;margin-bottom:20px;transition:.15s'
+    ).classes('pb2').on('click', _back):
+        ui.html('← Volver')
+
+    if not orden:
+        ui.html('<p style="color:#94a3b8">Orden no encontrada</p>'); return
+
+    t = _total(orden)
+    _ph(f'Orden {orden.consecutivo}', orden.fecha)
+
+    with ui.element('div').classes('pc'):
+        _render_phases(orden.estado)
+
+    with ui.element('div').style('display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px'):
+        with ui.element('div').style('background:#f8fafc;border:1px solid #f1f5f9;border-radius:10px;padding:14px'):
+            ui.html('<div style="font-size:9.5px;font-weight:700;color:#94a3b8;letter-spacing:.8px;'
+                    'text-transform:uppercase;margin-bottom:8px">Datos del Servicio</div>'
+                    f'<div style="font-size:13px;color:#334155;line-height:1.8">'
+                    f'<b>Motivo:</b> {orden.motivo or "—"}<br>'
+                    f'<b>Diagnóstico:</b> {orden.diagnostico or "—"}<br>'
+                    f'<b>Técnico:</b> {orden.tecnico or "—"}<br>'
+                    f'<b>Km:</b> {orden.km or "—"}</div>')
+        veh = next((v for v in vehs if v.placa == orden.vehiculo_placa), None)
+        with ui.element('div').style('background:#f8fafc;border:1px solid #f1f5f9;border-radius:10px;padding:14px'):
+            ui.html('<div style="font-size:9.5px;font-weight:700;color:#94a3b8;letter-spacing:.8px;'
+                    'text-transform:uppercase;margin-bottom:8px">Vehículo</div>')
+            if veh:
+                ui.html(f'<div style="font-size:13px;color:#334155;line-height:1.8">'
+                        f'<b>Placa:</b> {veh.placa}<br><b>Marca:</b> {veh.marca} {veh.modelo}<br>'
+                        f'<b>Año:</b> {veh.año}<br><b>Color:</b> {veh.color}</div>')
+
+    items = orden.items_cotizacion or []
+    if items:
+        with ui.element('div').classes('pc'):
+            ui.html('<div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:14px">Cotización / Ítems</div>')
+            for it in items:
+                nom = it.get('nombre') or it.get('descripcion', '—')
+                sub = it.get('subtotal', 0); cant = it.get('cantidad', 1)
+                with ui.element('div').style(
+                    'display:flex;justify-content:space-between;font-size:12px;'
+                    'padding:4px 0;border-bottom:1px solid #f1f5f9'
+                ):
+                    ui.html(f'<span>{nom} × {cant}</span>'
+                            f'<span style="font-weight:600;color:#0f172a">S/ {float(sub):,.2f}</span>')
+            with ui.element('div').style(
+                'display:flex;justify-content:space-between;padding:10px 0 0;'
+                'border-top:2px solid #e2e8f0;margin-top:4px;font-size:13px;font-weight:700'
+            ):
+                ui.html(f'<span>Total</span><span style="color:#2563eb">S/ {t:,.2f}</span>')
+
+    if orden.observaciones:
+        with ui.element('div').classes('pc'):
+            ui.html(f'<div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:10px">Observaciones</div>'
+                    f'<p style="font-size:13px;color:#334155;line-height:1.7">{orden.observaciones}</p>')
+
+    fotos = orden.fotos_evidencia or []
+    if fotos:
+        with ui.element('div').classes('pc'):
+            ui.html('<div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:10px">Fotos de Evidencia</div>')
+            with ui.element('div').style('display:flex;gap:8px;flex-wrap:wrap'):
+                for fu in fotos[:12]:
+                    ui.html(f'<img src="{fu}" style="width:80px;height:80px;border-radius:8px;'
+                            f'object-fit:cover;border:1px solid #e2e8f0">')
