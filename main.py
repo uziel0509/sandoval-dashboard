@@ -119,6 +119,12 @@ try:
     def portal_page():
         show_portal_page()
 
+    # ─── Logout del portal del cliente ───
+    @ui.page('/portal-logout')
+    def portal_logout_page():
+        logout()
+        ui.navigate.to('/login')
+
     # ─── Página de Aprobación Pública (sin login) ───
     @ui.page('/aprobacion/{token}')
     def public_approval(token: str):
