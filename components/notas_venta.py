@@ -1,7 +1,6 @@
 """
 SANDOVAL Dashboard - Notas de Venta
-Venta directa de repuestos vinculada al inventario, clientes,
-dashboard de métricas, reportes y rentabilidad.
+Venta directa de repuestos + mano de obra, vinculada al inventario.
 """
 
 from datetime import datetime
@@ -10,8 +9,6 @@ from utils.models import (
     get_db, NotaVenta, Cliente, ItemInventario, log_actividad
 )
 import theme
-
-IGV = 0.18   # 18 %
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -22,7 +19,6 @@ def show_notas_venta(container):
     with container:
         state = {'search': '', 'filter_estado': 'Todos'}
 
-        # ── Header ───────────────────────────────────────────────────────────
         with ui.row().classes(
             'w-full items-center justify-between mb-4 fade-in '
             'py-5 px-8 bg-white border border-gray-100 rounded-xl shadow-sm'
@@ -32,17 +28,16 @@ def show_notas_venta(container):
                 with ui.column().classes('gap-0'):
                     ui.label('NOTAS DE VENTA').classes(
                         'text-xl font-extrabold text-[#274495] tracking-tight')
-                    ui.label('Venta directa de repuestos e insumos').classes(
+                    ui.label('Venta directa de repuestos y mano de obra').classes(
                         'text-xs text-gray-400 font-medium')
             ui.button('Nueva Nota', icon='add',
                       on_click=lambda: open_nota_dialog(list_container, state)
                       ).classes('btn-sandoval')
 
-        # ── KPIs ─────────────────────────────────────────────────────────────
         db = get_db()
         try:
             notas = db.query(NotaVenta).all()
-            pagadas   = [n for n in notas if n.estado == 'pagada']
+            pagadas = [n for n in notas if n.estado == 'pagada']
             total_mes = sum(
                 n.total for n in pagadas
                 if n.fecha and n.fecha.month == datetime.now().month
@@ -58,12 +53,11 @@ def show_notas_venta(container):
             db.close()
 
         with ui.row().classes('w-full gap-4 mb-4'):
-            _kpi('VENTAS DEL MES', f'S/ {total_mes:,.2f}', 'trending_up', 'green-7')
-            _kpi('TOTAL ACUMULADO', f'S/ {total_acum:,.2f}', 'payments', 'blue-8')
-            _kpi('NOTAS ESTE MES', str(n_mes), 'receipt_long', 'purple-7')
-            _kpi('TOTAL NOTAS', str(len(pagadas)), 'inventory', 'amber-7')
+            _kpi('VENTAS DEL MES',    f'S/ {total_mes:,.2f}',  'trending_up',  'green-7')
+            _kpi('TOTAL ACUMULADO',   f'S/ {total_acum:,.2f}', 'payments',     'blue-8')
+            _kpi('NOTAS ESTE MES',    str(n_mes),              'receipt_long', 'purple-7')
+            _kpi('TOTAL NOTAS',       str(len(pagadas)),       'inventory',    'amber-7')
 
-        # ── Barra de búsqueda ─────────────────────────────────────────────────
         with ui.row().classes(
             'w-full bg-white p-4 border border-gray-200 rounded-xl mb-4 gap-4 items-center shadow-sm'
         ):
@@ -84,7 +78,6 @@ def show_notas_venta(container):
             ui.button('Buscar', icon='search', on_click=do_search
                       ).props('unelevated color=primary')
 
-        # ── Lista ─────────────────────────────────────────────────────────────
         list_container = ui.column().classes('w-full gap-3')
         _refresh(list_container, state)
 
@@ -145,12 +138,11 @@ def _refresh(container, state):
                              ).classes('text-gray-300 text-sm')
                 return
 
-            # Cabecera tabla
             with ui.element('div').classes(
                 'hidden md:grid w-full px-5 py-2 bg-gray-50 border border-gray-200 '
                 'rounded-t-xl text-[10px] font-black text-gray-400 tracking-widest'
-            ).style('grid-template-columns:120px 1fr 120px 120px 120px 100px'):
-                for h in ['NÚMERO', 'CLIENTE', 'FECHA', 'SUBTOTAL', 'TOTAL', 'ESTADO']:
+            ).style('grid-template-columns:120px 1fr 120px 120px 120px'):
+                for h in ['NÚMERO', 'CLIENTE', 'FECHA', 'TOTAL', 'ESTADO']:
                     ui.label(h)
 
             for nota in notas:
@@ -170,16 +162,17 @@ def _nota_row(container, state, nota):
         'w-full grid items-center px-5 py-4 bg-white border border-gray-200 '
         'hover:bg-blue-50/30 transition-colors cursor-pointer border-t-0 '
         'rounded-b-none last:rounded-b-xl'
-    ).style('grid-template-columns:120px 1fr 120px 120px 120px 100px'):
+    ).style('grid-template-columns:120px 1fr 120px 120px 120px'):
         ui.label(nota.numero).classes('text-sm font-black text-[#274495]')
         ui.label(nombre).classes('text-sm font-semibold text-gray-700 truncate')
         ui.label(fecha_str).classes('text-xs text-gray-500')
-        ui.label(f'S/ {nota.subtotal:,.2f}').classes('text-sm text-gray-700 font-medium')
         ui.label(f'S/ {nota.total:,.2f}').classes('text-sm font-black text-green-700')
         with ui.row().classes('items-center gap-2'):
             with ui.element('span').classes(f'px-2 py-1 rounded-full text-[10px] font-black {css}'):
                 ui.label(nota.estado.upper())
-            ui.button(icon='visibility', on_click=lambda n=nota: open_nota_dialog(
+            # Ver / Editar — anulada solo ver, el resto editable
+            edit_icon = 'visibility' if nota.estado == 'anulada' else 'edit'
+            ui.button(icon=edit_icon, on_click=lambda n=nota: open_nota_dialog(
                 container, state, nota_id=n.id
             )).props('flat round dense color=primary size=xs')
             if nota.estado != 'anulada':
@@ -198,12 +191,12 @@ def _anular(container, state, nota_id):
         try:
             nota = db.query(NotaVenta).filter_by(id=nota_id).first()
             if nota and nota.estado == 'pagada':
-                # Restaurar stock
                 for item in (nota.items or []):
-                    prod = db.query(ItemInventario).filter_by(
-                        codigo=item.get('codigo')).first()
-                    if prod:
-                        prod.stock += int(item.get('cantidad', 0))
+                    if item.get('codigo'):
+                        prod = db.query(ItemInventario).filter_by(
+                            codigo=item.get('codigo')).first()
+                        if prod:
+                            prod.stock += int(item.get('cantidad', 0))
                 nota.estado = 'anulada'
                 db.commit()
                 log_actividad(f'Nota de venta {nota.numero} anulada', 'notas_venta')
@@ -224,36 +217,34 @@ def _anular(container, state, nota_id):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  DIALOG CREAR / VER NOTA
+#  DIALOG CREAR / EDITAR NOTA
 # ─────────────────────────────────────────────────────────────────────────────
 
 def open_nota_dialog(list_container, state, nota_id=None):
-    """Abre el diálogo de nueva nota o vista de nota existente."""
-
-    # Cargar nota existente para modo vista
     existing = None
     if nota_id:
         db = get_db()
         try:
-            existing = db.query(NotaVenta).filter_by(id=nota_id).first()
-            if existing:
+            ex = db.query(NotaVenta).filter_by(id=nota_id).first()
+            if ex:
                 existing = {
-                    'id': existing.id, 'numero': existing.numero,
-                    'fecha': existing.fecha, 'cliente_id': existing.cliente_id,
-                    'cliente_nombre': existing.cliente_nombre,
-                    'subtotal': existing.subtotal, 'igv': existing.igv,
-                    'total': existing.total, 'estado': existing.estado,
-                    'notas': existing.notas, 'items': list(existing.items or [])
+                    'id': ex.id, 'numero': ex.numero,
+                    'fecha': ex.fecha, 'cliente_id': ex.cliente_id,
+                    'cliente_nombre': ex.cliente_nombre,
+                    'subtotal': ex.subtotal, 'igv': ex.igv,
+                    'total': ex.total, 'estado': ex.estado,
+                    'notas': ex.notas, 'items': list(ex.items or [])
                 }
         finally:
             db.close()
 
-    read_only = existing and existing['estado'] in ('pagada', 'anulada')
+    # Solo anulada es de solo lectura
+    read_only = existing and existing['estado'] == 'anulada'
     title = f"Nota {existing['numero']}" if existing else 'Nueva Nota de Venta'
 
     with ui.dialog() as dialog, ui.card().classes(
         'w-full bg-white p-0 border border-gray-100 shadow-2xl rounded-2xl'
-    ).style('max-width:920px;width:95vw'):
+    ).style('max-width:980px;width:95vw'):
 
         # Header
         with ui.row().classes(
@@ -263,15 +254,15 @@ def open_nota_dialog(list_container, state, nota_id=None):
             with ui.row().classes('items-center gap-3'):
                 ui.icon('receipt_long', size='24px').classes('text-[#274495]')
                 ui.label(title).classes('text-lg font-black text-[#274495]')
+                if existing and existing['estado'] == 'anulada':
+                    ui.chip('ANULADA').props('color=red-7').classes('text-xs font-bold text-white')
             ui.button(icon='close', on_click=dialog.close
                       ).props('flat round color=grey-8 size=sm')
 
         with ui.row().classes('w-full p-6 gap-6').style('align-items:flex-start'):
 
-            # ── Columna izquierda: encabezado de la nota ──────────────────────
+            # ── Columna izquierda: encabezado ─────────────────────────────────
             with ui.column().classes('gap-4').style('flex:1'):
-
-                # Cliente
                 ui.label('CLIENTE').classes('text-[10px] font-black text-gray-400 tracking-widest')
 
                 db = get_db()
@@ -279,171 +270,226 @@ def open_nota_dialog(list_container, state, nota_id=None):
                 opciones_cli = {f"{c.nombre} {c.apellidos}".strip(): c.id for c in clientes}
                 db.close()
 
-                nombre_lbl = ui.label(
-                    existing['cliente_nombre'] if existing else ''
-                ).classes('text-sm font-bold text-gray-700')
-
-                if not read_only:
-                    cli_search = ui.input(
-                        'Buscar cliente registrado…'
-                    ).props('outlined dense bg-color=white clearable').classes('w-full')
-
-                    cli_select = ui.select(
-                        list(opciones_cli.keys()),
-                        label='Seleccionar cliente',
-                        value=None
-                    ).props('outlined dense bg-color=white').classes('w-full')
-
-                    cli_libre = ui.input(
-                        'O nombre libre (sin registro)'
-                    ).props('outlined dense bg-color=white').classes('w-full')
+                if read_only:
+                    ui.label(existing['cliente_nombre'] or '—').classes('text-sm font-bold text-gray-700')
+                    ui.label(f"Estado: {existing['estado'].upper()}").classes('text-sm font-bold')
+                    ui.label(existing.get('notas') or '').classes('text-xs text-gray-500')
+                else:
+                    if existing:
+                        ui.label(f"Cliente: {existing['cliente_nombre'] or '—'}"
+                                 ).classes('text-sm font-semibold text-gray-600')
+                    else:
+                        cli_select = ui.select(
+                            list(opciones_cli.keys()),
+                            label='Seleccionar cliente',
+                            value=None, with_input=True
+                        ).props('outlined dense bg-color=white').classes('w-full')
+                        cli_libre = ui.input(
+                            'O nombre libre (sin registro)'
+                        ).props('outlined dense bg-color=white').classes('w-full')
 
                     estado_nota = ui.select(
                         ['pagada', 'borrador'],
-                        value='pagada', label='Estado'
+                        value=existing['estado'] if existing else 'pagada',
+                        label='Estado'
                     ).props('outlined dense bg-color=white').classes('w-full')
 
                     notas_in = ui.textarea(
-                        'Notas / Observaciones', placeholder='Opcional…'
+                        'Notas / Observaciones',
+                        value=existing.get('notas', '') if existing else '',
+                        placeholder='Opcional…'
                     ).props('outlined dense rows=2 bg-color=white').classes('w-full')
-                else:
-                    ui.label(
-                        f"Estado: {existing['estado'].upper()}"
-                    ).classes('text-sm font-bold')
-                    ui.label(existing.get('notas') or '').classes('text-xs text-gray-500')
 
             # ── Columna derecha: ítems ────────────────────────────────────────
             with ui.column().classes('gap-3').style('flex:1.4'):
-                ui.label('ÍTEMS DE VENTA').classes('text-[10px] font-black text-gray-400 tracking-widest')
+                ui.label('ÍTEMS DE VENTA').classes(
+                    'text-[10px] font-black text-gray-400 tracking-widest')
 
-                # Estado reactivo de los ítems
                 items_state: list[dict] = list(existing['items']) if existing else []
                 items_container = ui.column().classes('w-full gap-2')
-
-                totales_lbl = ui.label('').classes('text-sm font-bold text-gray-700 text-right w-full')
+                totales_lbl = ui.label('').classes(
+                    'text-base font-black text-green-700 text-right w-full')
 
                 def calc_totales():
-                    sub = sum(it.get('subtotal', 0) for it in items_state)
-                    igv = sub * IGV
-                    tot = sub + igv
-                    totales_lbl.set_text(
-                        f'Subtotal: S/ {sub:,.2f}  |  IGV 18%: S/ {igv:,.2f}  |  '
-                        f'TOTAL: S/ {tot:,.2f}'
-                    )
+                    tot = sum(it.get('subtotal', 0) for it in items_state)
+                    totales_lbl.set_text(f'TOTAL: S/ {tot:,.2f}')
 
                 def render_items():
                     items_container.clear()
                     with items_container:
                         if not items_state:
-                            ui.label('Sin ítems aún').classes('text-gray-300 text-sm text-center py-4')
+                            ui.label('Sin ítems aún').classes(
+                                'text-gray-300 text-sm text-center py-4')
+                            calc_totales()
                             return
                         for i, it in enumerate(items_state):
                             with ui.row().classes(
-                                'w-full items-center gap-2 bg-gray-50 rounded-xl p-3 border border-gray-200'
+                                'w-full items-center gap-2 bg-gray-50 rounded-xl '
+                                'p-3 border border-gray-200'
                             ):
                                 with ui.column().classes('flex-1 gap-0'):
-                                    ui.label(it['nombre']).classes('text-sm font-bold text-gray-800')
-                                    ui.label(it.get('codigo', '')).classes('text-[10px] text-gray-400')
-                                ui.label(f"x{it['cantidad']}").classes('text-xs font-black text-[#274495] w-8')
-                                ui.label(f"S/ {it['precio']:,.2f}").classes('text-xs text-gray-600 w-20 text-right')
-                                ui.label(f"S/ {it['subtotal']:,.2f}").classes('text-sm font-black text-green-700 w-24 text-right')
+                                    ui.label(it['nombre']).classes(
+                                        'text-sm font-bold text-gray-800')
+                                    cat = it.get('categoria', '')
+                                    if cat:
+                                        ui.label(cat).classes('text-[10px] text-gray-400')
+                                ui.label(f"x{it['cantidad']}").classes(
+                                    'text-xs font-black text-[#274495] w-8')
+                                ui.label(f"S/ {it.get('precio', it.get('precio_unitario', 0)):,.2f}"
+                                         ).classes('text-xs text-gray-600 w-20 text-right')
+                                ui.label(f"S/ {it['subtotal']:,.2f}").classes(
+                                    'text-sm font-black text-green-700 w-24 text-right')
                                 if not read_only:
                                     ui.button(icon='delete', on_click=lambda idx=i: (
                                         items_state.pop(idx),
                                         render_items(),
-                                        calc_totales()
                                     )).props('flat round dense color=red-6 size=xs')
                     calc_totales()
 
                 render_items()
 
-                # Añadir ítem (solo modo edición)
+                # ── Añadir ítems ──────────────────────────────────────────────
                 if not read_only:
                     ui.separator().classes('my-2')
-                    ui.label('AÑADIR PRODUCTO DEL INVENTARIO').classes(
-                        'text-[10px] font-black text-gray-400 tracking-widest')
 
-                    db2 = get_db()
-                    inv = db2.query(ItemInventario).filter(
-                        ItemInventario.tipo.in_(['Repuesto', 'Servicio'])
-                    ).order_by(ItemInventario.nombre).all()
-                    db2.close()
+                    with ui.tabs().classes('w-full') as tabs_add:
+                        t_inv = ui.tab('Del inventario', icon='inventory_2')
+                        t_mo  = ui.tab('Mano de obra',   icon='build')
 
-                    prod_opts = {f"{p.nombre} ({p.codigo}) — Stock: {p.stock}": p.codigo
-                                 for p in inv if p.stock > 0}
+                    with ui.tab_panels(tabs_add, value=t_inv).classes('w-full pt-2'):
 
-                    prod_sel = ui.select(
-                        list(prod_opts.keys()),
-                        label='Buscar producto…',
-                        with_input=True
-                    ).props('outlined dense bg-color=white').classes('w-full')
+                        # ── Tab inventario ────────────────────────────────────
+                        with ui.tab_panel(t_inv):
+                            db2 = get_db()
+                            inv = db2.query(ItemInventario).order_by(
+                                ItemInventario.nombre).all()
+                            db2.close()
 
-                    with ui.row().classes('w-full gap-2 items-end'):
-                        cant_in = ui.input('Cant.', value='1').props(
-                            'outlined dense type=number bg-color=white').classes('w-24')
-                        precio_in = ui.input('Precio unit. (S/)').props(
-                            'outlined dense type=number bg-color=white').classes('flex-1')
+                            prod_opts = {
+                                f"{p.nombre} ({p.codigo}) — Stock: {p.stock}": p.codigo
+                                for p in inv
+                            }
 
-                        def on_prod_change():
-                            code = prod_opts.get(prod_sel.value, '')
-                            if not code:
-                                return
-                            db3 = get_db()
-                            try:
-                                p = db3.query(ItemInventario).filter_by(codigo=code).first()
-                                if p:
-                                    precio_in.value = str(p.precio)
-                            finally:
-                                db3.close()
+                            prod_sel = ui.select(
+                                list(prod_opts.keys()),
+                                label='Buscar producto…', with_input=True
+                            ).props('outlined dense bg-color=white').classes('w-full')
 
-                        prod_sel.on('update:model-value', lambda: on_prod_change())
+                            with ui.row().classes('w-full gap-2 items-end'):
+                                cant_in = ui.input('Cant.', value='1').props(
+                                    'outlined dense type=number bg-color=white').classes('w-24')
+                                precio_in = ui.input('Precio unit. (S/)').props(
+                                    'outlined dense type=number bg-color=white').classes('flex-1')
 
-                        def add_item():
-                            code = prod_opts.get(prod_sel.value, '')
-                            if not code:
-                                theme.notify_error('Selecciona un producto')
-                                return
-                            try:
-                                qty = int(float(cant_in.value or 1))
-                                price = float(precio_in.value or 0)
-                            except ValueError:
-                                theme.notify_error('Cantidad/precio inválidos')
-                                return
-                            if qty <= 0 or price < 0:
-                                theme.notify_error('Valores inválidos')
-                                return
-
-                            db4 = get_db()
-                            try:
-                                p = db4.query(ItemInventario).filter_by(codigo=code).first()
-                                if not p:
-                                    theme.notify_error('Producto no encontrado')
-                                    return
-                                if p.stock < qty:
-                                    theme.notify_error(f'Stock insuficiente (hay {p.stock})')
-                                    return
-                                # Ver si ya está en la lista
-                                for ex in items_state:
-                                    if ex['codigo'] == code:
-                                        ex['cantidad'] += qty
-                                        ex['subtotal'] = round(ex['cantidad'] * ex['precio'], 2)
-                                        render_items()
+                                def on_prod_change():
+                                    code = prod_opts.get(prod_sel.value, '')
+                                    if not code:
                                         return
-                                items_state.append({
-                                    'codigo': p.codigo, 'nombre': p.nombre,
-                                    'cantidad': qty, 'precio': price,
-                                    'subtotal': round(qty * price, 2)
-                                })
-                                render_items()
-                            finally:
-                                db4.close()
+                                    db3 = get_db()
+                                    try:
+                                        p = db3.query(ItemInventario).filter_by(
+                                            codigo=code).first()
+                                        if p:
+                                            precio_in.value = str(p.precio)
+                                    finally:
+                                        db3.close()
 
-                        ui.button('Agregar', icon='add', on_click=add_item
-                                  ).props('unelevated color=primary')
+                                prod_sel.on('update:model-value', lambda: on_prod_change())
+
+                                def add_inv_item():
+                                    code = prod_opts.get(prod_sel.value, '')
+                                    if not code:
+                                        theme.notify_error('Selecciona un producto')
+                                        return
+                                    try:
+                                        qty = int(float(cant_in.value or 1))
+                                        price = float(precio_in.value or 0)
+                                    except ValueError:
+                                        theme.notify_error('Cantidad/precio inválidos')
+                                        return
+                                    if qty <= 0 or price < 0:
+                                        theme.notify_error('Valores inválidos')
+                                        return
+                                    db4 = get_db()
+                                    try:
+                                        p = db4.query(ItemInventario).filter_by(
+                                            codigo=code).first()
+                                        if not p:
+                                            theme.notify_error('Producto no encontrado')
+                                            return
+                                        # Verificar stock disponible
+                                        ya_en_lista = sum(
+                                            it['cantidad'] for it in items_state
+                                            if it.get('codigo') == code
+                                        )
+                                        if p.stock < qty + ya_en_lista:
+                                            theme.notify_error(
+                                                f'Stock insuficiente (hay {p.stock})')
+                                            return
+                                        for ex in items_state:
+                                            if ex.get('codigo') == code:
+                                                ex['cantidad'] += qty
+                                                ex['subtotal'] = round(
+                                                    ex['cantidad'] * ex['precio'], 2)
+                                                render_items()
+                                                return
+                                        items_state.append({
+                                            'codigo': p.codigo, 'nombre': p.nombre,
+                                            'categoria': p.categoria or 'Repuesto',
+                                            'cantidad': qty, 'precio': price,
+                                            'subtotal': round(qty * price, 2)
+                                        })
+                                        render_items()
+                                    finally:
+                                        db4.close()
+
+                                ui.button('Agregar', icon='add', on_click=add_inv_item
+                                          ).props('unelevated color=primary')
+
+                        # ── Tab mano de obra ──────────────────────────────────
+                        with ui.tab_panel(t_mo):
+                            mo_desc = ui.input(
+                                'Descripción del trabajo',
+                                placeholder='Ej: Cambio de aceite, Diagnóstico eléctrico…'
+                            ).props('outlined dense bg-color=white').classes('w-full')
+                            with ui.row().classes('w-full gap-2 items-end'):
+                                mo_cant = ui.input('Cant.', value='1').props(
+                                    'outlined dense type=number bg-color=white').classes('w-24')
+                                mo_precio = ui.input('Precio (S/)').props(
+                                    'outlined dense type=number bg-color=white').classes('flex-1')
+
+                                def add_mo_item():
+                                    desc = (mo_desc.value or '').strip()
+                                    if not desc:
+                                        theme.notify_error('Describe el trabajo')
+                                        return
+                                    try:
+                                        qty = int(float(mo_cant.value or 1))
+                                        price = float(mo_precio.value or 0)
+                                    except ValueError:
+                                        theme.notify_error('Cantidad/precio inválidos')
+                                        return
+                                    if qty <= 0 or price < 0:
+                                        theme.notify_error('Valores inválidos')
+                                        return
+                                    items_state.append({
+                                        'nombre': desc,
+                                        'categoria': 'Mano de obra',
+                                        'cantidad': qty,
+                                        'precio': price,
+                                        'subtotal': round(qty * price, 2)
+                                    })
+                                    mo_desc.value = ''
+                                    mo_precio.value = ''
+                                    render_items()
+
+                                ui.button('Agregar', icon='add', on_click=add_mo_item
+                                          ).props('unelevated color=green-7')
 
         # ── Footer ────────────────────────────────────────────────────────────
         with ui.row().classes(
-            'w-full justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl'
+            'w-full justify-end gap-3 px-6 py-4 border-t border-gray-100 '
+            'bg-gray-50 rounded-b-2xl'
         ):
             ui.button('Cerrar' if read_only else 'Cancelar',
                       on_click=dialog.close).props('flat color=grey-8')
@@ -451,57 +497,96 @@ def open_nota_dialog(list_container, state, nota_id=None):
             if not read_only:
                 def guardar(cerrar_como='pagada'):
                     if not items_state:
-                        theme.notify_error('Agrega al menos un producto')
+                        theme.notify_error('Agrega al menos un ítem')
                         return
 
-                    # Nombre del cliente
-                    c_nombre = ''
-                    c_id = None
-                    if cli_select.value and cli_select.value in opciones_cli:
-                        c_id = opciones_cli[cli_select.value]
-                        c_nombre = cli_select.value
-                    elif cli_libre.value and cli_libre.value.strip():
-                        c_nombre = cli_libre.value.strip()
-                    else:
-                        c_nombre = 'Cliente mostrador'
-
-                    sub = sum(it['subtotal'] for it in items_state)
-                    igv_val = round(sub * IGV, 2)
-                    tot = round(sub + igv_val, 2)
+                    sub = round(sum(it['subtotal'] for it in items_state), 2)
+                    tot = sub  # Sin IGV
 
                     db = get_db()
                     try:
-                        # Generar número correlativo
-                        last = db.query(NotaVenta).order_by(NotaVenta.id.desc()).first()
-                        seq = (last.id + 1) if last else 1
-                        numero = f"NV-{datetime.now().year}-{seq:04d}"
+                        if existing:
+                            # Editar nota existente
+                            nota = db.query(NotaVenta).filter_by(
+                                id=existing['id']).first()
+                            if not nota:
+                                theme.notify_error('Nota no encontrada')
+                                return
+                            # Descontar stock de los ítems nuevos (los que no estaban)
+                            items_anteriores = {
+                                it.get('codigo'): it.get('cantidad', 0)
+                                for it in (nota.items or [])
+                                if it.get('codigo')
+                            }
+                            for it in items_state:
+                                code = it.get('codigo')
+                                if code:
+                                    cant_antes = items_anteriores.get(code, 0)
+                                    diff = it['cantidad'] - cant_antes
+                                    if diff > 0:
+                                        prod = db.query(ItemInventario).filter_by(
+                                            codigo=code).first()
+                                        if prod:
+                                            prod.stock -= diff
+                                            if prod.stock < 0:
+                                                prod.stock = 0
+                            nota.items    = list(items_state)
+                            nota.subtotal = sub
+                            nota.igv      = 0
+                            nota.total    = tot
+                            nota.estado   = cerrar_como
+                            nota.notas    = (notas_in.value or '').strip()
+                            db.commit()
+                            log_actividad(
+                                f'Nota {nota.numero} editada — S/ {tot:.2f}',
+                                'notas_venta')
+                            theme.notify_success(f'Nota {nota.numero} actualizada ✓')
+                        else:
+                            # Nueva nota
+                            c_nombre = ''
+                            c_id = None
+                            if cli_select.value and cli_select.value in opciones_cli:
+                                c_id = opciones_cli[cli_select.value]
+                                c_nombre = cli_select.value
+                            elif cli_libre.value and cli_libre.value.strip():
+                                c_nombre = cli_libre.value.strip()
+                            else:
+                                c_nombre = 'Cliente mostrador'
 
-                        # Descontar stock
-                        for it in items_state:
-                            prod = db.query(ItemInventario).filter_by(
-                                codigo=it['codigo']).first()
-                            if prod:
-                                prod.stock -= it['cantidad']
-                                if prod.stock < 0:
-                                    prod.stock = 0
+                            last = db.query(NotaVenta).order_by(
+                                NotaVenta.id.desc()).first()
+                            seq = (last.id + 1) if last else 1
+                            numero = f"NV-{datetime.now().year}-{seq:04d}"
 
-                        nv = NotaVenta(
-                            numero=numero,
-                            fecha=datetime.now(),
-                            cliente_id=c_id,
-                            cliente_nombre=c_nombre,
-                            subtotal=sub,
-                            igv=igv_val,
-                            total=tot,
-                            estado=cerrar_como,
-                            notas=(notas_in.value or '').strip(),
-                            items=list(items_state),
-                        )
-                        db.add(nv)
-                        db.commit()
-                        log_actividad(f'Nota de venta {numero} creada — S/ {tot:.2f}',
-                                      'notas_venta', f'{len(items_state)} ítems')
-                        theme.notify_success(f'Nota {numero} guardada ✓')
+                            # Descontar stock de inventario
+                            for it in items_state:
+                                if it.get('codigo'):
+                                    prod = db.query(ItemInventario).filter_by(
+                                        codigo=it['codigo']).first()
+                                    if prod:
+                                        prod.stock -= it['cantidad']
+                                        if prod.stock < 0:
+                                            prod.stock = 0
+
+                            nv = NotaVenta(
+                                numero=numero,
+                                fecha=datetime.now(),
+                                cliente_id=c_id,
+                                cliente_nombre=c_nombre,
+                                subtotal=sub,
+                                igv=0,
+                                total=tot,
+                                estado=cerrar_como,
+                                notas=(notas_in.value or '').strip(),
+                                items=list(items_state),
+                            )
+                            db.add(nv)
+                            db.commit()
+                            log_actividad(
+                                f'Nota {numero} creada — S/ {tot:.2f}',
+                                'notas_venta', f'{len(items_state)} ítems')
+                            theme.notify_success(f'Nota {numero} guardada ✓')
+
                         dialog.close()
                         _refresh(list_container, state)
                     except Exception as e:
