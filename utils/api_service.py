@@ -153,7 +153,11 @@ async def api_login(request: Request) -> JSONResponse:
             if cliente.pin_acceso:
                 ok = verify_password(password, cliente.pin_acceso)
             else:
-                ok = (password == cliente.id)
+                # Contraseña inicial = DNI/RUC. Al primer login correcto, hashearla.
+                ok = (password == str(cliente.id))
+                if ok:
+                    cliente.pin_acceso = hash_password(password)
+                    db.commit()
             if not ok:
                 return json_err('Contraseña incorrecta', 401)
             user_dict = {
@@ -177,8 +181,14 @@ async def api_me(request: Request) -> JSONResponse:
 async def api_logout(request: Request) -> JSONResponse:
     """POST /api/auth/logout"""
     token = _extract_token(request)
-    if token and token in _tokens:
-        del _tokens[token]
+    if token:
+        try:
+            conn = _get_sessions_db()
+            conn.execute('DELETE FROM sessions WHERE token=?', (token,))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
     return json_ok({'ok': True})
 
 
@@ -319,6 +329,9 @@ async def api_orden_estado(request: Request) -> JSONResponse:
     user = _require_auth(request)
     if isinstance(user, JSONResponse):
         return user
+    # Clientes no pueden cambiar estado de órdenes directamente
+    if user.get('rol') == 'cliente':
+        return json_err('Acceso denegado', 403)
     cons = request.path_params.get('id', '')
     try:
         body = await request.json()
@@ -394,7 +407,7 @@ async def api_vehiculos_cliente(request: Request) -> JSONResponse:
         vehiculos = db.query(Vehiculo).filter_by(cliente_id=cliente_id).all()
         return json_ok([{
             'placa': v.placa, 'marca': v.marca, 'modelo': v.modelo,
-            'año': getattr(v, 'áño', getattr(v, 'anio', '')),
+            'año': getattr(v, 'año', getattr(v, 'anio', '')),
         } for v in vehiculos])
     finally:
         db.close()
@@ -412,6 +425,11 @@ async def api_orden_evidencia(request: Request) -> JSONResponse:
         file = form.get('file')
         if not file:
             return json_err('Sin archivo')
+        # Validar tamaño máximo: 50 MB
+        content = await file.read()
+        MAX_SIZE = 50 * 1024 * 1024
+        if len(content) > MAX_SIZE:
+            return json_err('Archivo demasiado grande (máx. 50 MB)')
         # Extensión real del archivo
         ext = 'jpg'
         orig_name = getattr(file, 'filename', '') or ''
@@ -429,7 +447,6 @@ async def api_orden_evidencia(request: Request) -> JSONResponse:
         # Guardar en static/evidencia/
         os.makedirs('static/evidencia', exist_ok=True)
         filepath = os.path.join('static', 'evidencia', filename)
-        content = await file.read()
         with open(filepath, 'wb') as f:
             f.write(content)
         # URL pública accesible
@@ -850,6 +867,10 @@ async def api_cliente_aprobar(request: Request) -> JSONResponse:
             return json_err('Orden no encontrada', 404)
         if o.cliente_id != user['id']:
             return json_err('No autorizado', 403)
+        if (o.approval_status or '') == 'aprobado':
+            return json_err('Esta cotización ya fue aprobada', 400)
+        if (o.estado or '').upper() not in ('APROBACIÓN', 'APROBACION', 'REPUESTOS'):
+            return json_err('La orden no está pendiente de aprobación', 400)
         aprobado = body.get('aprobado', True)
         o.estado = 'REPARACIÓN' if aprobado else 'ARCHIVADO'
         o.approval_status = 'aprobado' if aprobado else 'rechazado'

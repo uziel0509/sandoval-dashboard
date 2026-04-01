@@ -43,10 +43,11 @@ try:
     # ─── Inicializar Base de Datos ───
     from utils.models import init_db, migrate_json_to_db
     init_db()
-    # Pre-poblar API Key de Groq si no existe
+    # Pre-poblar API Key de Groq desde variable de entorno
     from utils.models import get_config, set_config
-    if not get_config('groq_api_key'):
-        set_config('groq_api_key', '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')
+    groq_key_env = os.getenv('GROQ_API_KEY', '')
+    if groq_key_env and not get_config('groq_api_key'):
+        set_config('groq_api_key', groq_key_env)
     log_boot("Base de datos SQLite inicializada")
     
     # migrate_json_to_db()

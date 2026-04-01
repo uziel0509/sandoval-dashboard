@@ -197,12 +197,15 @@ def show_login_page():
                                 error_label.visible = True
                                 return
                             # Verificar contraseña: si tiene pin_acceso hasheado lo usa,
-                            # si no → fallback a DNI/RUC (contraseña inicial)
+                            # si no → fallback a DNI/RUC (contraseña inicial) y hashear al vuelo
                             pass_ok = False
                             if cliente.pin_acceso:
                                 pass_ok = verify_password(pass_val, cliente.pin_acceso)
                             else:
-                                pass_ok = (pass_val == cliente.id)
+                                pass_ok = (pass_val == str(cliente.id))
+                                if pass_ok:
+                                    cliente.pin_acceso = hash_password(pass_val)
+                                    db.commit()
                             if pass_ok:
                                 _set_session(v.cliente_id, '', 'cliente', is_client=True, plate=v.placa)
                                 ui.navigate.to('/')

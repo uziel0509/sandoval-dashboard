@@ -417,10 +417,10 @@ def init_db():
             db.commit()
             print("[DB] Usuarios por defecto creados")
         else:
-            # Siempre resetear contraseña admin para asegurar acceso
-            admin.password_hash = hash_password('admin123')
-            admin.activo = True
-            db.commit()
+            # Solo reactivar si fue desactivado; NO tocar la contraseña
+            if not admin.activo:
+                admin.activo = True
+                db.commit()
             print(f"[DB] Admin verificado (id={admin.id})")
 
         # Config por defecto
