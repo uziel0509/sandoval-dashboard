@@ -1180,20 +1180,41 @@
     document.getElementById('topbar-section').textContent='Clientes';
     var c=document.getElementById('content');c.innerHTML='<div style="text-align:center;padding:50px;color:var(--text3)">Cargando...</div>';
     var data=await apiFetch('/api/clientes');if(!data)return;
-    var rows=data.map(function(cl){
-      var nombre=(cl.nombre||'')+(cl.apellidos?' '+cl.apellidos:'');
-      var ini=nombre.split(' ').map(function(w){return w[0]||'';}).join('').slice(0,2).toUpperCase()||'?';
-      return'<div class="hr slide-up" style="align-items:center;gap:12px" onclick="verPerfilCliente(\''+encodeURIComponent(cl.id)+'\')">'
-        +'<div style="width:40px;height:40px;border-radius:50%;background:#e0eaff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#1d4ed8;flex-shrink:0">'+ini+'</div>'
-        +'<div style="flex:1;min-width:0">'
-          +'<div style="font-size:14px;font-weight:600;color:var(--text)">'+nombre+'</div>'
-          +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+(cl.telefono||cl.id||'')+'</div>'
-        +'</div>'
-        +'<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--text3)" stroke-width="1.5"><path d="M6 3l5 5-5 5"/></svg>'
-        +'</div>';
-    }).join('');
-    c.innerHTML='<div class="slide-up"><div class="sec"><div class="sec-head"><span class="sec-title">Clientes ('+data.length+')</span></div>'
-      +'<div style="background:#fff;border-radius:20px;padding:0 16px">'+rows+'</div></div></div>';
+    window._clientesData=data;
+    function renderClientes(list){
+      var rows=list.map(function(cl){
+        var nombre=(cl.nombre||'')+(cl.apellidos?' '+cl.apellidos:'');
+        var ini=nombre.split(' ').map(function(w){return w[0]||'';}).join('').slice(0,2).toUpperCase()||'?';
+        return'<div class="hr slide-up" style="align-items:center;gap:12px" onclick="verPerfilCliente(\''+encodeURIComponent(cl.id)+'\')">'
+          +'<div style="width:40px;height:40px;border-radius:50%;background:#e0eaff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#1d4ed8;flex-shrink:0">'+ini+'</div>'
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="font-size:14px;font-weight:600;color:var(--text)">'+nombre+'</div>'
+            +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+(cl.telefono||cl.id||'')+'</div>'
+          +'</div>'
+          +'<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--text3)" stroke-width="1.5"><path d="M6 3l5 5-5 5"/></svg>'
+          +'</div>';
+      }).join('');
+      document.getElementById('clientes-list').innerHTML=rows||'<div style="text-align:center;padding:20px;color:var(--text3);font-size:13px">Sin resultados</div>';
+      document.getElementById('clientes-count').textContent='Clientes ('+list.length+')';
+    }
+    c.innerHTML='<div class="slide-up"><div class="sec">'
+      +'<div class="sec-head"><span id="clientes-count" class="sec-title">Clientes ('+data.length+')</span></div>'
+      +'<div style="padding:0 0 10px">'
+        +'<input id="cli-search" type="search" placeholder="Buscar por nombre, teléfono o DNI/RUC..." oninput="filtrarClientes(this.value)" style="border-radius:12px;border:1.5px solid var(--border);font-size:14px;padding:11px 14px;background:#fff;width:100%">'
+      +'</div>'
+      +'<div id="clientes-list" style="background:#fff;border-radius:20px;padding:0 16px"></div>'
+      +'</div></div>';
+    renderClientes(data);
+    window._renderClientes=renderClientes;
+  }
+  function filtrarClientes(q){
+    var list=window._clientesData||[];
+    q=(q||'').toLowerCase().trim();
+    if(!q){window._renderClientes(list);return;}
+    window._renderClientes(list.filter(function(cl){
+      var nombre=((cl.nombre||'')+' '+(cl.apellidos||'')).toLowerCase();
+      return nombre.includes(q)||(cl.telefono||'').includes(q)||(cl.id||'').toLowerCase().includes(q);
+    }));
   }
 
   async function verPerfilCliente(idEnc){
@@ -1278,8 +1299,28 @@
     var c=document.getElementById('content');c.innerHTML='<div style="text-align:center;padding:50px;color:var(--text3)">Cargando...</div>';
     var data=await apiFetch('/api/inventario');if(!data)return;
     window._invData=data;
-    var rows=data.map(function(i){return'<div class="hr"><div style="flex:1"><div class="hr-desc">'+i.nombre+'</div><div class="hr-meta">'+(i.categoria||'')+'</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:600;color:var(--text)">'+fmtMoney(i.precio)+'</div><span class="badge '+(i.stock<=i.stock_minimo?'b-red':'b-green')+'" style="font-size:9px">Stock: '+i.stock+'</span></div></div>';}).join('');
-    c.innerHTML='<div class="slide-up"><div class="sec"><div class="sec-head"><span class="sec-title">Inventario ('+data.length+')</span></div><div style="background:#fff;border-radius:20px;padding:0 16px">'+rows+'</div></div></div>';
+    function renderInv(list){
+      var rows=list.map(function(i){return'<div class="hr"><div style="flex:1"><div class="hr-desc">'+i.nombre+'</div><div class="hr-meta">'+(i.categoria||'')+'</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:600;color:var(--text)">'+fmtMoney(i.precio)+'</div><span class="badge '+(i.stock<=i.stock_minimo?'b-red':'b-green')+'" style="font-size:9px">Stock: '+i.stock+'</span></div></div>';}).join('');
+      document.getElementById('inv-list').innerHTML=rows||'<div style="text-align:center;padding:20px;color:var(--text3);font-size:13px">Sin resultados</div>';
+      document.getElementById('inv-count').textContent='Inventario ('+list.length+')';
+    }
+    c.innerHTML='<div class="slide-up"><div class="sec">'
+      +'<div class="sec-head"><span id="inv-count" class="sec-title">Inventario ('+data.length+')</span></div>'
+      +'<div style="padding:0 0 10px">'
+        +'<input id="inv-search" type="search" placeholder="Buscar por nombre o categoría..." oninput="filtrarInventario(this.value)" style="border-radius:12px;border:1.5px solid var(--border);font-size:14px;padding:11px 14px;background:#fff;width:100%">'
+      +'</div>'
+      +'<div id="inv-list" style="background:#fff;border-radius:20px;padding:0 16px"></div>'
+      +'</div></div>';
+    renderInv(data);
+    window._renderInv=renderInv;
+  }
+  function filtrarInventario(q){
+    var list=window._invData||[];
+    q=(q||'').toLowerCase().trim();
+    if(!q){window._renderInv(list);return;}
+    window._renderInv(list.filter(function(i){
+      return (i.nombre||'').toLowerCase().includes(q)||(i.categoria||'').toLowerCase().includes(q);
+    }));
   }
 
   async function pageNotas(){
@@ -1300,20 +1341,26 @@
     document.getElementById('topbar-section').textContent='Nueva Orden';
     var c=document.getElementById('content');
     c.innerHTML='<div style="text-align:center;padding:50px;color:var(--text3)">Cargando...</div>';
-    // Cargar clientes y vehiculos
     var clientes=await apiFetch('/api/clientes');if(!clientes)return;
+    window._noClientes=clientes;
     var html='<div class="slide-up"><div class="sec"><div class="sec-head"><span class="sec-title">Nueva orden de servicio</span></div>'
       +'<div class="form-card">'
         +'<div class="field"><label>Cliente</label>'
-          +'<select id="no-cliente" onchange="cargarVehiculos(this.value)" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--border);font-size:14px;background:#fff">'
-            +'<option value="">Seleccionar cliente...</option>'
-            +clientes.map(function(cl){return'<option value="'+cl.id+'">'+(cl.nombre||'')+(cl.apellidos?' '+cl.apellidos:'')+'</option>';}).join('')
-          +'</select>'
+          +'<div style="display:flex;gap:8px;align-items:center">'
+            +'<select id="no-cliente" onchange="cargarVehiculos(this.value)" style="flex:1;padding:12px;border-radius:12px;border:1.5px solid var(--border);font-size:14px;background:#fff">'
+              +'<option value="">Seleccionar cliente...</option>'
+              +clientes.map(function(cl){return'<option value="'+cl.id+'">'+(cl.nombre||'')+(cl.apellidos?' '+cl.apellidos:'')+'</option>';}).join('')
+            +'</select>'
+            +'<button onclick="abrirCrearCliente()" title="Nuevo cliente" style="flex-shrink:0;width:42px;height:42px;border-radius:12px;border:1.5px solid var(--blue);background:var(--blue-light);color:var(--blue);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center">+</button>'
+          +'</div>'
         +'</div>'
         +'<div class="field"><label>Vehículo / Placa</label>'
-          +'<select id="no-vehiculo" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--border);font-size:14px;background:#fff">'
-            +'<option value="">Primero selecciona cliente</option>'
-          +'</select>'
+          +'<div style="display:flex;gap:8px;align-items:center">'
+            +'<select id="no-vehiculo" style="flex:1;padding:12px;border-radius:12px;border:1.5px solid var(--border);font-size:14px;background:#fff">'
+              +'<option value="">Primero selecciona cliente</option>'
+            +'</select>'
+            +'<button onclick="abrirCrearVehiculo()" title="Nuevo vehículo" style="flex-shrink:0;width:42px;height:42px;border-radius:12px;border:1.5px solid var(--blue);background:var(--blue-light);color:var(--blue);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center">+</button>'
+          +'</div>'
         +'</div>'
         +'<div class="field"><label>Motivo de ingreso</label><textarea id="no-motivo" rows="3" placeholder="Describe el motivo de ingreso del vehículo..."></textarea></div>'
         +'<div class="field"><label>KM actual</label><input id="no-km" type="number" placeholder="Ej: 15000"></div>'
@@ -1330,6 +1377,86 @@
     var sel=document.getElementById('no-vehiculo');
     if(!vehs||!vehs.length){sel.innerHTML='<option value="">Sin vehículos registrados</option>';return;}
     sel.innerHTML='<option value="">Seleccionar vehículo...</option>'+vehs.map(function(v){return'<option value="'+v.placa+'">'+v.placa+(v.marca?' — '+v.marca:'')+(v.modelo?' '+v.modelo:'')+'</option>';}).join('');
+  }
+
+  function abrirCrearCliente(){
+    openSheet('<div style="padding:16px 18px 24px">'
+      +'<div style="text-align:center;font-size:17px;font-weight:700;margin-bottom:18px">Nuevo Cliente</div>'
+      +'<div class="field"><label>DNI / RUC *</label><input id="nc-id" placeholder="Ej: 12345678 o 20123456789" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:12px;font-size:14px"></div>'
+      +'<div class="field"><label>Nombre *</label><input id="nc-nombre" placeholder="Nombres" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:12px;font-size:14px"></div>'
+      +'<div class="field"><label>Apellidos</label><input id="nc-apellidos" placeholder="Apellidos" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:12px;font-size:14px"></div>'
+      +'<div class="field"><label>Teléfono</label><input id="nc-telefono" type="tel" placeholder="Ej: 999888777" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:12px;font-size:14px"></div>'
+      +'<div class="field"><label>Email</label><input id="nc-email" type="email" placeholder="correo@ejemplo.com" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:12px;font-size:14px"></div>'
+      +'<div style="display:flex;gap:10px;margin-top:16px">'
+        +'<button onclick="closeSheet()" style="flex:1;padding:13px;border:1.5px solid var(--border);border-radius:13px;background:#fff;font-size:15px;cursor:pointer">Cancelar</button>'
+        +'<button onclick="guardarNuevoCliente()" style="flex:1;padding:13px;border:none;border-radius:13px;background:var(--blue);color:#fff;font-size:15px;font-weight:600;cursor:pointer">Guardar</button>'
+      +'</div>'
+    +'</div>');
+  }
+
+  async function guardarNuevoCliente(){
+    var id=(document.getElementById('nc-id').value||'').trim();
+    var nombre=(document.getElementById('nc-nombre').value||'').trim();
+    if(!id||!nombre){toastErr('DNI/RUC y Nombre son obligatorios');return;}
+    var r=await apiFetch('/api/clientes/nuevo',{method:'POST',body:JSON.stringify({
+      id:id,nombre:nombre,
+      apellidos:(document.getElementById('nc-apellidos').value||'').trim(),
+      telefono:(document.getElementById('nc-telefono').value||'').trim(),
+      email:(document.getElementById('nc-email').value||'').trim()
+    })});
+    if(r&&r.ok){
+      toastOk('Cliente creado');
+      closeSheet();
+      var clientes=await apiFetch('/api/clientes');
+      if(!clientes)return;
+      window._noClientes=clientes;
+      var sel=document.getElementById('no-cliente');
+      sel.innerHTML='<option value="">Seleccionar cliente...</option>'
+        +clientes.map(function(cl){return'<option value="'+cl.id+'"'+(cl.id===id?' selected':'')+'>'+( cl.nombre||'')+(cl.apellidos?' '+cl.apellidos:'')+'</option>';}).join('');
+      cargarVehiculos(id);
+    } else {
+      toastErr((r&&r.error)||'Error al guardar cliente');
+    }
+  }
+
+  function abrirCrearVehiculo(){
+    var clienteId=(document.getElementById('no-cliente')||{}).value||'';
+    openSheet('<div style="padding:16px 18px 24px">'
+      +'<div style="text-align:center;font-size:17px;font-weight:700;margin-bottom:18px">Nuevo Vehículo</div>'
+      +'<div class="field"><label>Placa *</label><input id="nv-placa" placeholder="Ej: ABC-123" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:12px;font-size:14px;text-transform:uppercase"></div>'
+      +'<div class="field"><label>Marca</label><input id="nv-marca" placeholder="Ej: Toyota" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:12px;font-size:14px"></div>'
+      +'<div class="field"><label>Modelo</label><input id="nv-modelo" placeholder="Ej: Corolla" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:12px;font-size:14px"></div>'
+      +'<div class="field"><label>Año</label><input id="nv-anio" type="number" placeholder="Ej: 2020" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:12px;font-size:14px"></div>'
+      +'<div class="field"><label>Tipo</label><select id="nv-tipo" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:12px;font-size:14px;background:#fff"><option>Sedán</option><option>SUV</option><option>Camioneta</option><option>Moto</option><option>Camión</option><option>Furgoneta</option><option>Otro</option></select></div>'
+      +'<div class="field"><label>Color</label><input id="nv-color" placeholder="Ej: Blanco" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:12px;font-size:14px"></div>'
+      +'<input type="hidden" id="nv-cliente-id" value="'+clienteId+'">'
+      +'<div style="display:flex;gap:10px;margin-top:16px">'
+        +'<button onclick="closeSheet()" style="flex:1;padding:13px;border:1.5px solid var(--border);border-radius:13px;background:#fff;font-size:15px;cursor:pointer">Cancelar</button>'
+        +'<button onclick="guardarNuevoVehiculo()" style="flex:1;padding:13px;border:none;border-radius:13px;background:var(--blue);color:#fff;font-size:15px;font-weight:600;cursor:pointer">Guardar</button>'
+      +'</div>'
+    +'</div>');
+  }
+
+  async function guardarNuevoVehiculo(){
+    var placa=(document.getElementById('nv-placa').value||'').trim().toUpperCase();
+    var clienteId=(document.getElementById('nv-cliente-id').value||'').trim();
+    if(!placa){toastErr('La placa es obligatoria');return;}
+    if(!clienteId){toastErr('Primero selecciona o crea un cliente');return;}
+    var r=await apiFetch('/api/vehiculos/nuevo',{method:'POST',body:JSON.stringify({
+      placa:placa,cliente_id:clienteId,
+      marca:(document.getElementById('nv-marca').value||'').trim(),
+      modelo:(document.getElementById('nv-modelo').value||'').trim(),
+      año:(document.getElementById('nv-anio').value||'').trim(),
+      tipo:document.getElementById('nv-tipo').value,
+      color:(document.getElementById('nv-color').value||'').trim()
+    })});
+    if(r&&r.ok){
+      toastOk('Vehículo '+placa+' registrado');
+      closeSheet();
+      cargarVehiculos(clienteId);
+    } else {
+      toastErr((r&&r.error)||'Error al guardar vehículo');
+    }
   }
 
   async function crearOrden(){
