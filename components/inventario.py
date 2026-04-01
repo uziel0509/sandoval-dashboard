@@ -164,7 +164,7 @@ def open_item_dialog(table_container, state, edit_code=None, on_success=None):
             tipo = ui.select(TIPOS_ITEM, value=curr_tipo, label='Tipo *').props('outlined dense bg-color=white').classes('w-full')
             
             with ui.row().classes('w-full gap-4'):
-                codigo_input = ui.input('Código *', value=existing['codigo'] if existing else '').props('outlined dense bg-color=white' + (' readonly' if existing else '')).classes('flex-1')
+                codigo_input = ui.input('Código (auto si vacío)', value=existing['codigo'] if existing else '').props('outlined dense bg-color=white' + (' readonly' if existing else '')).classes('flex-1')
                 
                 curr_cat = existing.get('categoria', 'Repuestos') if existing else 'Repuestos'
                 if curr_cat not in CATEGORIAS: CATEGORIAS.append(curr_cat)
@@ -193,8 +193,8 @@ def open_item_dialog(table_container, state, edit_code=None, on_success=None):
             ui.button('Cancelar', on_click=dialog.close).props('flat color=grey-8')
             
             def guardar():
-                if not codigo_input.value or not nombre_input.value:
-                    theme.notify_error('Código y Nombre obligatorios')
+                if not nombre_input.value:
+                    theme.notify_error('El Nombre es obligatorio')
                     return
                 db = get_db()
                 try:
@@ -210,26 +210,34 @@ def open_item_dialog(table_container, state, edit_code=None, on_success=None):
                             i.precio = float(precio_input.value or 0)
                             i.stock = int(float(stock_input.value or 0))
                             db.commit()
+                        codigo_final = edit_code
                     else:
-                        if db.query(ItemInventario).filter_by(codigo=codigo_input.value.strip()).first():
+                        codigo_manual = (codigo_input.value or '').strip()
+                        if codigo_manual and db.query(ItemInventario).filter_by(codigo=codigo_manual).first():
                             theme.notify_error('Código ya existe')
                             return
-                        db.add(ItemInventario(
-                            codigo=codigo_input.value.strip(), nombre=nombre_input.value.strip(),
+                        nuevo = ItemInventario(
+                            codigo=codigo_manual or 'TEMP',
+                            nombre=nombre_input.value.strip(),
                             categoria=cat_select.value, tipo=tipo.value,
                             descripcion=(desc_input.value or '').strip(),
                             costo=float(costo_input.value or 0), rentabilidad=float(rent_input.value or 0),
                             precio=float(precio_input.value or 0), stock=int(float(stock_input.value or 0))
-                        ))
+                        )
+                        db.add(nuevo)
+                        db.flush()  # genera el ID sin cerrar la transacción
+                        if not codigo_manual:
+                            nuevo.codigo = f'REP-{nuevo.id:06d}'
                         db.commit()
+                        codigo_final = nuevo.codigo
                     theme.notify_success('Ítem guardado')
                     dialog.close()
                     if table_container and state:
                         refresh_table(table_container, state)
-                    
+
                     if on_success and not existing:
-                        on_success(codigo_input.value.strip())
-                        
+                        on_success(codigo_final)
+
                 except Exception as e:
                     db.rollback()
                     theme.notify_error(f'Error: {str(e)}')
