@@ -42,16 +42,38 @@ def show_dashboard(container):
 
             recom_vals     = [e.get('recomendacion', 10) for e in encuestas]
             avg_nps        = (sum(recom_vals) / len(recom_vals)) if recom_vals else 0
-            total_ingresos = sum(
-                float(it.get('total', 0) or 0)
-                for o in ordenes
-                for it in (
-                    __import__('json').loads(o.items_cotizacion)
-                    if isinstance(o.items_cotizacion, str) else (o.items_cotizacion or [])
-                )
+            def _items_total(o):
+                try:
+                    items = json.loads(o.items_cotizacion) if isinstance(o.items_cotizacion, str) else (o.items_cotizacion or [])
+                    return sum(float(it.get('total', 0) or 0) for it in items if isinstance(it, dict))
+                except Exception:
+                    return 0.0
+
+            activas     = [o for o in ordenes if o.estado not in ('ARCHIVADO', 'ENTREGA')]
+            completadas = [o for o in ordenes if o.estado in ('ARCHIVADO', 'ENTREGA')]
+
+            # 1. Ingresos históricos totales (todas las órdenes)
+            total_ingresos = sum(_items_total(o) for o in ordenes)
+
+            # 2. Ingresos del mes actual (últimos 30 días)
+            from datetime import timedelta
+            hace_30 = datetime.now() - timedelta(days=30)
+            def _parse_fecha_o(f):
+                f = (f or '')[:10]
+                for fmt in ('%Y-%m-%d', '%d/%m/%Y'):
+                    try:
+                        from datetime import datetime as _dt
+                        return _dt.strptime(f, fmt)
+                    except Exception:
+                        pass
+                return None
+            ingresos_mes = sum(
+                _items_total(o) for o in ordenes
+                if (_parse_fecha_o(o.fecha) or hace_30) >= hace_30
             )
-            activas      = [o for o in ordenes if o.estado not in ('ARCHIVADO', 'ENTREGA')]
-            completadas  = [o for o in ordenes if o.estado in ('ARCHIVADO', 'ENTREGA')]
+
+            # 3. Ingresos cobrados (solo órdenes entregadas/archivadas)
+            ingresos_cobrados = sum(_items_total(o) for o in completadas)
 
             from utils.models import Cliente as ClienteModel
             client_ids  = list({o.cliente_id for o in ordenes if o.cliente_id})
@@ -73,8 +95,8 @@ def show_dashboard(container):
 
             # ── LAYOUT ────────────────────────────────────────────────────────
             _render_header()
-            _render_kpis(avg_nps, total_ingresos, len(activas), n_clientes,
-                         len(completadas), len(encuestas), ventas_mes)
+            _render_kpis(avg_nps, total_ingresos, ingresos_mes, ingresos_cobrados,
+                         len(activas), n_clientes, len(completadas), len(encuestas), ventas_mes)
 
             with ui.column().classes('w-full gap-5 mb-5 md:flex-row md:flex-wrap lg:flex-nowrap'):
                 _render_estados_chart(ordenes)
@@ -159,13 +181,16 @@ def _show_qr_dialog():
 #  KPIs — FILA DE 5 TARJETAS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _render_kpis(avg_nps, total_ingresos, n_activas, n_clientes, n_completadas, n_encuestas, ventas_mes=0):
+def _render_kpis(avg_nps, total_ingresos, ingresos_mes, ingresos_cobrados,
+                 n_activas, n_clientes, _n_completadas, n_encuestas, ventas_mes=0):
     kpis = [
-        ('Ingresos Taller',        f'S/ {total_ingresos:,.0f}', 'Servicios acumulados',          'payments',     '#10b981', '#f0fdf4'),
-        ('Ventas Repuestos',       f'S/ {ventas_mes:,.0f}',     'Notas de venta este mes',       'receipt_long', '#274495', '#eff6ff'),
-        ('Órdenes en Taller',      str(n_activas),              'Trabajos activos ahora',        'engineering',  '#6366f1', '#eef2ff'),
-        ('Clientes Registrados',   str(n_clientes),             'Base de fidelización',          'groups',       '#0ea5e9', '#f0f9ff'),
-        ('Satisfacción Global',    f'{avg_nps:.1f}/10',         f'{n_encuestas} encuestas',      'star_rate',    '#f59e0b', '#fffbeb'),
+        ('Ingresos Históricos',    f'S/ {total_ingresos:,.0f}',    'Acumulado total de órdenes',       'payments',      '#10b981', '#f0fdf4'),
+        ('Ingresos Últimos 30d',   f'S/ {ingresos_mes:,.0f}',      'Servicios facturados este mes',    'trending_up',   '#6366f1', '#eef2ff'),
+        ('Ingresos Cobrados',      f'S/ {ingresos_cobrados:,.0f}', 'Órdenes entregadas/archivadas',    'task_alt',      '#0ea5e9', '#f0f9ff'),
+        ('Ventas Repuestos',       f'S/ {ventas_mes:,.0f}',        'Notas de venta este mes',          'receipt_long',  '#274495', '#eff6ff'),
+        ('Órdenes Activas',        str(n_activas),                 'Trabajos en proceso ahora',        'engineering',   '#f59e0b', '#fffbeb'),
+        ('Clientes',               str(n_clientes),                'Base de clientes registrados',     'groups',        '#ec4899', '#fdf2f8'),
+        ('Satisfacción',           f'{avg_nps:.1f}/10',            f'{n_encuestas} encuestas',         'star_rate',     '#f59e0b', '#fffbeb'),
     ]
     with ui.row().classes('w-full gap-4 mb-5 justify-center md:flex-nowrap flex-wrap'):
         for titulo, valor, sub, icon, color, bg in kpis:
