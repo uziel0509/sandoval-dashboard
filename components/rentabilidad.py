@@ -27,16 +27,18 @@ def _parse_items(items_raw) -> list:
 
 def _build_costo_map(db) -> dict:
     """
-    Construye un mapa {nombre_lower: costo} desde ItemInventario.
-    Así podemos buscar el costo real de cada repuesto por nombre.
+    Construye mapa {codigo: costo} Y {nombre_lower: costo} desde ItemInventario.
+    Prioriza búsqueda por código (campo referencia/ref de los items).
     """
     costo_map = {}
     try:
         items_inv = db.query(ItemInventario).all()
         for inv in items_inv:
-            nombre_key = (inv.nombre or '').strip().lower()
             costo_val = float(inv.costo or 0)
-            if nombre_key and costo_val > 0:
+            if inv.codigo:
+                costo_map[inv.codigo.strip()] = costo_val
+            nombre_key = (inv.nombre or '').strip().lower()
+            if nombre_key and nombre_key not in costo_map:
                 costo_map[nombre_key] = costo_val
     except Exception:
         pass
@@ -55,21 +57,30 @@ def _calcular_orden(o, costo_map: dict) -> dict:
     for it in items:
         try:
             qty = float(it.get('cantidad', 1) or 1)
+            cat = (it.get('categoria') or '').strip().lower()
+            ref = (it.get('referencia') or it.get('ref') or '').strip()
+            nombre_key = (it.get('nombre') or '').strip().lower()
+
             # Monto cobrado: preferir 'total', sino precio_unitario * qty
             if it.get('total') not in (None, '', 0):
                 cobrado += float(it['total'])
             elif it.get('precio_unitario') not in (None, ''):
                 cobrado += float(it.get('precio_unitario', 0)) * qty
 
-            # Costo: 1) del ítem si viene, 2) del inventario, 3) 60% estimado
+            # Mano de obra: costo = 0 (100% ganancia)
+            es_mo = (cat in ('servicio', 'mano de obra')
+                     or ref == 'MANO-DE-OBRA'
+                     or nombre_key.startswith('mano de obra'))
+            if es_mo:
+                continue  # costo 0, no suma a costo_rep
+
+            # Costo repuesto: 1) campo costo en ítem, 2) por código ref, 3) por nombre
             costo_unit = float(it.get('costo', 0) or 0)
-            if costo_unit == 0:
-                nombre_key = (it.get('nombre', '') or '').strip().lower()
+            if costo_unit == 0 and ref:
+                costo_unit = costo_map.get(ref, 0)
+            if costo_unit == 0 and nombre_key:
                 costo_unit = costo_map.get(nombre_key, 0)
-            if costo_unit == 0:
-                # Estimado: 60% del precio unitario como fallback
-                pu = float(it.get('precio_unitario', 0) or 0)
-                costo_unit = pu * 0.60
+            # Sin fallback estimado: si no hay costo en inventario, queda 0
             costo_rep += costo_unit * qty
         except Exception:
             pass
@@ -88,8 +99,8 @@ def _get_data():
     db = get_db()
     try:
         ordenes = db.query(Orden).all()
-        # Excluir archivadas (también filtra None)
-        ordenes = [o for o in ordenes if (o.estado or '') != 'ARCHIVADO']
+        # Excluir solo órdenes sin items (vacías)
+        ordenes = [o for o in ordenes if o.items_cotizacion and o.items_cotizacion != '[]']
 
         # Mapa de costos desde inventario {nombre_lower: costo}
         costo_map = _build_costo_map(db)
@@ -120,17 +131,41 @@ def _get_data():
             cos_s = 0.0
             for o, calc in ordenes_calc:
                 try:
-                    fecha_o = o.fecha if isinstance(o.fecha, datetime) else datetime.fromisoformat(str(o.fecha))
-                    if inicio <= fecha_o < fin:
+                    f = str(o.fecha or '')[:10]
+                    for fmt in ('%Y-%m-%d', '%d/%m/%Y'):
+                        try:
+                            fecha_o = datetime.strptime(f, fmt)
+                            break
+                        except Exception:
+                            fecha_o = None
+                    if fecha_o and inicio <= fecha_o < fin:
                         ing_s += calc['cobrado']
                         cos_s += calc['costo_rep']
                 except Exception:
                     pass
             semanas.append({'label': label, 'ingresos': ing_s, 'costos': cos_s})
 
-        # --- Composición: mano de obra vs repuestos ---
-        total_rep = sum(c['costo_rep'] for _, c in ordenes_calc)
-        total_mo = max(0, ingresos_total - total_rep)  # estimado
+        # --- Composición: mano de obra vs repuestos (ingresos reales por categoría) ---
+        ing_mo = 0.0
+        ing_rep_real = 0.0
+        for o, _ in ordenes_calc:
+            for it in _parse_items(o.items_cotizacion):
+                try:
+                    total_it = float(it.get('total') or float(it.get('precio_unitario', 0)) * float(it.get('cantidad', 1)))
+                    cat = (it.get('categoria') or '').strip().lower()
+                    ref = (it.get('referencia') or it.get('ref') or '').strip()
+                    nombre_it = (it.get('nombre') or '').strip().lower()
+                    es_mo = (cat in ('servicio', 'mano de obra')
+                             or ref == 'MANO-DE-OBRA'
+                             or nombre_it.startswith('mano de obra'))
+                    if es_mo:
+                        ing_mo += total_it
+                    else:
+                        ing_rep_real += total_it
+                except Exception:
+                    pass
+        total_rep = ing_rep_real
+        total_mo = ing_mo
 
         # --- Ranking de servicios (por motivo) ---
         servicios: dict = {}
