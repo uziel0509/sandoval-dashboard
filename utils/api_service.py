@@ -1215,7 +1215,7 @@ async def api_reportes_ganancia(request: Request) -> JSONResponse:
 
         return json_ok({
             'periodo': periodo,
-            'desde': inicio_str,
+            'desde': inicio_dt.strftime('%Y-%m-%d'),
             'resumen': {
                 'total_ingresos': round(total_ingresos, 2),
                 'total_costo': round(total_costo, 2),
