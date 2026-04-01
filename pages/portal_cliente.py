@@ -737,7 +737,7 @@ def show_portal_page():
   <nav class="sb">
     {emp_card}
     <div class="sb-sec">Principal</div>
-    {_ni('dashboard','dash','Dashboard','dashboard',active='dashboard')}
+    {_ni('dashboard','dash','Dashboard','dashboard')}
     {_ni('flota','car','Mi Flota','flota',badge=str(len(vehs)) if len(vehs)>1 else None)}
     <div class="sb-sec">Servicios</div>
     {_ni('ordenes','ord','Órdenes Activas','ordenes',badge=str(len(ord_act)) if ord_act else None,red=True)}
