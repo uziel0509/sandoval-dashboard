@@ -205,7 +205,7 @@ def show_login_page():
                                 pass_ok = (pass_val == cliente.id)
                             if pass_ok:
                                 _set_session(v.cliente_id, '', 'cliente', is_client=True, plate=v.placa)
-                                ui.navigate.to('/portal')
+                                ui.navigate.to('/')
                             else:
                                 error_label.text = 'Contraseña incorrecta. Su contraseña inicial es su DNI o RUC.'
                                 error_label.visible = True
