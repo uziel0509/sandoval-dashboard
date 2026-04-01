@@ -1061,6 +1061,161 @@ async def api_orden_subir_factura(request: Request) -> JSONResponse:
         return json_err(str(e))
 
 
+async def api_reportes_ganancia(request: Request) -> JSONResponse:
+    """GET /api/reportes/ganancia?periodo=semana|mes|año — rentabilidad por periodo"""
+    user = _require_admin(request)
+    if isinstance(user, JSONResponse):
+        return user
+
+    periodo = request.query_params.get('periodo', 'mes')
+    now = datetime.now()
+
+    if periodo == 'semana':
+        # Lunes de esta semana
+        inicio = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        inicio = inicio - timedelta(days=inicio.weekday())
+    elif periodo == 'año':
+        inicio = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:  # mes (default)
+        inicio = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    inicio_str = inicio.strftime('%Y-%m-%d')
+
+    db = get_db()
+    try:
+        # Construir mapa de costos del inventario: codigo -> costo
+        inv_items = db.query(ItemInventario).all()
+        costos_map = {it.codigo: (it.costo or 0) for it in inv_items}
+
+        # ── Procesar Órdenes de Servicio ──────────────────────────────────
+        ordenes = db.query(Orden).all()
+
+        ing_repuestos = 0.0
+        costo_repuestos = 0.0
+        ing_mano_obra = 0.0
+        productos_agg = {}  # nombre -> {ingresos, costo, ganancia, unidades}
+
+        for o in ordenes:
+            # Filtrar por fecha: formato "YYYY-MM-DD HH:MM" o "YYYY-MM-DD"
+            fecha_str = (o.fecha or '')[:10]
+            if fecha_str < inicio_str:
+                continue
+
+            items = o.items_cotizacion or []
+            if isinstance(items, str):
+                try:
+                    import json as _j
+                    items = _j.loads(items)
+                except Exception:
+                    items = []
+            if not isinstance(items, list):
+                continue
+
+            for it in items:
+                precio_u = float(it.get('precio_unitario', 0) or 0)
+                cant = float(it.get('cantidad', 1) or 1)
+                total = precio_u * cant
+                cat = (it.get('categoria') or '').strip().lower()
+                ref = (it.get('referencia') or it.get('ref') or '').strip()
+                nombre = (it.get('nombre') or 'Sin nombre').strip()
+
+                es_mo = cat in ('servicio', 'mano de obra') or ref == 'MANO-DE-OBRA' or 'mano' in nombre.lower()
+
+                if es_mo:
+                    ing_mano_obra += total
+                    key = 'mano_obra'
+                    if key not in productos_agg:
+                        productos_agg[key] = {'nombre': 'Mano de obra / Servicios', 'ingresos': 0, 'costo': 0, 'ganancia': 0, 'unidades': 0, 'es_mo': True}
+                    productos_agg[key]['ingresos'] += total
+                    productos_agg[key]['ganancia'] += total
+                    productos_agg[key]['unidades'] += cant
+                else:
+                    costo_u = costos_map.get(ref, 0) if ref else 0
+                    costo_total = costo_u * cant
+                    ganancia = total - costo_total
+                    ing_repuestos += total
+                    costo_repuestos += costo_total
+                    key = ref or nombre
+                    if key not in productos_agg:
+                        productos_agg[key] = {'nombre': nombre, 'ingresos': 0, 'costo': 0, 'ganancia': 0, 'unidades': 0, 'es_mo': False}
+                    productos_agg[key]['ingresos'] += total
+                    productos_agg[key]['costo'] += costo_total
+                    productos_agg[key]['ganancia'] += ganancia
+                    productos_agg[key]['unidades'] += cant
+
+        # ── Procesar Notas de Venta ───────────────────────────────────────
+        notas = db.query(NotaVenta).filter_by(estado='pagada').all()
+        for n in notas:
+            if not n.fecha or n.fecha < inicio:
+                continue
+            items_n = n.items or []
+            if isinstance(items_n, str):
+                try:
+                    import json as _j
+                    items_n = _j.loads(items_n)
+                except Exception:
+                    items_n = []
+            for it in items_n:
+                precio_u = float(it.get('precio', 0) or 0)
+                cant = float(it.get('cantidad', 1) or 1)
+                total = precio_u * cant
+                ref = (it.get('codigo') or '').strip()
+                nombre = (it.get('nombre') or 'Sin nombre').strip()
+                costo_u = costos_map.get(ref, 0) if ref else 0
+                costo_total = costo_u * cant
+                ganancia = total - costo_total
+                ing_repuestos += total
+                costo_repuestos += costo_total
+                key = ref or nombre
+                if key not in productos_agg:
+                    productos_agg[key] = {'nombre': nombre, 'ingresos': 0, 'costo': 0, 'ganancia': 0, 'unidades': 0, 'es_mo': False}
+                productos_agg[key]['ingresos'] += total
+                productos_agg[key]['costo'] += costo_total
+                productos_agg[key]['ganancia'] += ganancia
+                productos_agg[key]['unidades'] += cant
+
+        # Top productos por ganancia (sin mano de obra mezclada)
+        top_productos = sorted(
+            [v for v in productos_agg.values() if not v.get('es_mo')],
+            key=lambda x: x['ganancia'], reverse=True
+        )[:10]
+
+        total_ingresos = ing_repuestos + ing_mano_obra
+        total_costo = costo_repuestos
+        total_ganancia = (ing_repuestos - costo_repuestos) + ing_mano_obra
+        margen = round((total_ganancia / total_ingresos * 100) if total_ingresos > 0 else 0, 1)
+
+        return json_ok({
+            'periodo': periodo,
+            'desde': inicio_str,
+            'resumen': {
+                'total_ingresos': round(total_ingresos, 2),
+                'total_costo': round(total_costo, 2),
+                'total_ganancia': round(total_ganancia, 2),
+                'margen_pct': margen,
+                'ingresos_repuestos': round(ing_repuestos, 2),
+                'costo_repuestos': round(costo_repuestos, 2),
+                'ganancia_repuestos': round(ing_repuestos - costo_repuestos, 2),
+                'ingresos_mano_obra': round(ing_mano_obra, 2),
+                'ganancia_mano_obra': round(ing_mano_obra, 2),
+            },
+            'top_productos': [
+                {
+                    'nombre': p['nombre'],
+                    'ingresos': round(p['ingresos'], 2),
+                    'costo': round(p['costo'], 2),
+                    'ganancia': round(p['ganancia'], 2),
+                    'unidades': round(p['unidades'], 1),
+                }
+                for p in top_productos
+            ],
+        })
+    except Exception as e:
+        return json_err(str(e))
+    finally:
+        db.close()
+
+
 def register_api_routes(app):
     """Registra todas las rutas /api/* en la app NiceGUI/FastAPI"""
     app.add_api_route('/api/auth/login',              api_login,               methods=['POST', 'OPTIONS'])
@@ -1086,6 +1241,7 @@ def register_api_routes(app):
     app.add_api_route('/api/vehiculos',               api_vehiculos_list,      methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/vehiculos/nuevo',         api_vehiculo_create,     methods=['POST', 'OPTIONS'])
     app.add_api_route('/api/inventario',              api_inventario_list,     methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/reportes/ganancia',       api_reportes_ganancia,   methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/notas-venta',             api_notas_list,          methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/notas-venta/nueva',       api_nota_create,         methods=['POST', 'OPTIONS'])
     app.add_api_route('/api/citas',                   api_citas_list,          methods=['GET',  'OPTIONS'])

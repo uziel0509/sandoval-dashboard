@@ -463,7 +463,8 @@
     {page:'ordenes',icon:'<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',label:'Órdenes'},
     {page:'clientes',icon:'<svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><path d="M16 11a4 4 0 010 8"/><path d="M21 21v-2a4 4 0 00-3-3.87"/></svg>',label:'Clientes'},
     {page:'inventario',icon:'<svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',label:'Inventario'},
-    {page:'notas',icon:'<svg viewBox="0 0 24 24"><path d="M6 2h12a2 2 0 012 2v16a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"/><path d="M9 9h6M9 13h4"/></svg>',label:'Ventas'}
+    {page:'notas',icon:'<svg viewBox="0 0 24 24"><path d="M6 2h12a2 2 0 012 2v16a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"/><path d="M9 9h6M9 13h4"/></svg>',label:'Ventas'},
+    {page:'reportes',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',label:'Reportes'}
   ];
 
   function isAdmin(){return S.user&&['admin','recepcionista','tecnico'].includes(S.user.rol);}
@@ -1141,11 +1142,29 @@
         +'<div class="stat"><div class="stat-n green">'+completadas+'</div><div class="stat-l">Listas</div></div>'
         +'<div class="stat"><div class="stat-n amber">'+fmtMoney(ventas)+'</div><div class="stat-l">Ventas mes</div></div>'
       +'</div>'
+      +'<div id="ganancia-widget" style="margin:0 14px 4px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);border-radius:20px;padding:16px 18px;cursor:pointer" onclick="setPage(\'reportes\')">'
+        +'<div style="font-size:10px;color:#ffffff60;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Ganancia del mes · toca para ver reporte</div>'
+        +'<div style="display:flex;gap:10px">'
+          +'<div style="flex:1"><div style="font-size:10px;color:#ffffff50;margin-bottom:2px">Ingresos</div><div id="gw-ingresos" style="font-size:15px;font-weight:700;color:#60a5fa">—</div></div>'
+          +'<div style="flex:1"><div style="font-size:10px;color:#ffffff50;margin-bottom:2px">Costos</div><div id="gw-costos" style="font-size:15px;font-weight:700;color:#f87171">—</div></div>'
+          +'<div style="flex:1"><div style="font-size:10px;color:#ffffff50;margin-bottom:2px">Ganancia</div><div id="gw-ganancia" style="font-size:15px;font-weight:700;color:#4ade80">—</div></div>'
+          +'<div style="text-align:right"><div style="font-size:10px;color:#ffffff50;margin-bottom:2px">Margen</div><div id="gw-margen" style="font-size:15px;font-weight:700;color:#fbbf24">—</div></div>'
+        +'</div>'
+      +'</div>'
       +'<div class="sec"><div class="sec-head"><span class="sec-title">Órdenes recientes</span>'
         +'<span class="sec-link" onclick="setPage(\'ordenes\')">Ver todas</span></div>'
         +'<div id="d-list"><div style="text-align:center;padding:20px;color:var(--text3)">Cargando...</div></div>'
       +'</div>'
       +'</div>';
+    // Cargar ganancia en paralelo (no bloquea)
+    apiFetch('/api/reportes/ganancia?periodo=mes').then(function(g){
+      if(!g||!g.resumen)return;
+      var r=g.resumen;
+      var gw=document.getElementById('gw-ingresos');if(gw)gw.textContent=fmtMoney(r.total_ingresos);
+      gw=document.getElementById('gw-costos');if(gw)gw.textContent=fmtMoney(r.total_costo);
+      gw=document.getElementById('gw-ganancia');if(gw)gw.textContent=fmtMoney(r.total_ganancia);
+      gw=document.getElementById('gw-margen');if(gw)gw.textContent=r.margen_pct+'%';
+    });
     // Cargar ordenes recientes
     var ords=await apiFetch('/api/ordenes?limit=8');
     var el=document.getElementById('d-list');
@@ -1321,6 +1340,87 @@
     window._renderInv(list.filter(function(i){
       return (i.nombre||'').toLowerCase().includes(q)||(i.categoria||'').toLowerCase().includes(q);
     }));
+  }
+
+  async function pageReportes(periodo){
+    periodo=periodo||'mes';
+    document.getElementById('topbar-section').textContent='Reportes de Ganancia';
+    var c=document.getElementById('content');
+    c.innerHTML='<div style="text-align:center;padding:50px;color:var(--text3)">Calculando...</div>';
+    var data=await apiFetch('/api/reportes/ganancia?periodo='+periodo);
+    if(!data)return;
+    var r=data.resumen;
+    var top=data.top_productos||[];
+
+    function btn(p,lbl){
+      var activo=p===periodo;
+      return'<button onclick="pageReportes(\''+p+'\')" style="flex:1;padding:9px 4px;border:none;border-radius:10px;font-size:13px;font-weight:'+(activo?'700':'500')+';cursor:pointer;background:'+(activo?'#fff':'transparent')+';color:'+(activo?'var(--blue)':'var(--text3)')+';'+(activo?'box-shadow:0 1px 3px rgba(0,0,0,.1)':'')+'">'+lbl+'</button>';
+    }
+
+    var html='<div class="slide-up">'
+      // Selector periodo
+      +'<div style="margin:14px 14px 0;background:#f2f2f7;border-radius:13px;padding:3px;display:flex;gap:2px">'
+        +btn('semana','Esta semana')+btn('mes','Este mes')+btn('año','Este año')
+      +'</div>'
+
+      // Cards resumen total
+      +'<div style="margin:10px 14px 0;background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:20px;padding:18px">'
+        +'<div style="font-size:10px;color:#ffffff60;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">Ganancia total</div>'
+        +'<div style="font-size:32px;font-weight:800;color:#4ade80;margin-bottom:4px">'+fmtMoney(r.total_ganancia)+'</div>'
+        +'<div style="font-size:12px;color:#ffffff50;margin-bottom:14px">Margen: '+r.margen_pct+'%</div>'
+        +'<div style="display:flex;gap:8px">'
+          +'<div style="flex:1;background:#ffffff10;border-radius:12px;padding:10px 12px">'
+            +'<div style="font-size:9px;color:#ffffff50;text-transform:uppercase;letter-spacing:.5px">Ingresos</div>'
+            +'<div style="font-size:16px;font-weight:700;color:#60a5fa;margin-top:3px">'+fmtMoney(r.total_ingresos)+'</div>'
+          +'</div>'
+          +'<div style="flex:1;background:#ffffff10;border-radius:12px;padding:10px 12px">'
+            +'<div style="font-size:9px;color:#ffffff50;text-transform:uppercase;letter-spacing:.5px">Costos</div>'
+            +'<div style="font-size:16px;font-weight:700;color:#f87171;margin-top:3px">'+fmtMoney(r.total_costo)+'</div>'
+          +'</div>'
+        +'</div>'
+      +'</div>'
+
+      // Desglose: Repuestos vs Mano de obra
+      +'<div style="margin:10px 14px 0;display:flex;gap:8px">'
+        +'<div style="flex:1;background:#fff;border-radius:16px;padding:14px">'
+          +'<div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Repuestos</div>'
+          +'<div style="font-size:18px;font-weight:800;color:var(--text)">'+fmtMoney(r.ganancia_repuestos)+'</div>'
+          +'<div style="font-size:11px;color:var(--text3);margin-top:3px">Ingreso: '+fmtMoney(r.ingresos_repuestos)+'</div>'
+          +'<div style="font-size:11px;color:var(--text3)">Costo: '+fmtMoney(r.costo_repuestos)+'</div>'
+        +'</div>'
+        +'<div style="flex:1;background:#fff;border-radius:16px;padding:14px">'
+          +'<div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Mano de obra</div>'
+          +'<div style="font-size:18px;font-weight:800;color:#16a34a">'+fmtMoney(r.ganancia_mano_obra)+'</div>'
+          +'<div style="font-size:11px;color:var(--text3);margin-top:3px">100% ganancia</div>'
+          +'<div style="font-size:11px;color:var(--text3)">Ingreso: '+fmtMoney(r.ingresos_mano_obra)+'</div>'
+        +'</div>'
+      +'</div>'
+
+      // Top productos
+      +'<div class="sec" style="margin-top:10px"><div class="sec-head"><span class="sec-title">Top productos más rentables</span></div>'
+      +'<div style="background:#fff;border-radius:20px;padding:0 16px">';
+
+    if(!top.length){
+      html+='<div style="text-align:center;padding:20px;color:var(--text3);font-size:13px">Sin datos en este periodo</div>';
+    } else {
+      top.forEach(function(p,i){
+        var margenP=p.ingresos>0?Math.round((p.ganancia/p.ingresos)*100):0;
+        html+='<div class="hr" style="padding:12px 0">'
+          +'<div style="width:24px;font-size:13px;font-weight:700;color:var(--text3);flex-shrink:0">'+(i+1)+'</div>'
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+p.nombre+'</div>'
+            +'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+p.unidades+' und · Ingreso: '+fmtMoney(p.ingresos)+' · Costo: '+fmtMoney(p.costo)+'</div>'
+          +'</div>'
+          +'<div style="text-align:right;flex-shrink:0;margin-left:8px">'
+            +'<div style="font-size:14px;font-weight:700;color:#16a34a">'+fmtMoney(p.ganancia)+'</div>'
+            +'<div style="font-size:10px;color:var(--text3)">'+margenP+'% margen</div>'
+          +'</div>'
+        +'</div>';
+      });
+    }
+
+    html+='</div></div></div>';
+    c.innerHTML=html;
   }
 
   async function pageNotas(){
@@ -2426,6 +2526,7 @@
       case 'inventario':pageInventario();break;
       case 'notas':pageNotas();break;
       case 'nueva-orden':pageNuevaOrden();break;
+      case 'reportes':pageReportes();break;
       case 'gestion-orden':if(S.ordenActiva)abrirGestionOrden(S.ordenActiva);break;
       case 'mis-ordenes':pageMisOrdenes();break;
       case 'mi-flota':pageMiFlota();break;
