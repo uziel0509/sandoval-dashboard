@@ -1071,15 +1071,23 @@ async def api_reportes_ganancia(request: Request) -> JSONResponse:
     now = datetime.now()
 
     if periodo == 'semana':
-        # Lunes de esta semana
-        inicio = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        inicio = inicio - timedelta(days=inicio.weekday())
+        inicio = now - timedelta(days=7)
     elif periodo == 'año':
-        inicio = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-    else:  # mes (default)
-        inicio = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        inicio = now - timedelta(days=365)
+    else:  # mes (default) = últimos 30 días
+        inicio = now - timedelta(days=30)
 
-    inicio_str = inicio.strftime('%Y-%m-%d')
+    inicio_dt = inicio.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def _parse_fecha(f):
+        """Normaliza fecha a datetime independiente del formato."""
+        f = (f or '').strip()[:10]
+        for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d'):
+            try:
+                return datetime.strptime(f, fmt)
+            except Exception:
+                pass
+        return None
 
     db = get_db()
     try:
@@ -1096,9 +1104,8 @@ async def api_reportes_ganancia(request: Request) -> JSONResponse:
         productos_agg = {}  # nombre -> {ingresos, costo, ganancia, unidades}
 
         for o in ordenes:
-            # Filtrar por fecha: formato "YYYY-MM-DD HH:MM" o "YYYY-MM-DD"
-            fecha_str = (o.fecha or '')[:10]
-            if fecha_str < inicio_str:
+            fecha_dt = _parse_fecha(o.fecha)
+            if not fecha_dt or fecha_dt < inicio_dt:
                 continue
 
             items = o.items_cotizacion or []
@@ -1146,7 +1153,7 @@ async def api_reportes_ganancia(request: Request) -> JSONResponse:
         # ── Procesar Notas de Venta ───────────────────────────────────────
         notas = db.query(NotaVenta).filter_by(estado='pagada').all()
         for n in notas:
-            if not n.fecha or n.fecha < inicio:
+            if not n.fecha or n.fecha < inicio_dt:
                 continue
             items_n = n.items or []
             if isinstance(items_n, str):
