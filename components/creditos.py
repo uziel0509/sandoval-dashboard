@@ -189,14 +189,15 @@ def _fila(c, tabla_ref, filtro):
 
 def _modal_nuevo(tabla_ref):
     items_state = []
-    with ui.dialog() as dlg, ui.card().classes('w-full max-w-3xl p-0 overflow-hidden shadow-2xl'):
+    with ui.dialog() as dlg, ui.card().classes('w-full max-w-3xl p-0 overflow-hidden shadow-2xl').style('max-height:90vh;display:flex;flex-direction:column'):
         with ui.row().classes('w-full bg-[#274495] px-8 py-5 items-center justify-between'):
             with ui.column().classes('gap-0'):
                 ui.label('Nuevo Crédito / Fiado').classes('text-xl font-black text-white')
                 ui.label('Stock NO se descuenta hasta que esté PAGADO').classes('text-xs text-blue-200')
             ui.button(icon='close', on_click=dlg.close).props('flat round color=white')
-        with ui.column().classes('w-full p-8 gap-5'):
-            ui.label('DATOS DEL CLIENTE').classes('text-xs font-black text-gray-400 tracking-widest')
+        with ui.scroll_area().style('height:75vh;width:100%'):
+            with ui.column().classes('w-full p-8 gap-5'):
+                ui.label('DATOS DEL CLIENTE').classes('text-xs font-black text-gray-400 tracking-widest')
             with ui.row().classes('w-full gap-3'):
                 nombre_in = ui.input('Nombre *').props('outlined dense').classes('flex-1')
                 tel_in = ui.input('Teléfono *').props('outlined dense').classes('w-40')
@@ -255,6 +256,23 @@ def _modal_nuevo(tabla_ref):
                 recalc()
             render_items()
             prod_map = {}
+            # ── MANO DE OBRA ─────────────────────────────────────────────
+            with ui.row().classes('w-full gap-2 items-center mb-2'):
+                mo_desc = ui.input('Mano de obra (descripción)').props('outlined dense').classes('flex-1')
+                mo_precio = ui.number(value=0, min=0, step=5, prefix='S/', label='Precio').props('outlined dense').classes('w-28')
+                def agregar_mo():
+                    desc = (mo_desc.value or '').strip()
+                    precio = float(mo_precio.value or 0)
+                    if not desc:
+                        ui.notify('Escribe la descripción', type='warning'); return
+                    if precio <= 0:
+                        ui.notify('Precio debe ser mayor a 0', type='warning'); return
+                    items_state.append({'item_id': None, 'nombre': f'🔧 {desc}', 'precio': precio, 'cantidad': 1, 'stock_actual': 0, 'tipo': 'mano_obra'})
+                    mo_desc.value = ''
+                    mo_precio.value = 0
+                    render_items()
+                ui.button('+ Mano de Obra', icon='build', on_click=agregar_mo).props('outlined color=orange-7 dense').classes('h-10 text-xs')
+            ui.separator().classes('my-1')
             with ui.row().classes('w-full gap-2 items-end'):
                 buscar_in = ui.input('Buscar producto...').props('outlined dense').classes('flex-1')
                 prod_sel = ui.select([], label='Selecciona producto', with_input=True, clearable=True).props('outlined dense').classes('flex-1')
@@ -431,6 +449,7 @@ def _modal_detalle(credito_id, tabla_ref, filtro):
                     finally:
                         db2.close()
                 ui.button('Actualizar', icon='check', on_click=cambiar).props('outlined color=blue-7 dense')
+                ui.button('Editar', icon='edit', on_click=lambda: [dlg.close(), _modal_editar(credito_id, tabla_ref, filtro)]).props('outlined color=orange-7 dense')
                 ui.button('Registrar Abono', icon='payments', on_click=lambda: [dlg.close(), _modal_abono(credito_id, tabla_ref, filtro)]).classes('bg-green-700 text-white px-4 rounded-lg text-sm font-bold')
     dlg.open()
 
@@ -466,3 +485,154 @@ def crear_credito_desde_nota(nota_venta_id, cliente_nombre, telefono, descripcio
         db.rollback(); print(traceback.format_exc()); return False
     finally:
         db.close()
+
+def _modal_editar(credito_id, tabla_ref, filtro):
+    """Modal para editar items de un crédito existente"""
+    from sqlalchemy import text
+    db = get_db()
+    try:
+        cred = db.execute(text("SELECT * FROM creditos WHERE id=:id"), {'id': credito_id}).fetchone()
+        if not cred: ui.notify('No encontrado', type='warning'); return
+        cred = dict(cred._mapping)
+    finally:
+        db.close()
+
+    items_state = json.loads(cred.get('items_json','[]') or '[]')
+
+    with ui.dialog() as dlg, ui.card().classes('w-full max-w-3xl p-0 overflow-hidden shadow-2xl').style('max-height:90vh;display:flex;flex-direction:column'):
+        with ui.row().classes('w-full bg-[#e97316] px-8 py-5 items-center justify-between'):
+            with ui.column().classes('gap-0'):
+                ui.label(f'Editando: {cred["cliente_nombre"]}').classes('text-xl font-black text-white')
+                ui.label('Agrega, quita o modifica productos y servicios').classes('text-xs text-orange-100')
+            ui.button(icon='close', on_click=dlg.close).props('flat round color=white')
+
+        with ui.scroll_area().style('height:75vh;width:100%'):
+            with ui.column().classes('p-6 gap-4 w-full'):
+                total_label = ui.label(f'TOTAL: S/ 0.00').classes('text-xl font-black text-gray-900 text-right w-full')
+
+                def recalc():
+                    t = sum(float(it.get('precio',0))*int(it.get('cantidad',1)) for it in items_state)
+                    total_label.text = f'TOTAL: S/ {t:.2f}'
+
+                items_container = ui.column().classes('w-full gap-2')
+
+                def render_items():
+                    items_container.clear()
+                    with items_container:
+                        if not items_state:
+                            ui.label('Sin items — agrega abajo').classes('text-sm text-gray-300 italic py-2')
+                        for i, item in enumerate(items_state):
+                            bg = 'bg-orange-50' if item.get('tipo') == 'mano_obra' else 'bg-blue-50'
+                            with ui.row().classes(f'w-full items-center gap-2 {bg} rounded-lg px-3 py-2'):
+                                with ui.column().classes('flex-1 gap-0'):
+                                    ui.label(item['nombre']).classes('text-sm font-bold text-gray-800')
+                                    if item.get('tipo') == 'mano_obra':
+                                        ui.label('Mano de obra').classes('text-xs text-orange-500 font-medium')
+                                    else:
+                                        ui.label(f'Stock: {item.get("stock_actual",0)}').classes('text-xs text-gray-400')
+                                def mk_cant(idx):
+                                    def h(e):
+                                        try:
+                                            items_state[idx]['cantidad'] = max(1,int(float(e.args or 1)))
+                                            recalc()
+                                        except: pass
+                                    return h
+                                def mk_precio(idx):
+                                    def h(e):
+                                        try:
+                                            items_state[idx]['precio'] = max(0,float(e.args or 0))
+                                            recalc()
+                                        except: pass
+                                    return h
+                                cant = ui.number(value=item.get('cantidad',1), min=1, label='Cant').props('outlined dense').classes('w-20')
+                                cant.on('update:model-value', mk_cant(i))
+                                precio = ui.number(value=item.get('precio',0), min=0, step=0.5, prefix='S/', label='Precio').props('outlined dense').classes('w-28')
+                                precio.on('update:model-value', mk_precio(i))
+                                subtotal = float(item.get('precio',0))*int(item.get('cantidad',1))
+                                ui.label(f'S/ {subtotal:.2f}').classes('w-20 text-right text-sm font-bold text-blue-700')
+                                ui.button(icon='close', on_click=lambda idx=i: [items_state.pop(idx), render_items(), recalc()]).props('flat round dense color=red-4')
+                    recalc()
+
+                render_items()
+                recalc()
+
+                ui.separator()
+                # Mano de obra
+                ui.label('AGREGAR MANO DE OBRA').classes('text-xs font-black text-orange-400 tracking-widest')
+                with ui.row().classes('w-full gap-2 items-center'):
+                    mo_desc = ui.input('Descripción').props('outlined dense').classes('flex-1')
+                    mo_precio = ui.number(value=0, min=0, step=5, prefix='S/', label='Precio').props('outlined dense').classes('w-28')
+                    def agregar_mo():
+                        desc = (mo_desc.value or '').strip()
+                        precio = float(mo_precio.value or 0)
+                        if not desc: ui.notify('Escribe descripción', type='warning'); return
+                        if precio <= 0: ui.notify('Precio > 0', type='warning'); return
+                        items_state.append({'item_id': None, 'nombre': f'🔧 {desc}', 'precio': precio, 'cantidad': 1, 'stock_actual': 0, 'tipo': 'mano_obra'})
+                        mo_desc.value = ''; mo_precio.value = 0
+                        render_items()
+                    ui.button('+ Agregar', icon='build', on_click=agregar_mo).props('outlined color=orange-7 dense').classes('h-10')
+
+                ui.separator()
+                # Productos inventario
+                ui.label('AGREGAR PRODUCTO DEL INVENTARIO').classes('text-xs font-black text-blue-400 tracking-widest')
+                prod_map = {}
+                with ui.row().classes('w-full gap-2 items-end'):
+                    buscar_in = ui.input('Buscar producto...').props('outlined dense').classes('flex-1')
+                    prod_sel = ui.select([], label='Selecciona producto', with_input=True, clearable=True).props('outlined dense').classes('flex-1')
+                    def buscar(e=None):
+                        texto = (buscar_in.value or '').strip()
+                        if len(texto) < 2: ui.notify('Mínimo 2 caracteres', type='warning'); return
+                        db2 = get_db()
+                        try:
+                            prods = db2.query(ItemInventario).filter(ItemInventario.nombre.ilike(f'%{texto}%')).limit(10).all()
+                            if not prods: ui.notify('Sin resultados', type='warning'); return
+                            prod_map.clear()
+                            for p in prods:
+                                k = f'{p.nombre} — S/{p.precio:.2f} (stock:{p.stock})'
+                                prod_map[k] = {'item_id': p.codigo, 'nombre': p.nombre, 'precio': float(p.precio), 'stock': p.stock}
+                            prod_sel.options = list(prod_map.keys())
+                            prod_sel.value = None
+                            prod_sel.update()
+                            ui.notify(f'{len(prods)} encontrado(s)', type='positive')
+                        finally:
+                            db2.close()
+                    buscar_in.on('keyup.enter', buscar)
+                    def agregar_prod():
+                        sel = prod_sel.value
+                        if not sel: ui.notify('Selecciona producto', type='warning'); return
+                        if sel not in prod_map: return
+                        p = prod_map[sel]
+                        items_state.append({'item_id': p['item_id'], 'nombre': p['nombre'], 'precio': p['precio'], 'cantidad': 1, 'stock_actual': p['stock']})
+                        prod_sel.value = None
+                        render_items()
+                    ui.button('BUSCAR', icon='search', on_click=buscar).props('outlined color=blue-7 dense').classes('h-10')
+                    ui.button('+ AGREGAR', icon='add', on_click=agregar_prod).props('unelevated color=blue-7 dense').classes('h-10')
+
+                ui.separator()
+                # Guardar
+                async def guardar():
+                    from sqlalchemy import text as sqlt
+                    total = sum(float(it.get('precio',0))*int(it.get('cantidad',1)) for it in items_state)
+                    abonos = _get_abonos(credito_id)
+                    total_ab = sum(float(a['monto']) for a in abonos)
+                    pendiente = max(0, round(total - total_ab, 2))
+                    if pendiente <= 0: estado = 'PAGADO'
+                    elif total_ab > 0: estado = 'PARCIAL'
+                    else: estado = 'PENDIENTE'
+                    db3 = get_db()
+                    try:
+                        db3.execute(sqlt("UPDATE creditos SET items_json=:ij, total=:t, pendiente=:p, estado=:e WHERE id=:id"),
+                            {'ij': json.dumps(items_state, ensure_ascii=False), 't': total, 'p': pendiente, 'e': estado, 'id': credito_id})
+                        db3.commit()
+                        ui.notify('Crédito actualizado ✓', type='positive')
+                        dlg.close()
+                        _render_tabla(tabla_ref, filtro)
+                    except Exception as ex:
+                        ui.notify(f'Error: {ex}', type='negative')
+                    finally:
+                        db3.close()
+
+                with ui.row().classes('w-full justify-end gap-3 pt-2'):
+                    ui.button('Cancelar', on_click=dlg.close).props('outlined color=gray dense')
+                    ui.button('Guardar cambios', icon='save', on_click=guardar).classes('btn-sandoval px-6')
+    dlg.open()

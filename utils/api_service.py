@@ -19,31 +19,54 @@ from utils.models import (
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Token store en memoria  {token: {user_dict, expires_at}}
+# Token store en SQLite (persistente entre reinicios)
 # ──────────────────────────────────────────────────────────────────────────────
-_tokens: dict[str, dict] = {}
-TOKEN_TTL_MINUTES = 60 * 8  # 8 horas
+import sqlite3 as _sqlite3
+import json as _json
+import os as _os
 
+TOKEN_TTL_MINUTES = 60 * 8  # 8 horas
+_SESSIONS_DB = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), 'data', 'sessions.db')
+
+def _get_sessions_db():
+    conn = _sqlite3.connect(_SESSIONS_DB)
+    conn.execute('''CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        user_json TEXT NOT NULL,
+        expires TEXT NOT NULL
+    )''')
+    conn.commit()
+    return conn
 
 def _new_token(user_dict: dict) -> str:
     token = secrets.token_hex(32)
-    _tokens[token] = {
-        'user': user_dict,
-        'expires': datetime.now() + timedelta(minutes=TOKEN_TTL_MINUTES),
-    }
+    expires = (datetime.now() + timedelta(minutes=TOKEN_TTL_MINUTES)).isoformat()
+    conn = _get_sessions_db()
+    try:
+        conn.execute('INSERT OR REPLACE INTO sessions (token, user_json, expires) VALUES (?,?,?)',
+                     (token, _json.dumps(user_dict), expires))
+        conn.commit()
+    finally:
+        conn.close()
     return token
 
-
 def _get_user_from_token(token: str) -> Optional[dict]:
-    entry = _tokens.get(token)
-    if not entry:
-        return None
-    if datetime.now() > entry['expires']:
-        del _tokens[token]
-        return None
-    # Renovar TTL
-    entry['expires'] = datetime.now() + timedelta(minutes=TOKEN_TTL_MINUTES)
-    return entry['user']
+    conn = _get_sessions_db()
+    try:
+        row = conn.execute('SELECT user_json, expires FROM sessions WHERE token=?', (token,)).fetchone()
+        if not row:
+            return None
+        if datetime.now() > datetime.fromisoformat(row[1]):
+            conn.execute('DELETE FROM sessions WHERE token=?', (token,))
+            conn.commit()
+            return None
+        # Renovar TTL
+        new_exp = (datetime.now() + timedelta(minutes=TOKEN_TTL_MINUTES)).isoformat()
+        conn.execute('UPDATE sessions SET expires=? WHERE token=?', (new_exp, token))
+        conn.commit()
+        return _json.loads(row[0])
+    finally:
+        conn.close()
 
 
 def _extract_token(request: Request) -> Optional[str]:
@@ -172,13 +195,24 @@ async def api_dashboard(request: Request) -> JSONResponse:
         from sqlalchemy import func
         ordenes = db.query(Orden).all()
         n_clientes = db.query(Cliente).count()
-        activas = [o for o in ordenes if o.estado not in ('ARCHIVADO', 'ENTREGA')]
-        completadas = [o for o in ordenes if o.estado in ('ARCHIVADO', 'ENTREGA')]
-        total_ingresos = sum(
-            float(it.get('total', 0) or 0)
-            for o in ordenes
-            for it in (o.items_cotizacion or [])
-        )
+        COMPLETADOS = {'ARCHIVADO','ENTREGADO','ENTREGA','Entrega'}
+        activas = [o for o in ordenes if (o.estado or '') not in COMPLETADOS]
+        completadas = [o for o in ordenes if (o.estado or '') in COMPLETADOS]
+        total_ingresos = 0
+        for o in ordenes:
+            items = o.items_cotizacion or []
+            if isinstance(items, str):
+                try:
+                    import json as _json
+                    items = _json.loads(items)
+                except Exception:
+                    items = []
+            if isinstance(items, list):
+                for it in items:
+                    try:
+                        total_ingresos += float(it.get('total', 0) or 0)
+                    except Exception:
+                        pass
         stock_bajo = db.query(ItemInventario).filter(
             ItemInventario.stock <= ItemInventario.stock_minimo).count()
         # ventas notas del mes
@@ -198,8 +232,8 @@ async def api_dashboard(request: Request) -> JSONResponse:
             'ventas_mes': ventas_mes,
             'estados': {
                 est: len([o for o in ordenes if o.estado == est])
-                for est in ['RECEPCIÓN', 'DIAGNÓSTICO', 'REPUESTOS', 'APROBACIÓN',
-                            'REPARACIÓN', 'CONTROL', 'ENTREGA', 'ARCHIVADO']
+                for est in ['RECEPCIÓN', 'DIAGNÓSTICO', 'REPUESTOS', 'COTIZACIÓN',
+                            'APROBACIÓN', 'REPARACIÓN', 'CONTROL CALIDAD', 'ARCHIVADO']
             },
         })
     finally:
@@ -220,7 +254,7 @@ async def api_ordenes_list(request: Request) -> JSONResponse:
         q = db.query(Orden).order_by(Orden.fecha.desc())
         if estado:
             q = q.filter(Orden.estado == estado)
-        ordenes = q.limit(100).all()
+        ordenes = q.limit(500).all()
         data = []
         for o in ordenes:
             cli = db.query(Cliente).filter_by(id=o.cliente_id).first()
@@ -270,6 +304,10 @@ async def api_orden_get(request: Request) -> JSONResponse:
             'diagnostico': o.diagnostico or '',
             'fotos_evidencia': o.fotos_evidencia or [],
             'checklist_reparacion': o.checklist_reparacion or [],
+            'notas_entrega': o.notas_entrega or '',
+            'proximo_mantenimiento': o.proximo_mantenimiento or '',
+            'motivo': o.motivo or '',
+            'factura_sunat': o.factura_sunat or '',
         })
     finally:
         db.close()
@@ -278,7 +316,7 @@ async def api_orden_get(request: Request) -> JSONResponse:
 
 async def api_orden_estado(request: Request) -> JSONResponse:
     """PUT /api/ordenes/{id}/estado  {estado: ...}"""
-    user = _require_admin(request)
+    user = _require_auth(request)
     if isinstance(user, JSONResponse):
         return user
     cons = request.path_params.get('id', '')
@@ -303,8 +341,8 @@ async def api_orden_estado(request: Request) -> JSONResponse:
 
 
 async def api_orden_create(request: Request) -> JSONResponse:
-    """POST /api/ordenes/nueva"""
-    user = _require_admin(request)
+    """POST /api/ordenes/nueva — admin Y cliente pueden crear"""
+    user = _require_auth(request)
     if isinstance(user, JSONResponse):
         return user
     try:
@@ -314,12 +352,15 @@ async def api_orden_create(request: Request) -> JSONResponse:
     db = get_db()
     try:
         # Generar consecutivo
-        year = datetime.now().year
-        count = db.query(Orden).filter(Orden.fecha.like(f'{year}%')).count()
-        consecutivo = f'OS-{year}-{count + 1:04d}'
+        now = datetime.now()
+        consecutivo = f'#ODS-{now.strftime("%Y%m%d-%H%M")}'
+        # Si ya existe ese consecutivo, agregar segundos
+        existing = db.query(Orden).filter_by(consecutivo=consecutivo).first()
+        if existing:
+            consecutivo = f'#ODS-{now.strftime("%Y%m%d-%H%M%S")}'
         o = Orden(
             consecutivo=consecutivo,
-            fecha=datetime.now().strftime('%Y-%m-%d'),
+            fecha=now.strftime('%Y-%m-%d %H:%M'),
             cliente_id=body.get('cliente_id') or None,
             vehiculo_placa=body.get('vehiculo_placa') or None,
             motivo=body.get('motivo', ''),
@@ -360,7 +401,7 @@ async def api_vehiculos_cliente(request: Request) -> JSONResponse:
 
 
 async def api_orden_evidencia(request: Request) -> JSONResponse:
-    """POST /api/ordenes/{id}/evidencia - sube foto de evidencia"""
+    """POST /api/ordenes/{id}/evidencia - sube foto/video de evidencia"""
     user = _require_admin(request)
     if isinstance(user, JSONResponse):
         return user
@@ -371,27 +412,40 @@ async def api_orden_evidencia(request: Request) -> JSONResponse:
         file = form.get('file')
         if not file:
             return json_err('Sin archivo')
+        # Extensión real del archivo
         ext = 'jpg'
-        if hasattr(file, 'filename') and '.' in (file.filename or ''):
-            ext = file.filename.rsplit('.', 1)[-1].lower()
-        filename = f"{cons}_{secrets.token_hex(4)}.{ext}"
+        orig_name = getattr(file, 'filename', '') or ''
+        if '.' in orig_name:
+            ext = orig_name.rsplit('.', 1)[-1].lower()
+        # Detectar tipo: video o foto
+        content_type = getattr(file, 'content_type', '') or ''
+        is_video = content_type.startswith('video/') or ext in ('mp4','mov','webm','3gp','avi','mkv')
+        tipo = 'video' if is_video else 'foto'
+        # Fase enviada desde el cliente (faseId del formulario)
+        fase = (form.get('fase') or 'RECEPCION').strip()
+        # Limpiar consecutivo para nombre de archivo
+        cons_safe = cons.replace('#','').replace('/','-').replace(' ','_')
+        filename = f"{cons_safe}_{fase}_{secrets.token_hex(4)}.{ext}"
+        # Guardar en static/evidencia/
         os.makedirs('static/evidencia', exist_ok=True)
-        path = os.path.join('static', 'evidencia', filename)
+        filepath = os.path.join('static', 'evidencia', filename)
         content = await file.read()
-        with open(path, 'wb') as f:
+        with open(filepath, 'wb') as f:
             f.write(content)
+        # URL pública accesible
+        url = f"/evidencia/{filename}"
+        # Guardar en BD
         db = get_db()
         try:
             o = db.query(Orden).filter_by(consecutivo=cons).first()
             if o:
                 fotos = list(o.fotos_evidencia or [])
-                # Guardar como objeto estructurado para separar fases
-                fotos.append({'path': f"/evidencia/{filename}", 'fase': 'RECEPCIÓN'})
+                fotos.append({'path': url, 'fase': fase, 'tipo': tipo})
                 o.fotos_evidencia = fotos
                 db.commit()
         finally:
             db.close()
-        return json_ok({'ok': True, 'url': f"/evidencia/{filename}"})
+        return json_ok({'ok': True, 'url': url, 'tipo': tipo, 'fase': fase})
     except Exception as e:
         return json_err(str(e))
 
@@ -682,25 +736,82 @@ async def api_cliente_mis_ordenes(request: Request) -> JSONResponse:
         result = []
         for o in ordenes:
             veh = db.query(Vehiculo).filter_by(placa=o.vehiculo_placa).first() if o.vehiculo_placa else None
+            # Parsear campos JSON que SQLAlchemy puede devolver como string
+            def _parse(val, default):
+                if val is None: return default
+                if isinstance(val, (list, dict)): return val
+                if isinstance(val, str):
+                    try: return json.loads(val)
+                    except: return default
+                return default
+            items = _parse(o.items_cotizacion, [])
+            fotos = _parse(o.fotos_evidencia, [])
+            checklist = _parse(o.checklist_reparacion, {})
+            dd = checklist.get('diagnostic_details', {}) if isinstance(checklist, dict) else {}
+            scanner_path = dd.get('scanner_path', '') if isinstance(dd, dict) else ''
             result.append({
                 'id': o.consecutivo,
                 'consecutivo': o.consecutivo,
-                'fecha': str(o.fecha or ''), 'estado': o.estado,
+                'fecha': str(o.fecha or ''),
+                'estado': o.estado or '',
                 'vehiculo_placa': o.vehiculo_placa or '',
                 'vehiculo_marca': veh.marca if veh else '',
+                'vehiculo_modelo': veh.modelo if veh else '',
+                'motivo': o.motivo or '',
                 'descripcion': o.motivo or '',
-                'items': o.items_cotizacion or [],
-                'report_token': o.report_token or '',
+                'tecnico': o.tecnico or '',
                 'km': o.km or '',
                 'diagnostico': o.diagnostico or '',
                 'observaciones': o.observaciones or '',
-                'fotos_evidencia': o.fotos_evidencia or [],
-                'checklist_reparacion': o.checklist_reparacion or [],
+                'items_cotizacion': items,
+                'fotos_evidencia': fotos,
+                'checklist_reparacion': checklist,
+                'quality_control': checklist.get('quality_control',{}) if isinstance(checklist,dict) else {},
+                'repair_logs': checklist.get('repair_logs',[]) if isinstance(checklist,dict) else [],
+                'findings': checklist.get('findings',[]) if isinstance(checklist,dict) else [],
+                'quick_check': checklist.get('quick_check',{}) if isinstance(checklist,dict) else {},
+                                'scanner_path': scanner_path,
+                'notas_entrega': o.notas_entrega or '',
+                'evidence_cats': checklist.get('evidence_cats', {}) if isinstance(checklist, dict) else {},
+                'repair_logs': checklist.get('repair_logs', []) if isinstance(checklist, dict) else [],
+                'quality_control': checklist.get('quality_control', {}) if isinstance(checklist, dict) else {},
+                'proximo_mantenimiento': o.proximo_mantenimiento or '',
+                'report_token': o.report_token or '',
             })
         return json_ok(result)
     finally:
         db.close()
 
+
+
+
+async def api_delete_orden(request: Request) -> JSONResponse:
+    """DELETE /api/ordenes/{orden_id} — Eliminar orden (solo admin/recepcionista)"""
+    auth = _require_auth(request)
+    if isinstance(auth, JSONResponse): return auth
+    if auth.get('rol') not in ('admin','recepcionista'):
+        return json_err('Sin permisos para eliminar ordenes', 403)
+    orden_id = request.path_params.get('orden_id','')
+    db = get_db()
+    try:
+        from .models import Orden
+        o = db.query(Orden).filter_by(consecutivo=orden_id).first()
+        if not o:
+            # Intentar por id numerico
+            try:
+                o = db.query(Orden).filter_by(id=int(orden_id)).first()
+            except Exception:
+                pass
+        if not o:
+            return json_err('Orden no encontrada', 404)
+        db.delete(o)
+        db.commit()
+        return json_ok({'msg': f'Orden {orden_id} eliminada'})
+    except Exception as e:
+        db.rollback()
+        return json_err(f'Error al eliminar: {e}', 500)
+    finally:
+        db.close()
 
 
 async def api_cliente_mis_citas(request: Request) -> JSONResponse:
@@ -781,6 +892,175 @@ async def api_portal_marcar_leidas(request: Request) -> JSONResponse:
 # REGISTRO DE RUTAS
 # ──────────────────────────────────────────────────────────────────────────────
 
+
+async def api_orden_guardar_diagnostico(request: Request) -> JSONResponse:
+    """POST /api/ordenes/{id}/diagnostico — guarda diagnostic_details en checklist"""
+    user = _require_auth(request)
+    if isinstance(user, JSONResponse): return user
+    cons = request.path_params.get('id','')
+    try: body = await request.json()
+    except: return json_err('Body invalido')
+    db = get_db()
+    try:
+        o = db.query(Orden).filter_by(consecutivo=cons).first()
+        if not o: return json_err('Orden no encontrada',404)
+        import json as _j
+        cl = {}
+        try:
+            raw = o.checklist_reparacion
+            if isinstance(raw,str): cl = _j.loads(raw)
+            elif isinstance(raw,dict): cl = raw
+        except: cl = {}
+        if not isinstance(cl,dict): cl = {}
+        cl['diagnostic_details'] = {
+            'system': body.get('system',''),
+            'codes': body.get('codes',''),
+            'tests': body.get('tests',''),
+            'analysis': body.get('analysis',''),
+            'solution': body.get('solution',''),
+            'scanner_path': body.get('scanner_path', cl.get('diagnostic_details',{}).get('scanner_path','') if isinstance(cl.get('diagnostic_details'),dict) else ''),
+        }
+        if body.get('diagnostico'): o.diagnostico = body['diagnostico']
+        import copy as _copy
+        o.checklist_reparacion = _copy.deepcopy(cl)
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(o, 'checklist_reparacion')
+        db.commit()
+        return json_ok({'ok':True})
+    except Exception as e:
+        db.rollback(); return json_err(str(e))
+    finally: db.close()
+
+
+async def api_orden_guardar_items(request: Request) -> JSONResponse:
+    """POST /api/ordenes/{id}/items — guarda items_cotizacion"""
+    user = _require_auth(request)
+    if isinstance(user, JSONResponse): return user
+    cons = request.path_params.get('id','')
+    try: body = await request.json()
+    except: return json_err('Body invalido')
+    db = get_db()
+    try:
+        o = db.query(Orden).filter_by(consecutivo=cons).first()
+        if not o: return json_err('Orden no encontrada',404)
+        items = body.get('items',[])
+        if not isinstance(items,list): return json_err('items debe ser lista')
+        o.items_cotizacion = items
+        db.commit()
+        total = sum(float(it.get('total',0) or 0) for it in items)
+        return json_ok({'ok':True,'total':total,'count':len(items)})
+    except Exception as e:
+        db.rollback(); return json_err(str(e))
+    finally: db.close()
+
+
+async def api_orden_guardar_checklist(request: Request) -> JSONResponse:
+    """POST /api/ordenes/{id}/checklist — guarda quality_control, entrega, etc."""
+    user = _require_auth(request)
+    if isinstance(user, JSONResponse): return user
+    cons = request.path_params.get('id','')
+    try: body = await request.json()
+    except: return json_err('Body invalido')
+    db = get_db()
+    try:
+        o = db.query(Orden).filter_by(consecutivo=cons).first()
+        if not o: return json_err('Orden no encontrada',404)
+        import json as _j
+        cl = {}
+        try:
+            raw = o.checklist_reparacion
+            if isinstance(raw,str): cl = _j.loads(raw)
+            elif isinstance(raw,dict): cl = raw
+        except: cl = {}
+        if not isinstance(cl,dict): cl = {}
+        # Actualizar selectivamente lo que venga en el body
+        if 'quality_control' in body: cl['quality_control'] = body['quality_control']
+        if 'repair_logs' in body: cl['repair_logs'] = body['repair_logs']
+        if 'findings' in body: cl['findings'] = body['findings']
+        if 'quick_check' in body: cl['quick_check'] = body['quick_check']
+        if 'is_mantenimiento' in body: cl['is_mantenimiento'] = body['is_mantenimiento']
+        if 'notas_entrega' in body: o.notas_entrega = body['notas_entrega']
+        if 'proximo_mantenimiento' in body: o.proximo_mantenimiento = body['proximo_mantenimiento']
+        if 'km' in body: o.km = body['km']
+        if 'tecnico' in body: o.tecnico = body['tecnico']
+        if 'observaciones' in body: o.observaciones = body['observaciones']
+        import copy as _cp
+        o.checklist_reparacion = _cp.deepcopy(cl)
+        from sqlalchemy.orm.attributes import flag_modified as _fm2
+        _fm2(o, 'checklist_reparacion')
+        db.commit()
+        return json_ok({'ok':True})
+    except Exception as e:
+        db.rollback(); return json_err(str(e))
+    finally: db.close()
+
+
+
+async def api_inventario_crear(request: Request) -> JSONResponse:
+    """POST /api/inventario/nuevo — crea un nuevo item en inventario"""
+    user = _require_admin(request)
+    if isinstance(user, JSONResponse): return user
+    try: body = await request.json()
+    except: return json_err('Body invalido')
+    nombre = (body.get('nombre') or '').strip()
+    if not nombre: return json_err('Nombre requerido')
+    db = get_db()
+    try:
+        import secrets as _sec
+        codigo = body.get('codigo') or 'INV-'+_sec.token_hex(3).upper()
+        item = ItemInventario(
+            codigo=codigo,
+            nombre=nombre,
+            categoria=body.get('categoria','General'),
+            precio=float(body.get('precio',0) or 0),
+            stock=int(body.get('stock',0) or 0),
+            stock_minimo=int(body.get('stock_minimo',1) or 1),
+            unidad=body.get('unidad','und'),
+            descripcion=body.get('descripcion',''),
+        )
+        db.add(item)
+        db.commit()
+        return json_ok({'ok':True,'codigo':codigo,'nombre':nombre})
+    except Exception as e:
+        db.rollback(); return json_err(str(e))
+    finally: db.close()
+
+
+
+async def api_orden_subir_factura(request: Request) -> JSONResponse:
+    """POST /api/ordenes/{id}/factura — sube PDF/imagen de factura"""
+    user = _require_auth(request)
+    if isinstance(user, JSONResponse): return user
+    cons = request.path_params.get('id', '')
+    import os
+    try:
+        form = await request.form()
+        file = form.get('file')
+        if not file:
+            return json_err('Sin archivo')
+        orig = getattr(file, 'filename', '') or 'factura'
+        ext = orig.rsplit('.', 1)[-1].lower() if '.' in orig else 'pdf'
+        cons_safe = cons.replace('#','').replace('/','-').replace(' ','_')
+        filename = f"factura_{cons_safe}_{secrets.token_hex(4)}.{ext}"
+        os.makedirs('static/facturas', exist_ok=True)
+        filepath = os.path.join('static', 'facturas', filename)
+        content = await file.read()
+        with open(filepath, 'wb') as f2:
+            f2.write(content)
+        url = f"/facturas/{filename}"
+        db = get_db()
+        try:
+            o = db.query(Orden).filter_by(consecutivo=cons).first()
+            if not o: return json_err('Orden no encontrada', 404)
+            o.factura_sunat = url
+            db.commit()
+        finally:
+            db.close()
+        return json_ok({'ok': True, 'url': url})
+    except Exception as e:
+        return json_err(str(e))
+
+
 def register_api_routes(app):
     """Registra todas las rutas /api/* en la app NiceGUI/FastAPI"""
     app.add_api_route('/api/auth/login',              api_login,               methods=['POST', 'OPTIONS'])
@@ -791,10 +1071,18 @@ def register_api_routes(app):
     app.add_api_route('/api/ordenes/nueva',           api_orden_create,        methods=['POST', 'OPTIONS'])
     app.add_api_route('/api/ordenes/{id}/estado',     api_orden_estado,        methods=['PUT',  'OPTIONS'])
     app.add_api_route('/api/ordenes/{id}/evidencia',  api_orden_evidencia,     methods=['POST', 'OPTIONS'])
+    app.add_api_route('/api/ordenes/{orden_id}/eliminar', api_delete_orden, methods=['POST','OPTIONS'])
     app.add_api_route('/api/ordenes/{id}',            api_orden_get,           methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/ordenes/{id}/diagnostico',  api_orden_guardar_diagnostico, methods=['POST','OPTIONS'])
+    app.add_api_route('/api/ordenes/{id}/items',        api_orden_guardar_items,       methods=['POST','OPTIONS'])
+    app.add_api_route('/api/ordenes/{id}/checklist',    api_orden_guardar_checklist,   methods=['POST','OPTIONS'])
+
+
+
     app.add_api_route('/api/clientes',                api_clientes_list,       methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/clientes/nuevo',          api_cliente_create,      methods=['POST', 'OPTIONS'])
     app.add_api_route('/api/clientes/{id}/vehiculos', api_vehiculos_cliente,   methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/clientes/{id}/perfil-completo', api_cliente_perfil_completo, methods=['GET', 'OPTIONS'])
     app.add_api_route('/api/vehiculos',               api_vehiculos_list,      methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/vehiculos/nuevo',         api_vehiculo_create,     methods=['POST', 'OPTIONS'])
     app.add_api_route('/api/inventario',              api_inventario_list,     methods=['GET',  'OPTIONS'])
@@ -809,3 +1097,61 @@ def register_api_routes(app):
     app.add_api_route('/api/portal/notificaciones/marcar-leidas', api_portal_marcar_leidas, methods=['POST', 'OPTIONS'])
 
 
+
+async def api_cliente_perfil_completo(request: Request) -> JSONResponse:
+    """GET /api/clientes/{id}/perfil-completo — cliente + vehiculos + ordenes + total"""
+    user = _require_admin(request)
+    if isinstance(user, JSONResponse):
+        return user
+    cliente_id = request.path_params.get('id', '')
+    db = get_db()
+    try:
+        cli = db.query(Cliente).filter_by(id=cliente_id).first()
+        if not cli:
+            return json_err('Cliente no encontrado', 404)
+        vehiculos = db.query(Vehiculo).filter_by(cliente_id=cliente_id).all()
+        total_pagado = 0
+        vehiculos_data = []
+        for v in vehiculos:
+            ordenes = db.query(Orden).filter_by(vehiculo_placa=v.placa).order_by(Orden.fecha.desc()).all()
+            ordenes_data = []
+            total_vehiculo = 0
+            for o in ordenes:
+                items = o.items_cotizacion or []
+                if isinstance(items, str):
+                    try:
+                        import json as _json
+                        items = _json.loads(items)
+                    except: items = []
+                total_ord = sum(float(it.get('total', 0) or 0) for it in (items if isinstance(items, list) else []))
+                total_vehiculo += total_ord
+                ordenes_data.append({
+                    'consecutivo': o.consecutivo,
+                    'fecha': str(o.fecha or '')[:10],
+                    'estado': o.estado or '',
+                    'motivo': o.motivo or '',
+                    'tecnico': o.tecnico or '',
+                    'total': total_ord,
+                })
+            total_pagado += total_vehiculo
+            vehiculos_data.append({
+                'placa': v.placa,
+                'marca': v.marca or '',
+                'modelo': v.modelo or '',
+                'tipo': v.tipo or '',
+                'total_pagado': total_vehiculo,
+                'ordenes': ordenes_data,
+            })
+        return json_ok({
+            'id': cli.id,
+            'nombre': cli.nombre or '',
+            'apellidos': getattr(cli, 'apellidos', '') or '',
+            'telefono': getattr(cli, 'telefono', '') or '',
+            'email': getattr(cli, 'email', '') or '',
+            'direccion': getattr(cli, 'direccion', '') or '',
+            'total_pagado': total_pagado,
+            'n_vehiculos': len(vehiculos),
+            'vehiculos': vehiculos_data,
+        })
+    finally:
+        db.close()

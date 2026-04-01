@@ -83,7 +83,7 @@ def refresh_stats(container, cards_container, state):
         total = db.query(Orden).count()
         
         # Estilo de "Cuadro Azul" para el activo o hover
-        card_style = 'min-w-[120px] p-3 cursor-pointer rounded-lg border transition-all shadow-sm'
+        card_style = 'w-[100px] min-w-[100px] max-w-[100px] p-2 cursor-pointer rounded-lg border transition-all shadow-sm'
         bg_normal = 'bg-white border-gray-200 hover:border-blue-500 hover:bg-blue-50'
         
         with container:
@@ -97,10 +97,10 @@ def refresh_stats(container, cards_container, state):
                 
                 with ui.card().classes(f'{card_style} {bg_normal}').on('click', lambda e=est: (state.update({'filter_estado': e}), refresh_orders(cards_container, state, container))):
                         with ui.row().classes('items-center justify-between w-full'):
-                            ui.label(est).classes(f'text-[10px] font-bold text-gray-600 uppercase')
+                            ui.label(est).classes(f'text-[8px] font-bold text-gray-600 uppercase leading-tight').style('word-break:break-word;line-height:1.2')
                             # Dot de color
                             ui.element('div').classes(f'w-2 h-2 rounded-full bg-[{color_text}]')
-                        ui.label(str(count)).classes(f'text-xl font-bold text-[{color_text}]')
+                        ui.label(str(count)).classes(f'text-2xl font-bold text-[{color_text}]')
     finally:
         db.close()
 
@@ -563,16 +563,22 @@ def open_new_diagnostic_modal(consecutivo, container, state, stats_container=Non
                                     import os
                                     from datetime import datetime
                                     try:
-                                        content = e.content.read()
+                                        if hasattr(e, 'content') and e.content is not None:
+                                            content = e.content.read()
+                                        elif hasattr(e, 'files') and e.files:
+                                            f0 = e.files[0]
+                                            content = f0.content.read() if hasattr(f0, 'content') else bytes(f0)
+                                        else:
+                                            raise ValueError('No se pudo leer el archivo')
                                         folder = consecutivo.replace('#','').replace('/','_').strip()
                                         save_dir = f"static/scanner_reports/{folder}"
                                         os.makedirs(save_dir, exist_ok=True)
                                         f_name = f"scanner_{datetime.now().strftime('%H%M%S')}.pdf"
                                         f_path = os.path.join(save_dir, f_name)
-                                        with open(f_path, 'wb') as f:
-                                            f.write(content)
+                                        with open(f_path, 'wb') as fp:
+                                            fp.write(content)
                                         diag_struct['scanner_path'] = f"/scanner_reports/{folder}/{f_name}"
-                                        theme.notify_success('Reporte de escáner cargado')
+                                        theme.notify_success('Reporte de escaner cargado')
                                     except Exception as err:
                                         theme.notify_error(f"Error al subir scanner: {err}")
 
@@ -761,7 +767,7 @@ def open_new_diagnostic_modal(consecutivo, container, state, stats_container=Non
                                         content = await content
                                     
                                     if content:
-                                        final_name = name or f"evidencia_{datetime.now().strftime('%H%M%S')}.jpg"
+                                        final_name = name if name else f"evidencia_{datetime.now().strftime('%H%M%S')}.jpg"
                                         new_evidence_files.append((final_name, content))
                                         ui.notify(f'Cargada: {final_name}', type='positive')
                                         refresh_evidence()
@@ -772,7 +778,7 @@ def open_new_diagnostic_modal(consecutivo, container, state, stats_container=Non
                                 except Exception as err:
                                     theme.notify_error(f"Error crítico al subir: {str(err)}")
                                 
-                            ui.upload(on_upload=handle_upload, auto_upload=True).props('flat dense color=blue-7 accept="image/*" label="Agregar fotos"').classes('w-full border-2 border-dashed border-gray-300 rounded-lg p-2 hover:border-blue-400 transition-colors')
+                            ui.upload(on_upload=handle_upload, auto_upload=True).props('flat dense color=blue-7 accept="image/*,video/*" label="Agregar fotos"').classes('w-full border-2 border-dashed border-gray-300 rounded-lg p-2 hover:border-blue-400 transition-colors')
 
 
             # ─── FOOTER ───
@@ -1449,6 +1455,45 @@ def open_archive_dialog(consecutivo: str, container, state, stats_container=None
                 ui.run_javascript(f'window.open("{link}", "_blank")')
                 _do_archive('WhatsApp')
 
+            # ── SECCIÓN FACTURA ──────────────────────────────────────────
+            with ui.element('div').style('width:100%;background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:14px 16px;margin-bottom:4px'):
+                ui.label('🧾 ¿Esta orden requiere factura?').style('font-size:13px;font-weight:700;color:#0369a1;margin-bottom:10px;display:block')
+                
+                factura_url = [order.factura_sunat or '' if order else '']
+                
+                def _subir_factura(e):
+                    import os, secrets as _s
+                    if not e.name: return
+                    ext = e.name.rsplit('.',1)[-1].lower() if '.' in e.name else 'pdf'
+                    cons_safe = consecutivo.replace('#','').replace('/','-').replace(' ','_')
+                    fname = f"factura_{cons_safe}_{_s.token_hex(4)}.{ext}"
+                    os.makedirs('/var/www/sandoval/static/facturas', exist_ok=True)
+                    fpath = f'/var/www/sandoval/static/facturas/{fname}'
+                    with open(fpath,'wb') as fout:
+                        fout.write(e.content.read())
+                    url = f'/facturas/{fname}'
+                    db2 = get_db()
+                    try:
+                        o2 = db2.query(Orden).filter_by(consecutivo=consecutivo).first()
+                        if o2:
+                            o2.factura_sunat = url
+                            db2.commit()
+                        factura_url[0] = url
+                        lbl_factura.set_text(f'✅ Factura cargada: {fname}')
+                        lbl_factura.style('color:#059669;font-size:12px;font-weight:600')
+                    finally:
+                        db2.close()
+                
+                with ui.row().classes('w-full gap-2'):
+                    ui.upload(label='Subir factura (PDF/imagen)', on_upload=_subir_factura,
+                              max_file_size=10_000_000).props('accept=".pdf,.jpg,.jpeg,.png" flat dense color=blue-7').style('flex:1')
+                
+                txt_inicial = f'✅ Factura ya cargada' if (order and order.factura_sunat) else 'Sin factura aún'
+                color_ini   = '#059669' if (order and order.factura_sunat) else '#94a3b8'
+                lbl_factura = ui.label(txt_inicial).style(f'font-size:11px;color:{color_ini};margin-top:4px')
+            
+            ui.separator().style('margin:4px 0')
+            
             # Botones de Acción (Estilo Limón/Luz como pidió el usuario)
             ui.button('VÍA WHATSAPP', on_click=_open_wa_encuesta).style(_btn_style()).props('unelevated')
             ui.button('VÍA SMS', on_click=lambda: _do_archive('SMS')).style(_btn_style()).props('unelevated')
@@ -1460,6 +1505,31 @@ def open_archive_dialog(consecutivo: str, container, state, stats_container=None
         
     dlg.open()
 
+
+
+def delete_orden(consecutivo, container, state, stats_container=None):
+    """Eliminar una orden de servicio con confirmacion."""
+    def confirm():
+        db = get_db()
+        try:
+            o = db.query(Orden).filter_by(consecutivo=consecutivo).first()
+            if o:
+                db.delete(o)
+                db.commit()
+                theme.notify_success(f'Orden {consecutivo} eliminada')
+                refresh_orders(container, state, stats_container)
+            else:
+                theme.notify_error('Orden no encontrada')
+        except Exception as e:
+            db.rollback()
+            theme.notify_error(f'Error al eliminar: {e}')
+        finally:
+            db.close()
+    theme.confirm_dialog(
+        f'¿Eliminar orden {consecutivo}?',
+        'Esta acción no se puede deshacer. La orden y todos sus datos serán eliminados permanentemente.',
+        on_confirm=confirm
+    )
 
 def _render_order_card(order, clients, vehicles, container, state, stats_container=None):
     cur_estado = (order.estado or 'RECEPCIÓN').strip().upper()
@@ -1525,6 +1595,9 @@ def _render_order_card(order, clients, vehicles, container, state, stats_contain
                 # Gestión de Computadoras / Módulos
                 ui.button(icon='memory', on_click=lambda o=order: open_computer_orders_management(o.consecutivo)).props('flat dense color=blue-9 size=sm').tooltip('Vincular Orden de Computadora / Módulo')
                 
+                # Eliminar orden
+                ui.button(icon='delete_forever', on_click=lambda o=order: delete_orden(o.consecutivo, container, state, stats_container)).props('flat dense color=red-6 size=sm').tooltip('Eliminar orden')
+
                 # Retroceder (Flecha Izquierda)
                 try:
                     curr_idx = ESTADOS.index(cur_estado)
@@ -3224,7 +3297,7 @@ def open_create_order_dialog(container, state, stats_container=None):
                             print(f"UPLOAD ERROR: {ex}")
                         
                     # Uploader invisible pero presente en el DOM (width/height 0, opacity 0)
-                    uploader = ui.upload(on_upload=handle_upload, auto_upload=True, multiple=True, max_file_size=10_000_000).props('accept="image/*" flat dense').classes('absolute w-0 h-0 opacity-0 overflow-hidden m-0 p-0')
+                    uploader = ui.upload(on_upload=handle_upload, auto_upload=True, multiple=True, max_file_size=10_000_000).props('accept="image/*,video/*" flat dense').classes('absolute w-0 h-0 opacity-0 overflow-hidden m-0 p-0')
                     
                     # Botón visible que activa el uploader
                     ui.button('EXAMINAR ...', icon='folder_open', on_click=lambda: uploader.run_method('pickFiles')).props('unelevated color=lime-13 text-color=black font-bold icon-right').classes('h-10 ml-0')
@@ -3805,7 +3878,7 @@ def open_edit_reception_dialog(consecutivo, container, state):
                             except Exception as err:
                                 theme.notify_error(f"Error: {str(err)}")
 
-                        ui.upload(on_upload=handle_edit_up, auto_upload=True).props('flat dense color=blue-7 accept="image/*" label="Añadir fotos de recepción"').classes('w-full border border-dashed border-gray-300 rounded p-1')
+                        ui.upload(on_upload=handle_edit_up, auto_upload=True).props('flat dense color=blue-7 accept="image/*,video/*" label="Añadir fotos de recepción"').classes('w-full border border-dashed border-gray-300 rounded p-1')
                         refresh_edit_photos()
 
                         with ui.row().classes('w-full justify-between items-center mt-2'):

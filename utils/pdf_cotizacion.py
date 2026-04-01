@@ -29,7 +29,7 @@ def _cfg(db, clave, default=''):
 
 
 def ps(name, **kw):
-    return ParagraphStyle(name, fontName='Helvetica', **kw)
+    return ParagraphStyle(name, **{'fontName': 'Helvetica', **kw})
 
 
 def generar_pdf_cotizacion(cotizacion_id: int):

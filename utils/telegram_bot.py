@@ -16,6 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.models import get_db, ItemInventario, Vehiculo, Cliente, Orden
 from components.facturas import _save_factura, _agregar_items_a_inventario
+from utils.agent import run_agent
 from utils.groq_service import get_groq_client, FACTURA_PROMPT, get_context_data, analizar_intencion_cotizacion, analizar_edicion_cotizacion, analizar_intencion_credito
 
 load_dotenv()
@@ -428,121 +429,53 @@ async def _handle_credito_callbacks(data: str, query, context) -> bool:
     return False
 
 
-async def _process_bot_message(user_text: str, update: Update, context: ContextTypes.DEFAULT_TYPE, processing_msg):
+async def _process_bot_message(user_text: str, update, context, processing_msg, foto_path=None):
     try:
-        # ── Primero verificar si es sobre créditos/fiado ──
-        credito_intent = analizar_intencion_credito(user_text)
-        if credito_intent.get('intencion') != 'ninguna':
-            handled = await _handle_credito_intent(credito_intent, update, context, processing_msg)
-            if handled:
-                return
+        historial = context.user_data.get('agent_historial', [])
+        respuesta = await run_agent(user_text, foto_path=foto_path, historial=historial)
+        historial.append({'role': 'user', 'content': user_text})
+        historial.append({'role': 'assistant', 'content': respuesta})
+        context.user_data['agent_historial'] = historial[-20:]
 
-        # ── Si hay cotización activa, intentar editarla primero ──
-        cot_activa = context.user_data.get('cotizacion_activa')
-        if cot_activa:
-            edicion = analizar_edicion_cotizacion(user_text, cot_activa['items'])
-            if edicion.get('es_edicion'):
-                # Aplicar cambios
-                items_actualizados = edicion.get('items', cot_activa['items'])
-                total = sum(int(i.get('cantidad',1)) * float(i.get('precio',0)) for i in items_actualizados)
-                cot_activa['items'] = items_actualizados
-                cot_activa['total'] = total
-                context.user_data['cotizacion_activa'] = cot_activa
-                context.user_data['pending_cotizacion'] = cot_activa
+        # Detectar si la respuesta incluye un PDF para enviar
+        import json as _json, os as _os
+        pdf_enviado = False
+        try:
+            # El agente puede devolver JSON con pdf_path
+            if '"pdf_path"' in respuesta:
+                data = _json.loads(respuesta)
+                pdf_path = data.get('pdf_path')
+                if pdf_path and _os.path.exists(pdf_path):
+                    numero = data.get('numero', '')
+                    cliente = data.get('cliente', '')
+                    caption = f"📄 PDF {numero} - {cliente}"
+                    await context.bot.send_document(
+                        chat_id=update.effective_chat.id,
+                        document=open(pdf_path, 'rb'),
+                        filename=_os.path.basename(pdf_path),
+                        caption=caption
+                    )
+                    try: await processing_msg.delete()
+                    except: pass
+                    pdf_enviado = True
+                elif data.get('error'):
+                    await processing_msg.edit_text(f"❌ {data['error']}")
+                    pdf_enviado = True
+        except Exception:
+            pass
 
-                resumen = "\n".join([
-                    f"• {i.get('nombre','?')} x{i.get('cantidad',1)} → S/ {float(i.get('precio',0))*int(i.get('cantidad',1)):.2f}"
-                    for i in items_actualizados
-                ])
-                keyboard = InlineKeyboardMarkup([[
-                    InlineKeyboardButton("✅ Confirmar cambios", callback_data="confirmar_cotizacion"),
-                    InlineKeyboardButton("❌ Cancelar", callback_data="cancelar_cotizacion"),
-                ]])
-                await processing_msg.edit_text(
-                    f"✏️ *Cotización actualizada:*\n\n{resumen}\n\n💰 *Total: S/ {total:.2f}*",
-                    reply_markup=keyboard, parse_mode="Markdown"
-                )
-                return
-
-        # Analizar intención de cotización
-        intencion = analizar_intencion_cotizacion(user_text)
-        if intencion.get('is_cotizacion'):
-            placa = str(intencion.get('placa', '')).upper()
-            
-            # Buscar dueño si la placa existe
-            db = get_db()
-            try:
-                vehiculo = db.query(Vehiculo).filter_by(placa=placa).first()
-                if vehiculo and vehiculo.cliente_id:
-                    cliente = db.query(Cliente).filter_by(id=vehiculo.cliente_id).first()
-                    if cliente:
-                        # Auto-completar
-                        intencion['cliente_nombre'] = f"{cliente.nombre} {cliente.apellidos or ''}".strip()
-                        if not intencion.get('telefono') or intencion.get('telefono') == "":
-                            intencion['telefono'] = cliente.telefono
-            finally:
-                db.close()
-                
-            # Guardamos la data
-            context.user_data['pending_cotizacion'] = intencion
-            context.user_data['cotizacion_activa'] = intencion  # guardar para posible edición
-            
-            # Calcula el total iterando los items
-            total = sum(float(i.get('precio', 0)) * int(i.get('cantidad', 1)) for i in intencion.get('items', []))
-            
-            items_str = "\n".join([f"  - {i.get('nombre')} x{i.get('cantidad', 1)}: S/ {float(i.get('precio', 0))*int(i.get('cantidad', 1)):.2f}" for i in intencion.get('items', [])])
-            if not items_str: items_str = "  (Ningún ítem detectado o con precio válido)"
-            
-            msg = (
-                f"📝 **Cotización Generada por IA**\n\n"
-                f"🚗 *Placa:* {intencion.get('placa', '')}\n"
-                f"👤 *Cliente:* {intencion.get('cliente_nombre', '')}\n"
-                f"📱 *Teléfono:* {intencion.get('telefono', '')}\n"
-                f"🛣️ *Kilometraje:* {intencion.get('kilometraje', '')} km\n\n"
-                f"**Servicios y Repuestos Detectados:**\n"
-                f"{items_str}\n\n"
-                f"💰 **Total Estimado:** S/ {total:.2f}\n\n"
-                f"¿Es correcta esta cotización y deseas crearla oficialmente?"
-            )
-            
-            keyboard = [
-                [InlineKeyboardButton("✅ Confirmar, Crear y Generar PDF", callback_data='save_cotizacion')],
-                [InlineKeyboardButton("❌ Cancelar", callback_data='cancel_cotizacion')]
-            ]
-            await processing_msg.edit_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-            return
-
-        # ── DIRRETRICES ESTRICTAS DE SEGURIDAD Y CONTEXTO ──
-        system_prompt = """
-        Eres el asistente exclusivo del Taller Sandoval. Tu única función es ayudar con temas 
-        relacionados a mecánica automotriz, inventario de repuestos, gestión de clientes, gastos 
-        del taller y operaciones diarias. 
-        
-        REGLA DE ORO: Si el usuario te pregunta sobre la universidad, tareas académicas, historia, 
-        matemáticas, o CUALQUIER TEMA que no tenga que ver directa y exclusivamente con el taller, 
-        debes NEGARTÉ a responder cortésmente y recordarle que eres un asistente de taller automotriz.
-        Responde de forma concisa, profesional y yendo directo al grano.
-        """
-        context_data = get_context_data()
-        full_prompt = f"{system_prompt}\n\nCONTEXTO DEL TALLER:\n{context_data}"
-        
-        client = get_groq_client()
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": full_prompt},
-                {"role": "user", "content": user_text}
-            ],
-            max_tokens=1000,
-            temperature=0.3
-        )
-        reply = response.choices[0].message.content
-        await processing_msg.edit_text(reply)
-        
+        if not pdf_enviado:
+            if len(respuesta) > 4000:
+                for i in range(0, len(respuesta), 4000):
+                    await update.message.reply_text(respuesta[i:i+4000])
+                try: await processing_msg.delete()
+                except: pass
+            else:
+                await processing_msg.edit_text(respuesta)
     except Exception as e:
-        logger.error(f"Error AI: {e}", exc_info=True)
-        await processing_msg.edit_text("❌ Hubo un error procesando el mensaje mediante IA.")
-
+        logger.error(f'Error agente: {e}', exc_info=True)
+        try: await processing_msg.edit_text(f'Error: {str(e)[:200]}')
+        except: pass
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -557,35 +490,63 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if ALLOWED_USERS and user_id not in ALLOWED_USERS:
         return
-        
-    # Agarrar la versión de mayor resolución de la foto
+
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
-    
-    # Validar carpetas
-    os.makedirs('static/facturas', exist_ok=True)
-    fname = f"tg_img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.file_id}.jpg"
-    fpath = os.path.join('static/facturas', fname)
-    
-    # Descargar la imagen de los servidores de Telegram a nuestro servidor
-    await file.download_to_drive(fpath)
-    context.user_data['last_invoice_path'] = fpath
-    
-    # Menú de botones
-    keyboard = [
-        [
-            InlineKeyboardButton("🛒 Mercadería (Al Inventario)", callback_data='tipo_mercaderia'),
-            InlineKeyboardButton("💸 Gasto (Contabilidad)", callback_data='tipo_gasto')
-        ],
-        [InlineKeyboardButton("❌ Cancelar", callback_data='cancelar_factura')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
-        "📸 Factura recibida con éxito.\n*¿Qué tipo de registro es este?*", 
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
-    )
+    caption = (update.message.caption or '').strip().lower()
+
+    # Descargar foto
+    os.makedirs('/var/www/sandoval/static/evidencia/temp', exist_ok=True)
+    fname = f"tg_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.file_id}.jpg"
+
+    # Decidir si es EVIDENCIA DE ORDEN o FACTURA
+    palabras_orden = ['orden', 'os-', 'evidencia', 'foto', 'placa', 'vehiculo',
+                      'vehículo', 'trabajo', 'reparacion', 'reparación', 'entrega',
+                      'listo', 'terminado', 'avanzar', 'fase', 'subir']
+    es_evidencia = any(p in caption for p in palabras_orden)
+
+    # Si tiene caption con placa (formato ABC-123 o ABC123)
+    import re
+    tiene_placa = bool(re.search(r'[A-Za-z]{3}[-\s]?\d{3,4}', caption))
+    if tiene_placa:
+        es_evidencia = True
+
+    if es_evidencia:
+        # Guardar en carpeta de evidencias
+        fpath = f'/var/www/sandoval/static/evidencia/temp/{fname}'
+        await file.download_to_drive(fpath)
+        context.user_data['last_photo_path'] = fpath
+
+        # Pasar al agente con el caption como texto
+        processing_msg = await update.message.reply_text('⏳ Procesando foto...')
+        user_text = update.message.caption or 'El usuario mandó una foto de evidencia de una orden.'
+        await _process_bot_message(user_text, update, context, processing_msg, foto_path=fpath)
+    else:
+        # Sin caption claro: preguntar qué es la foto
+        # Guardar en temp primero
+        os.makedirs('/var/www/sandoval/static/evidencia/temp', exist_ok=True)
+        fpath_temp = f'/var/www/sandoval/static/evidencia/temp/{fname}'
+        await file.download_to_drive(fpath_temp)
+        context.user_data['last_photo_path'] = fpath_temp
+        context.user_data['last_invoice_path'] = fpath_temp
+
+        keyboard = [
+            [
+                InlineKeyboardButton("📋 Evidencia de Orden", callback_data='foto_evidencia'),
+                InlineKeyboardButton("🛒 Factura Mercadería", callback_data='tipo_mercaderia'),
+            ],
+            [
+                InlineKeyboardButton("💸 Gasto/Factura", callback_data='tipo_gasto'),
+                InlineKeyboardButton("❌ Cancelar", callback_data='cancelar_factura'),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "📸 Foto recibida. *¿Qué es esta foto?*\n\n"
+            "💡 Tip: Si mandas la foto con el caption de la placa o número de orden, el bot la procesa automáticamente.",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -639,6 +600,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Error creando cotización TG: {e}", exc_info=True)
             await query.edit_message_text(f"❌ Error interno al generar la cotización: {str(e)}")
+        return
+
+    if data == 'foto_evidencia':
+        fpath = context.user_data.get('last_photo_path')
+        if not fpath:
+            await query.edit_message_text("⚠️ Foto no encontrada. Vuelve a enviarla.")
+            return
+        await query.edit_message_text("⏳ Procesando foto como evidencia de orden...")
+        await _process_bot_message(
+            "El usuario mandó una foto de evidencia de una orden o vehículo. Busca la orden activa más reciente y sube esta foto como evidencia.",
+            update, context, query.message, foto_path=fpath
+        )
         return
 
     if data == 'cancelar_factura' or data == 'discard_factura':
@@ -1005,12 +978,43 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error AI Audio: {e}")
         await processing_msg.edit_text("❌ Hubo un error entendiendo tu nota de voz.")
 
+async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja videos enviados al bot - los trata como evidencia de órdenes"""
+    user_id = update.effective_user.id
+    if ALLOWED_USERS and user_id not in ALLOWED_USERS:
+        return
+
+    # Obtener el video (puede ser video normal o video_note = circulito)
+    video = update.message.video or update.message.video_note
+    if not video:
+        return
+
+    caption = (update.message.caption or '').strip()
+    processing_msg = await update.message.reply_text('⏳ Procesando video...')
+
+    try:
+        file = await context.bot.get_file(video.file_id)
+        os.makedirs('/var/www/sandoval/static/evidencia/temp', exist_ok=True)
+        fname = f"tg_video_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{video.file_id}.mp4"
+        fpath = f'/var/www/sandoval/static/evidencia/temp/{fname}'
+        await file.download_to_drive(fpath)
+        context.user_data['last_photo_path'] = fpath
+
+        user_text = caption or 'El usuario mandó un video de evidencia de una orden o vehículo.'
+        await _process_bot_message(user_text, update, context, processing_msg, foto_path=fpath)
+
+    except Exception as e:
+        logger.error(f"Error handle_video: {e}", exc_info=True)
+        await processing_msg.edit_text(f"❌ Error procesando el video: {e}")
+
+
 def run_telegram_bot():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.VIDEO | filters.VIDEO_NOTE, handle_video))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
     app.add_handler(CallbackQueryHandler(button_callback))
     

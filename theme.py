@@ -20,14 +20,15 @@ DRAWER_BG = MENU_BG
 
 # Estados del flujo de trabajo con colores - Muted/Professional
 ESTADOS_CONFIG = {
-    'RECEPCIÓN':    {'icon': 'input',         'color': 'slate-600',  'hex': '#475569', 'order': 0},
-    'DIAGNÓSTICO':  {'icon': 'search',        'color': 'blue-900',   'hex': '#1e3a8a', 'order': 1},
-    'REPUESTOS':    {'icon': 'build_circle',  'color': 'blue-800',   'hex': '#1e40af', 'order': 2},
-    'APROBACIÓN':   {'icon': 'check_circle',  'color': 'blue-900',   'hex': '#274495', 'order': 3},
-    'REPARACIÓN':   {'icon': 'construction',  'color': 'blue-700',   'hex': '#1d4ed8', 'order': 4},
-    'CONTROL':      {'icon': 'verified',      'color': 'slate-700',  'hex': '#334155', 'order': 5},
-    'ENTREGA':      {'icon': 'local_shipping','color': 'slate-800',  'hex': '#1e293b', 'order': 6},
-    'ARCHIVADO':    {'icon': 'archive',       'color': 'slate-400',  'hex': '#94a3b8', 'order': 7},
+    'RECEPCIÓN':        {'icon': 'input',         'color': 'slate-600',  'hex': '#475569', 'order': 0, 'short': 'RECEP.'},
+    'DIAGNÓSTICO':      {'icon': 'search',        'color': 'blue-900',   'hex': '#1e3a8a', 'order': 1, 'short': 'DIAGN.'},
+    'REPUESTOS':        {'icon': 'build_circle',  'color': 'blue-800',   'hex': '#1e40af', 'order': 2, 'short': 'REPUES.'},
+    'COTIZACIÓN':       {'icon': 'receipt',       'color': 'blue-800',   'hex': '#1e40af', 'order': 2, 'short': 'COTIZ.'},
+    'APROBACIÓN':       {'icon': 'check_circle',  'color': 'blue-900',   'hex': '#274495', 'order': 3, 'short': 'APROBAC.'},
+    'REPARACIÓN':       {'icon': 'construction',  'color': 'blue-700',   'hex': '#1d4ed8', 'order': 4, 'short': 'REPAR.'},
+    'CONTROL CALIDAD':  {'icon': 'verified',      'color': 'slate-700',  'hex': '#334155', 'order': 5, 'short': 'CONTROL'},
+    'LISTO PARA ENTREGA':{'icon': 'local_shipping','color': 'green-700', 'hex': '#15803d', 'order': 6, 'short': 'LISTO'},
+    'ARCHIVADO':        {'icon': 'archive',       'color': 'slate-400',  'hex': '#94a3b8', 'order': 7, 'short': 'ARCHIV.'},
 }
 
 def frame(nav_title: str):

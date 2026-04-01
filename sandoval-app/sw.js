@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sandoval-v1';
+const CACHE_NAME = 'sandoval-v4';
 const PRECACHE = ['/app/', '/app/index.html'];
 
 self.addEventListener('install', e => {
