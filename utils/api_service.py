@@ -1244,6 +1244,116 @@ async def api_reportes_ganancia(request: Request) -> JSONResponse:
         db.close()
 
 
+async def api_reportes_ganancia_diaria(request: Request) -> JSONResponse:
+    """GET /api/reportes/ganancia-diaria?dias=30 — historial de ganancias día a día"""
+    user = _require_admin(request)
+    if isinstance(user, JSONResponse):
+        return user
+
+    try:
+        dias = int(request.query_params.get('dias', 30))
+    except Exception:
+        dias = 30
+    dias = min(max(dias, 1), 365)
+
+    now = datetime.now()
+    inicio_dt = (now - timedelta(days=dias)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def _parse_fecha_d(f):
+        f = (f or '').strip()[:10]
+        for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d'):
+            try:
+                return datetime.strptime(f, fmt)
+            except Exception:
+                pass
+        return None
+
+    db = get_db()
+    try:
+        inv_items = db.query(ItemInventario).all()
+        costos_map = {it.codigo: float(it.costo or 0) for it in inv_items}
+
+        dias_data = {}
+
+        def _get_dia(key):
+            if key not in dias_data:
+                dias_data[key] = {'fecha': key, 'gan_rep': 0.0, 'gan_mo': 0.0, 'gan_total': 0.0, 'num_ordenes': 0}
+            return dias_data[key]
+
+        # ── Órdenes de servicio ──
+        for o in db.query(Orden).all():
+            fecha_dt = _parse_fecha_d(o.fecha)
+            if not fecha_dt or fecha_dt < inicio_dt:
+                continue
+            key = fecha_dt.strftime('%Y-%m-%d')
+            dia = _get_dia(key)
+            dia['num_ordenes'] += 1
+            items = o.items_cotizacion or []
+            if isinstance(items, str):
+                try:
+                    import json as _j; items = _j.loads(items)
+                except Exception:
+                    items = []
+            if not isinstance(items, list):
+                continue
+            for it in items:
+                precio_u = float(it.get('precio_unitario', 0) or 0)
+                cant = float(it.get('cantidad', 1) or 1)
+                total = precio_u * cant
+                cat = (it.get('categoria') or '').strip().lower()
+                ref = (it.get('referencia') or it.get('ref') or '').strip()
+                nombre = (it.get('nombre') or '').strip()
+                es_mo = cat in ('servicio', 'mano de obra') or ref == 'MANO-DE-OBRA' or 'mano' in nombre.lower()
+                if es_mo:
+                    dia['gan_mo'] += total
+                else:
+                    costo_u = costos_map.get(ref, 0) if ref else 0
+                    dia['gan_rep'] += total - (costo_u * cant)
+
+        # ── Notas de venta ──
+        for n in db.query(NotaVenta).filter_by(estado='pagada').all():
+            if not n.fecha:
+                continue
+            try:
+                nf = n.fecha if hasattr(n.fecha, 'strftime') else _parse_fecha_d(str(n.fecha)[:10])
+                if not nf or nf < inicio_dt:
+                    continue
+                key = nf.strftime('%Y-%m-%d')
+            except Exception:
+                continue
+            dia = _get_dia(key)
+            items_n = n.items or []
+            if isinstance(items_n, str):
+                try:
+                    import json as _j; items_n = _j.loads(items_n)
+                except Exception:
+                    items_n = []
+            for it in (items_n if isinstance(items_n, list) else []):
+                precio_u = float(it.get('precio', 0) or 0)
+                cant = float(it.get('cantidad', 1) or 1)
+                total = precio_u * cant
+                ref = (it.get('codigo') or '').strip()
+                costo_u = costos_map.get(ref, 0) if ref else 0
+                dia['gan_rep'] += total - (costo_u * cant)
+
+        for d in dias_data.values():
+            d['gan_total'] = round(d['gan_rep'] + d['gan_mo'], 2)
+            d['gan_rep'] = round(d['gan_rep'], 2)
+            d['gan_mo'] = round(d['gan_mo'], 2)
+
+        historial = sorted(dias_data.values(), key=lambda x: x['fecha'], reverse=True)
+
+        return json_ok({
+            'dias': dias,
+            'desde': inicio_dt.strftime('%Y-%m-%d'),
+            'historial': historial,
+        })
+    except Exception as e:
+        return json_err(str(e))
+    finally:
+        db.close()
+
+
 def register_api_routes(app):
     """Registra todas las rutas /api/* en la app NiceGUI/FastAPI"""
     app.add_api_route('/api/auth/login',              api_login,               methods=['POST', 'OPTIONS'])
@@ -1269,7 +1379,8 @@ def register_api_routes(app):
     app.add_api_route('/api/vehiculos',               api_vehiculos_list,      methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/vehiculos/nuevo',         api_vehiculo_create,     methods=['POST', 'OPTIONS'])
     app.add_api_route('/api/inventario',              api_inventario_list,     methods=['GET',  'OPTIONS'])
-    app.add_api_route('/api/reportes/ganancia',       api_reportes_ganancia,   methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/reportes/ganancia',        api_reportes_ganancia,        methods=['GET',  'OPTIONS'])
+    app.add_api_route('/api/reportes/ganancia-diaria', api_reportes_ganancia_diaria, methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/notas-venta',             api_notas_list,          methods=['GET',  'OPTIONS'])
     app.add_api_route('/api/notas-venta/nueva',       api_nota_create,         methods=['POST', 'OPTIONS'])
     app.add_api_route('/api/citas',                   api_citas_list,          methods=['GET',  'OPTIONS'])

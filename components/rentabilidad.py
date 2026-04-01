@@ -4,7 +4,7 @@ Análisis completo de ingresos, costos, márgenes y rendimiento
 """
 
 from nicegui import ui
-from utils.models import get_db, Orden, Cliente, Vehiculo, ItemInventario
+from utils.models import get_db, Orden, Cliente, Vehiculo, ItemInventario, NotaVenta
 from datetime import datetime, timedelta
 import json
 
@@ -674,6 +674,159 @@ def _tabla_detalle(container, tabla):
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+def _parse_fecha_hist(f):
+    f = (f or '').strip()[:10]
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d'):
+        try:
+            return datetime.strptime(f, fmt)
+        except Exception:
+            pass
+    return None
+
+
+def _calcular_historial(dias: int) -> list:
+    """Retorna lista de dicts con ganancia por día, ordenado desc."""
+    inicio_dt = (datetime.now() - timedelta(days=dias)).replace(hour=0, minute=0, second=0, microsecond=0)
+    db = get_db()
+    try:
+        costos_map = {it.codigo: float(it.costo or 0) for it in db.query(ItemInventario).all()}
+        dias_data = {}
+
+        def _get_dia(key):
+            if key not in dias_data:
+                dias_data[key] = {'fecha': key, 'gan_rep': 0.0, 'gan_mo': 0.0, 'gan_total': 0.0, 'num_ordenes': 0}
+            return dias_data[key]
+
+        for o in db.query(Orden).all():
+            fd = _parse_fecha_hist(o.fecha)
+            if not fd or fd < inicio_dt:
+                continue
+            key = fd.strftime('%Y-%m-%d')
+            dia = _get_dia(key)
+            dia['num_ordenes'] += 1
+            for it in _parse_items(o.items_cotizacion):
+                precio_u = float(it.get('precio_unitario', 0) or 0)
+                cant = float(it.get('cantidad', 1) or 1)
+                total = precio_u * cant
+                cat = (it.get('categoria') or '').strip().lower()
+                ref = (it.get('referencia') or it.get('ref') or '').strip()
+                nombre = (it.get('nombre') or '').strip()
+                es_mo = cat in ('servicio', 'mano de obra') or ref == 'MANO-DE-OBRA' or 'mano' in nombre.lower()
+                if es_mo:
+                    dia['gan_mo'] += total
+                else:
+                    costo_u = costos_map.get(ref, 0) if ref else 0
+                    dia['gan_rep'] += total - (costo_u * cant)
+
+        for n in db.query(NotaVenta).filter_by(estado='pagada').all():
+            if not n.fecha:
+                continue
+            try:
+                nf = n.fecha if hasattr(n.fecha, 'strftime') else _parse_fecha_hist(str(n.fecha)[:10])
+                if not nf or nf < inicio_dt:
+                    continue
+                key = nf.strftime('%Y-%m-%d')
+            except Exception:
+                continue
+            dia = _get_dia(key)
+            for it in _parse_items(n.items):
+                precio_u = float(it.get('precio', 0) or 0)
+                cant = float(it.get('cantidad', 1) or 1)
+                total = precio_u * cant
+                ref = (it.get('codigo') or '').strip()
+                costo_u = costos_map.get(ref, 0) if ref else 0
+                dia['gan_rep'] += total - (costo_u * cant)
+
+        for d in dias_data.values():
+            d['gan_total'] = round(d['gan_rep'] + d['gan_mo'], 2)
+            d['gan_rep'] = round(d['gan_rep'], 2)
+            d['gan_mo'] = round(d['gan_mo'], 2)
+
+        return sorted(dias_data.values(), key=lambda x: x['fecha'], reverse=True)
+    finally:
+        db.close()
+
+
+def _historial_diario(container):
+    with container:
+        with ui.card().classes('w-full bg-white border border-gray-200 shadow-sm p-0'):
+            # Header con selector de días
+            with ui.row().classes('w-full items-center justify-between px-6 py-4 border-b border-gray-100'):
+                with ui.row().classes('items-center gap-2'):
+                    ui.icon('calendar_today', size='20px').classes('text-[#274495]')
+                    ui.label('Historial de Ganancias por Día').classes('text-base font-bold text-[#274495]')
+                dias_select = ui.select({7: 'Últimos 7 días', 30: 'Últimos 30 días', 90: 'Últimos 90 días'}, value=30).props('outlined dense bg-color=white').classes('w-44')
+
+            table_area = ui.column().classes('w-full')
+
+            def _render(dias):
+                table_area.clear()
+                historial = _calcular_historial(dias)
+                today = datetime.now().strftime('%Y-%m-%d')
+                yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+
+                with table_area:
+                    if not historial:
+                        ui.label('Sin datos en este periodo').classes('text-gray-400 text-sm text-center py-6 w-full')
+                        return
+
+                    columns = [
+                        {'name': 'fecha',    'label': 'Fecha',         'field': 'fecha_label', 'align': 'left',  'sortable': True},
+                        {'name': 'ordenes',  'label': 'Órdenes',       'field': 'num_ordenes', 'align': 'center','sortable': True},
+                        {'name': 'gan_rep',  'label': 'Gan. Repuestos','field': 'gan_rep_fmt', 'align': 'right', 'sortable': True},
+                        {'name': 'gan_mo',   'label': 'Gan. Mano Obra','field': 'gan_mo_fmt',  'align': 'right', 'sortable': True},
+                        {'name': 'gan_total','label': 'GANANCIA NETA', 'field': 'gan_total_fmt','align': 'right','sortable': True},
+                    ]
+
+                    rows = []
+                    for d in historial:
+                        if d['fecha'] == today:
+                            lbl = f"HOY ({d['fecha'][5:].replace('-','/')})"
+                        elif d['fecha'] == yesterday:
+                            lbl = f"Ayer ({d['fecha'][5:].replace('-','/')})"
+                        else:
+                            lbl = d['fecha'][5:].replace('-', '/')  # MM/DD
+                        rows.append({
+                            'fecha_label': lbl,
+                            'fecha_raw':   d['fecha'],
+                            'num_ordenes': d['num_ordenes'],
+                            'gan_rep_fmt': f"S/ {d['gan_rep']:,.2f}",
+                            'gan_mo_fmt':  f"S/ {d['gan_mo']:,.2f}",
+                            'gan_total_fmt': f"S/ {d['gan_total']:,.2f}",
+                        })
+
+                    tbl = ui.table(columns=columns, rows=rows, row_key='fecha_raw').classes('w-full text-black')
+                    tbl.props('flat dense rows-per-page-options="[15, 30, 60]" binary-state-sort')
+
+                    tbl.add_slot('body-cell-gan_total', '''
+                        <q-td :props="props">
+                            <span style="font-weight:800;color:#1d4ed8">{{ props.row.gan_total_fmt }}</span>
+                        </q-td>
+                    ''')
+                    tbl.add_slot('body-cell-gan_mo', '''
+                        <q-td :props="props">
+                            <span style="font-weight:600;color:#16a34a">{{ props.row.gan_mo_fmt }}</span>
+                        </q-td>
+                    ''')
+                    tbl.add_slot('body-cell-fecha', '''
+                        <q-td :props="props">
+                            <span style="font-weight:700">{{ props.row.fecha_label }}</span>
+                        </q-td>
+                    ''')
+
+                    # Totales al pie
+                    total_rep   = sum(d['gan_rep']   for d in historial)
+                    total_mo    = sum(d['gan_mo']    for d in historial)
+                    total_neta  = sum(d['gan_total'] for d in historial)
+                    with ui.row().classes('w-full justify-end gap-6 px-6 py-3 bg-gray-50 border-t border-gray-200'):
+                        ui.label(f'Rep: S/ {total_rep:,.2f}').classes('text-sm text-gray-600')
+                        ui.label(f'M.O.: S/ {total_mo:,.2f}').classes('text-sm font-bold text-green-700')
+                        ui.label(f'NETA TOTAL: S/ {total_neta:,.2f}').classes('text-sm font-black text-blue-700')
+
+            _render(30)
+            dias_select.on('update:model-value', lambda: _render(dias_select.value))
+
+
 def show_rentabilidad(container):
     """Renderiza el Dashboard de Rentabilidad completo"""
     # Agregar estilos 3D para gráficos
@@ -715,3 +868,7 @@ def show_rentabilidad(container):
         # Tabla detalle
         tabla_row = ui.row().classes('w-full')
         _tabla_detalle(tabla_row, data['tabla'])
+
+        # Historial diario
+        hist_row = ui.row().classes('w-full')
+        _historial_diario(hist_row)

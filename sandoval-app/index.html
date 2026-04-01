@@ -1342,15 +1342,21 @@
     }));
   }
 
-  async function pageReportes(periodo){
+  async function pageReportes(periodo,diasH){
     periodo=periodo||'mes';
+    diasH=diasH||30;
     document.getElementById('topbar-section').textContent='Reportes de Ganancia';
     var c=document.getElementById('content');
     c.innerHTML='<div style="text-align:center;padding:50px;color:var(--text3)">Calculando...</div>';
-    var data=await apiFetch('/api/reportes/ganancia?periodo='+periodo);
+    var results=await Promise.all([
+      apiFetch('/api/reportes/ganancia?periodo='+periodo),
+      apiFetch('/api/reportes/ganancia-diaria?dias='+diasH)
+    ]);
+    var data=results[0];var dataH=results[1];
     if(!data)return;
     var r=data.resumen;
     var top=data.top_productos||[];
+    var historial=(dataH&&dataH.historial)||[];
 
     function btn(p,lbl){
       var activo=p===periodo;
@@ -1419,7 +1425,43 @@
       });
     }
 
-    html+='</div></div></div>';
+    // ── Historial diario ──────────────────────────────────────────────
+    html+='</div></div>'
+
+    // Selector días del historial
+    +'<div class="sec" style="margin-top:10px">'
+      +'<div class="sec-head"><span class="sec-title">📅 Historial de ganancias por día</span></div>'
+      +'<div style="margin:0 0 10px;background:#f2f2f7;border-radius:13px;padding:3px;display:flex;gap:2px">'
+        +(['7','30','90'].map(function(d){var a=String(diasH)===d;return'<button onclick="pageReportes(\''+periodo+'\','+d+')" style="flex:1;padding:8px 4px;border:none;border-radius:10px;font-size:12px;font-weight:'+(a?'700':'500')+';cursor:pointer;background:'+(a?'#fff':'transparent')+';color:'+(a?'var(--blue)':'var(--text3)')+';'+(a?'box-shadow:0 1px 3px rgba(0,0,0,.1)':'')+'">Últimos '+d+' días</button>';}).join(''))
+      +'</div>';
+
+    if(!historial.length){
+      html+='<div style="text-align:center;padding:20px;color:var(--text3);font-size:13px">Sin datos en este periodo</div>';
+    } else {
+      // Cabecera tabla
+      html+='<div style="background:#f8fafc;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb">'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;padding:8px 12px;background:#e5e7eb">'
+          +'<div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase">Fecha</div>'
+          +'<div style="font-size:10px;font-weight:700;color:#6b7280;text-align:right;text-transform:uppercase">Repuestos</div>'
+          +'<div style="font-size:10px;font-weight:700;color:#16a34a;text-align:right;text-transform:uppercase">Mano obra</div>'
+          +'<div style="font-size:10px;font-weight:700;color:#1d4ed8;text-align:right;text-transform:uppercase">NETA</div>'
+        +'</div>';
+      historial.forEach(function(d,i){
+        var today=new Date().toISOString().slice(0,10);
+        var yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);
+        var label=d.fecha===today?'Hoy':d.fecha===yesterday?'Ayer':d.fecha.slice(5).replace('-','/');
+        var bg=i%2===0?'#fff':'#f9fafb';
+        html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;padding:10px 12px;background:'+bg+';border-top:1px solid #f3f4f6">'
+          +'<div style="font-size:12px;font-weight:600;color:var(--text)">'+label+'</div>'
+          +'<div style="font-size:12px;text-align:right;color:var(--text)">'+fmtMoney(d.gan_rep)+'</div>'
+          +'<div style="font-size:12px;text-align:right;color:#16a34a;font-weight:600">'+fmtMoney(d.gan_mo)+'</div>'
+          +'<div style="font-size:13px;text-align:right;color:#1d4ed8;font-weight:800">'+fmtMoney(d.gan_total)+'</div>'
+        +'</div>';
+      });
+      html+='</div>';
+    }
+
+    html+='</div></div>';
     c.innerHTML=html;
   }
 
