@@ -4,7 +4,6 @@ SANDOVAL Dashboard - Telegram Assistant Bot
 import os
 import json
 import logging
-import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
@@ -14,10 +13,10 @@ import sys
 # Agregar la ruta base para poder importar utils y components
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.models import get_db, ItemInventario, Vehiculo, Cliente, Orden
+from utils.models import get_db, ItemInventario, Vehiculo, Cliente
 from components.facturas import _save_factura, _agregar_items_a_inventario
 from utils.agent import run_agent
-from utils.groq_service import get_groq_client, FACTURA_PROMPT, get_context_data, analizar_intencion_cotizacion, analizar_edicion_cotizacion, analizar_intencion_credito
+from utils.groq_service import get_groq_client, FACTURA_PROMPT
 
 load_dotenv()
 
@@ -33,15 +32,67 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_USERS and user_id not in ALLOWED_USERS:
         await update.message.reply_text(f"🛑 Acceso denegado. Tu ID es: {user_id}. No estás en la lista blanca del Taller Sandoval.")
         return
-        
+
     await update.message.reply_text(
-        f"👋 ¡Hola! Soy el Asistente del Taller Sandoval.\n\n"
-        f"🔑 Tu ID secreto de Telegram es: `{user_id}`\n(Pásamelo para blindar el bot a tu cuenta).\n\n"
-        f"Puedes:\n"
-        f"1️⃣ Preguntarme sobre el taller (inventario, repuestos, clientes).\n"
-        f"2️⃣ Enviarme una foto de una factura para subirla al sistema web.\n"
-        f"3️⃣ Enviarme una **NOTA DE VOZ** si no puedes escribir."
+        f"👋 ¡Hola! Soy el Asistente IA del Taller Sandoval.\n\n"
+        f"🔑 Tu ID de Telegram es: `{user_id}`\n\n"
+        f"Dime lo que necesitas en lenguaje natural, por ejemplo:\n"
+        f"  • _'cotización para ABC-123, cambio aceite 80 y filtro 25'_\n"
+        f"  • _'cuánto gané hoy'_\n"
+        f"  • _'Mario Flores se llevó 2 filtros a 25 soles al fiado'_\n"
+        f"  • _'Mario abonó 40 soles por yape'_\n"
+        f"  • _'stock de filtros'_\n"
+        f"  • _'órdenes activas'_\n\n"
+        f"También puedo recibir 📸 fotos y 🎙️ notas de voz.\n"
+        f"Usa /help para ver todos los comandos."
     )
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if ALLOWED_USERS and user_id not in ALLOWED_USERS:
+        return
+    await update.message.reply_text(
+        "📋 *Comandos disponibles:*\n\n"
+        "/start — Bienvenida\n"
+        "/help — Esta ayuda\n"
+        "/cancelar — Cancela cualquier operación pendiente\n\n"
+        "💬 *Lo que puedes decirme:*\n\n"
+        "📊 *Ganancias:*\n"
+        "  _'cuánto gané hoy/ayer/semana/mes'_\n\n"
+        "📦 *Inventario:*\n"
+        "  _'stock de filtros de aceite'_\n"
+        "  _'hay bujías NGK'_\n\n"
+        "📋 *Órdenes:*\n"
+        "  _'estado de la orden ABC-123'_\n"
+        "  _'órdenes activas'_\n"
+        "  _'crea orden para Juan Pérez, placa XYZ-123, cambio frenos'_\n\n"
+        "📄 *Cotizaciones:*\n"
+        "  _'cotización para ABC-123, aceite 80 y filtro 25'_\n\n"
+        "💳 *Créditos / Fiados:*\n"
+        "  _'Mario se llevó 2 filtros a 25 al fiado'_\n"
+        "  _'Mario abonó 50 soles por yape'_\n"
+        "  _'créditos pendientes'_\n\n"
+        "📸 *Fotos:* facturas de proveedores o evidencias de órdenes\n"
+        "🎙️ *Nota de voz:* cualquier comando por audio",
+        parse_mode='Markdown'
+    )
+
+
+async def cancelar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if ALLOWED_USERS and user_id not in ALLOWED_USERS:
+        return
+    context.user_data.pop('pending_credito', None)
+    context.user_data.pop('pending_abono', None)
+    context.user_data.pop('abono_pendiente_datos', None)
+    context.user_data.pop('pending_cotizacion', None)
+    context.user_data.pop('cotizacion_activa', None)
+    context.user_data.pop('pending_factura', None)
+    context.user_data.pop('last_photo_path', None)
+    context.user_data.pop('last_invoice_path', None)
+    context.user_data.pop('agent_historial', None)
+    await update.message.reply_text("✅ Todo cancelado. Historial de conversación limpiado.")
 
 # ═══════════════════════════════════════════════════════════════════
 #  CRÉDITOS / FIADO - Funciones auxiliares del bot
@@ -627,7 +678,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         try:
             # Inyectar silenciosamente a SQLite de la página web
-            factura_id = _save_factura(factura_data)
+            _save_factura(factura_data)
             
             # Si es mercadería, añadir también al stock disponible internamente
             if factura_data['tipo'] == 'mercaderia' and factura_data.get('items'):
@@ -668,8 +719,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if pdf_path and os.path.exists(pdf_path):
                 with open(pdf_path, 'rb') as doc:
                     await context.bot.send_document(
-                        chat_id=user_id, 
-                        document=doc, 
+                        chat_id=update.effective_chat.id,
+                        document=doc,
                         filename=os.path.basename(pdf_path),
                         caption="📄 PDF listo para reenviar al cliente."
                     )
@@ -842,102 +893,6 @@ def _crear_cotizacion_desde_bot(data: dict):
     finally:
         db.close()
 
-def _crear_cotizacion_desde_bot_OLD(data: dict):
-    # Versión legacy - NO usar
-    from sqlalchemy import text
-    from utils.pdf_generator import generate_cotizacion
-    from utils.models import Actividad
-    db = get_db()
-    try:
-        cliente_id = None
-        nombre_cotizacion = data.get('cliente_nombre', 'Cliente sin registrar')
-        placa_busqueda = (data.get('placa') or '').upper().replace('-', '').replace(' ', '')
-        if placa_busqueda:
-            v_existente = db.query(Vehiculo).filter_by(placa=placa_busqueda).first()
-            if v_existente and v_existente.cliente_id:
-                cliente_id = v_existente.cliente_id
-                c = db.query(Cliente).filter_by(id=cliente_id).first()
-                if c:
-                    nombre_cotizacion = f"{c.nombre} {c.apellidos or ''}".strip()
-        # Si no encontró por placa, usar el nombre que dio sin crear nada en DB
-            
-        # 2. Vehiculo
-        placa = (data.get('placa') or '').upper().replace('-', '')
-        if placa:
-            v = db.query(Vehiculo).filter_by(placa=placa).first()
-            if not v:
-                v = Vehiculo(placa=placa, cliente_id=cliente_id, marca='Por Definir', modelo='-')
-                db.add(v)
-                db.commit()
-            elif v and not v.cliente_id and cliente_id:
-                v.cliente_id = cliente_id
-                db.commit()
-                
-        # 3. Consecutivo
-        res = db.execute(text("SELECT consecutivo FROM ordenes ORDER BY consecutivo DESC LIMIT 1")).fetchone()
-        if res and res[0] and res[0].startswith('OS-'):
-            ult = int(res[0].split('-')[1])
-            consecutivo = f"OS-{ult+1:05d}"
-        else:
-            consecutivo = "OS-00001"
-            
-        # Procesar items para que todos aseguren precio/totales
-        items_procesados = []
-        for i in data.get('items', []):
-            cant = int(i.get('cantidad', 1))
-            precio = float(i.get('precio', 0))
-            items_procesados.append({
-                "nombre": i.get('nombre', 'Item sin nombre'),
-                "cantidad": cant,
-                "precio_unitario": precio,
-                "total": cant * precio,
-                "categoria": i.get('tipo', 'repuesto')
-            })
-            
-        # 4. Creación
-        orden = Orden(
-            consecutivo=consecutivo,
-            fecha=datetime.now().strftime('%Y-%m-%d %H:%M'),
-            cliente_id=cliente_id,
-            vehiculo_placa=placa if placa else None,
-            motivo='Cotización Inteligente vía Telegram',
-            estado='COTIZACIÓN',
-            items_cotizacion=json.dumps(items_procesados),
-            km=data.get('kilometraje', '')
-        )
-        db.add(orden)
-        db.add(Actividad(accion=f"Cotización {consecutivo} creada vía Telegram Bot", modulo="ordenes"))
-        db.commit()
-        
-        # 5. PDF
-        # Generar PDF con los argumentos correctos
-        order_dict = {
-            'consecutivo': consecutivo,
-            'km': data.get('kilometraje', ''),
-            'motivo': 'Cotización vía Telegram',
-        }
-        client_dict = {
-            'nombre': nombre_cotizacion,
-            'apellidos': '',
-            'id': str(cliente_id) if cliente_id else '',
-            'telefono': data.get('telefono', ''),
-        }
-        vehicle_dict = {
-            'placa': placa if placa else '',
-            'marca': '',
-            'modelo': '',
-        }
-        import os
-        os.makedirs('/var/www/sandoval/pdfs', exist_ok=True)
-        pdf_path = f'/var/www/sandoval/pdfs/{consecutivo}.pdf'
-        generate_cotizacion(order_dict, client_dict, vehicle_dict, items_procesados, pdf_path)
-        return f"✅ *Cotización {consecutivo} Generada Exitosamente* y guardada en tu sistema web.", pdf_path
-    except Exception as e:
-        db.rollback()
-        raise e
-    finally:
-        db.close()
-
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if ALLOWED_USERS and user_id not in ALLOWED_USERS:
@@ -950,9 +905,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         voice = update.message.voice or update.message.audio
         file = await context.bot.get_file(voice.file_id)
         
-        os.makedirs('static/audios', exist_ok=True)
+        audio_dir = '/var/www/sandoval/static/audios'
+        os.makedirs(audio_dir, exist_ok=True)
         fname = f"tg_audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.file_id}.ogg"
-        fpath = os.path.join('static/audios', fname)
+        fpath = os.path.join(audio_dir, fname)
         await file.download_to_drive(fpath)
         
         # Procesar con Groq Whisper
@@ -1010,8 +966,10 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def run_telegram_bot():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    
+
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("cancelar", cancelar_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.VIDEO | filters.VIDEO_NOTE, handle_video))
