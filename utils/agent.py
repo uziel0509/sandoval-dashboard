@@ -196,10 +196,36 @@ def _get_tools_registry():
             "handler": _tool_consultar_ganancia,
         },
         {
+            "name": "consultar_top_repuestos",
+            "description": (
+                "Muestra qué repuestos o servicios se vendieron más, cuáles tuvieron mayor demanda, "
+                "cuáles generaron más ingresos, o el ranking de productos más vendidos. "
+                "Úsalo cuando pregunten: 'qué repuesto se vendió más', 'cuáles fueron los más demandados', "
+                "'top productos', 'qué se vende más', 'qué repuesto salió más esta semana/mes'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "periodo": {
+                        "type": "string",
+                        "enum": ["semana", "mes", "año", "todo"],
+                        "description": "Período a analizar. Por defecto 'mes'."
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Cuántos productos mostrar, por defecto 10"
+                    }
+                },
+                "required": []
+            },
+            "handler": _tool_top_repuestos,
+        },
+        {
             "name": "consultar_stock",
             "description": (
-                "Consulta el stock de un producto del inventario. "
-                "Sin producto específico muestra todos los que están en stock crítico."
+                "Consulta cuántas unidades hay en stock de un producto del inventario. "
+                "Úsalo cuando pregunten cuánto hay, si queda stock, o ver productos en stock crítico. "
+                "NO usar para saber qué se vendió más — para eso usa consultar_top_repuestos."
             ),
             "parameters": {
                 "type": "object",
@@ -815,6 +841,124 @@ def _tool_consultar_ordenes(args: dict) -> str:
                 f"   📅 {str(o.fecha or '')[:10]} | {(o.motivo or '')[:40]}\n\n"
             )
         return txt
+    finally:
+        db.close()
+
+
+def _tool_top_repuestos(args: dict) -> str:
+    """Ranking de repuestos/servicios más vendidos por cantidad e ingresos."""
+    periodo = (args.get("periodo") or "mes").lower()
+    top_n   = int(args.get("top_n") or 10)
+
+    from utils.models import get_db, Orden, NotaVenta
+    import json as _j
+
+    now = datetime.now()
+    if periodo == "semana":
+        inicio = now - timedelta(days=7)
+        label  = "esta semana (7 días)"
+    elif periodo == "año":
+        inicio = now - timedelta(days=365)
+        label  = "este año"
+    elif periodo == "todo":
+        inicio = datetime(2000, 1, 1)
+        label  = "histórico total"
+    else:
+        inicio = now - timedelta(days=30)
+        label  = "este mes (30 días)"
+
+    def _pf(f):
+        f = (f or "").strip()[:10]
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d"):
+            try:
+                return datetime.strptime(f, fmt)
+            except Exception:
+                pass
+        return None
+
+    # agg[nombre] = {cantidad, ingresos, es_mo}
+    agg = {}
+
+    db = get_db()
+    try:
+        # ── Órdenes de servicio ──
+        for o in db.query(Orden).all():
+            fd = _pf(o.fecha)
+            if not fd or fd < inicio:
+                continue
+            items = o.items_cotizacion or []
+            if isinstance(items, str):
+                try: items = _j.loads(items)
+                except: items = []
+            for it in (items if isinstance(items, list) else []):
+                nombre = (it.get("nombre") or "").strip()
+                if not nombre:
+                    continue
+                cant   = float(it.get("cantidad", 1) or 1)
+                precio = float(it.get("precio_unitario", 0) or 0)
+                cat    = (it.get("categoria") or "").lower()
+                ref    = (it.get("referencia") or it.get("ref") or "").strip()
+                es_mo  = cat in ("servicio", "mano de obra") or ref == "MANO-DE-OBRA" or "mano" in nombre.lower()
+                key    = nombre[:50]
+                if key not in agg:
+                    agg[key] = {"nombre": key, "cantidad": 0, "ingresos": 0.0, "es_mo": es_mo}
+                agg[key]["cantidad"] += cant
+                agg[key]["ingresos"] += precio * cant
+
+        # ── Notas de venta ──
+        for n in db.query(NotaVenta).filter_by(estado="pagada").all():
+            if not n.fecha:
+                continue
+            try:
+                nf = n.fecha if hasattr(n.fecha, "strftime") else _pf(str(n.fecha)[:10])
+                if not nf or nf < inicio:
+                    continue
+            except Exception:
+                continue
+            items_n = n.items or []
+            if isinstance(items_n, str):
+                try: items_n = _j.loads(items_n)
+                except: items_n = []
+            for it in (items_n if isinstance(items_n, list) else []):
+                nombre = (it.get("nombre") or "").strip()
+                if not nombre:
+                    continue
+                cant   = float(it.get("cantidad", 1) or 1)
+                precio = float(it.get("precio", 0) or 0)
+                key    = nombre[:50]
+                es_mo  = (it.get("categoria") or "").lower() == "mano de obra"
+                if key not in agg:
+                    agg[key] = {"nombre": key, "cantidad": 0, "ingresos": 0.0, "es_mo": es_mo}
+                agg[key]["cantidad"] += cant
+                agg[key]["ingresos"] += precio * cant
+
+        if not agg:
+            return f"ℹ️ Sin ventas registradas para el período ({label})."
+
+        # Ordenar por cantidad vendida
+        ranking = sorted(agg.values(), key=lambda x: x["cantidad"], reverse=True)[:top_n]
+
+        # Separar repuestos y mano de obra
+        repuestos = [r for r in ranking if not r["es_mo"]]
+        mo        = [r for r in ranking if r["es_mo"]]
+
+        txt = f"🏆 *Top repuestos más vendidos — {label}*\n\n"
+
+        if repuestos:
+            txt += "🔧 *Repuestos / Productos:*\n"
+            for i, r in enumerate(repuestos[:8], 1):
+                txt += f"  {i}. {r['nombre']} — *{int(r['cantidad'])} uds* · S/ {r['ingresos']:,.2f}\n"
+
+        if mo:
+            txt += "\n⚙️ *Servicios / Mano de obra:*\n"
+            for i, r in enumerate(mo[:5], 1):
+                txt += f"  {i}. {r['nombre']} — *{int(r['cantidad'])} veces* · S/ {r['ingresos']:,.2f}\n"
+
+        return txt
+
+    except Exception as e:
+        logger.error(f"[AGENT] top_repuestos: {e}", exc_info=True)
+        return f"❌ Error consultando top repuestos: {e}"
     finally:
         db.close()
 
