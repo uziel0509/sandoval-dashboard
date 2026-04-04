@@ -735,31 +735,53 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == 'save_factura':
         factura_data = context.user_data.get('pending_factura')
         if not factura_data:
-            await query.edit_message_text("⚠️ Sesión expirada. Vuelve a subir la foto.")
+            await query.edit_message_text(
+                "⚠️ *Sesión expirada*\n\nEl bot se reinició y perdió los datos temporales. "
+                "Vuelve a mandar la foto de la factura.",
+                parse_mode='Markdown'
+            )
             return
-            
+
         try:
-            # Inyectar silenciosamente a SQLite de la página web
+            from components.facturas import _check_duplicate_factura
+            # Segunda verificación justo antes de guardar
+            if _check_duplicate_factura(
+                factura_data.get('proveedor', ''),
+                factura_data.get('numero_factura', ''),
+                total=factura_data.get('total'),
+                fecha=factura_data.get('fecha')
+            ):
+                context.user_data.pop('pending_factura', None)
+                await query.edit_message_text(
+                    f"🚫 *Factura rechazada — ya fue registrada antes*\n\n"
+                    f"📄 *N° Factura:* {factura_data.get('numero_factura') or '(sin número)'}\n"
+                    f"🏢 *Proveedor:* {factura_data.get('proveedor') or '—'}\n"
+                    f"💰 *Total:* S/ {float(factura_data.get('total') or 0):.2f}\n\n"
+                    f"No se guardó nada. Búscala en la web si necesitas verla.",
+                    parse_mode='Markdown'
+                )
+                return
+
             _save_factura(factura_data)
-            
-            # Si es mercadería, añadir también al stock disponible internamente
+
             if factura_data['tipo'] == 'mercaderia' and factura_data.get('items'):
                 _agregar_items_a_inventario(factura_data['items'])
-                
+
+            n_items = len(factura_data.get('items') or [])
             res_msg = (
-                f"✅ **¡Factura Registrada Exitosamente!**\n\n"
-                f"🏢 *Proveedor:* {factura_data['proveedor']}\n"
-                f"📄 *Nº Factura:* {factura_data['numero_factura']}\n"
-                f"💰 *Total:* S/ {factura_data['total']}\n"
-                f"📦 *Items detectados:* {len(factura_data['items'])}\n"
-                f"📌 *Clasificación:* {factura_data['tipo'].upper()}\n\n"
-                f"*(Ya está disponible en la página web)*"
+                f"✅ *¡Factura guardada!*\n\n"
+                f"🏢 *Proveedor:* {factura_data.get('proveedor') or '—'}\n"
+                f"📄 *N° Factura:* {factura_data.get('numero_factura') or '(sin número)'}\n"
+                f"💰 *Total:* S/ {float(factura_data.get('total') or 0):.2f}\n"
+                f"📦 *Ítems:* {n_items}\n"
+                f"📌 *Tipo:* {factura_data.get('tipo', '').upper()}\n\n"
+                f"_Ya visible en la página web._"
             )
             await query.edit_message_text(res_msg, parse_mode='Markdown')
             context.user_data.pop('pending_factura', None)
         except Exception as e:
-            logger.error(f"Error guardando factura telegram: {e}")
-            await query.edit_message_text(f"❌ Falló el guardado. Error técnico: {str(e)}")
+            logger.error(f"Error guardando factura telegram: {e}", exc_info=True)
+            await query.edit_message_text(f"❌ Error al guardar: {str(e)[:200]}")
         return
         
     if data == 'cancel_cotizacion':
