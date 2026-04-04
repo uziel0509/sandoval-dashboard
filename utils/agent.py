@@ -20,6 +20,10 @@ Analiza el mensaje y devuelve ÚNICAMENTE un JSON válido con la intención dete
 
 INTENCIONES:
 
+"nota_venta" — crear una nota de venta / venta directa de productos o mano de obra
+  Señales: "nota de venta", "nota venta", "venta", "vender", "vendí", "registra venta", "añade a nota de venta"
+  JSON: {"intencion":"nota_venta","cliente_nombre":"","items":[{"nombre":"","cantidad":1,"precio":0,"tipo":"repuesto|mano_obra"}]}
+
 "cotizacion" — crear presupuesto/cotización
   Señales: "cotización", "presupuesto", "cuánto cuesta", "hazme una coti", placa + trabajos/repuestos
   JSON: {"intencion":"cotizacion","placa":"ABC-123","cliente_nombre":"","telefono":"","kilometraje":"","items":[{"nombre":"","cantidad":1,"precio":0,"tipo":"repuesto"}]}
@@ -89,7 +93,10 @@ async def run_agent(user_text: str, foto_path: str = None, historial: list = Non
 
     # ── Routing ──────────────────────────────────────────────────────────────
     try:
-        if intencion == "cotizacion":
+        if intencion == "nota_venta":
+            return _handle_nota_venta(intent)
+
+        elif intencion == "cotizacion":
             return _handle_cotizacion(intent)
 
         elif intencion == "ganancia":
@@ -122,6 +129,109 @@ async def run_agent(user_text: str, foto_path: str = None, historial: list = Non
 
 
 # ── Handlers específicos ─────────────────────────────────────────────────────
+
+def _handle_nota_venta(intent: dict) -> str:
+    """Crea una nota de venta directamente en la tabla notas_venta."""
+    items_raw = intent.get("items", [])
+    if not items_raw:
+        return (
+            "⚠️ No detecté productos ni servicios para la nota de venta.\n\n"
+            "Dime así: *'nota de venta: 2 filtros a 25 soles y mano de obra 80 soles'*"
+        )
+
+    from utils.models import get_db, NotaVenta, ItemInventario, Cliente
+    db = get_db()
+    try:
+        # Completar precios desde inventario si precio=0
+        items_procesados = []
+        for it in items_raw:
+            nombre = (it.get("nombre") or "").strip()
+            cant = float(it.get("cantidad", 1) or 1)
+            precio = float(it.get("precio", 0) or 0)
+            tipo = (it.get("tipo") or "repuesto").lower()
+
+            if precio == 0 and nombre and tipo != "mano_obra":
+                prod = db.query(ItemInventario).filter(
+                    ItemInventario.nombre.ilike(f"%{nombre}%")
+                ).first()
+                if prod:
+                    precio = float(prod.precio)
+                    nombre = prod.nombre  # usar nombre exacto del inventario
+                    it["codigo"] = prod.codigo
+
+            items_procesados.append({
+                "codigo":   it.get("codigo", "") if tipo != "mano_obra" else "",
+                "nombre":   nombre or "Sin nombre",
+                "cantidad": cant,
+                "precio":   precio,
+                "subtotal": round(precio * cant, 2),
+                "categoria": "Mano de obra" if tipo == "mano_obra" else "Repuesto",
+            })
+
+        subtotal = round(sum(i["subtotal"] for i in items_procesados), 2)
+
+        # Número correlativo
+        from sqlalchemy import text as sqlt
+        res = db.execute(sqlt("SELECT numero FROM notas_venta ORDER BY id DESC LIMIT 1")).fetchone()
+        if res and res[0] and res[0].startswith("NV-"):
+            try:
+                ult = int(res[0].split("-")[1])
+                numero = f"NV-{ult + 1:05d}"
+            except Exception:
+                numero = f"NV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        else:
+            numero = "NV-00001"
+
+        # Buscar cliente si se mencionó
+        cliente_id = None
+        cliente_nombre = (intent.get("cliente_nombre") or "Mostrador").strip()
+        if cliente_nombre and cliente_nombre != "Mostrador":
+            parts = cliente_nombre.split()
+            cl = db.query(Cliente).filter(Cliente.nombre.ilike(f"%{parts[0]}%")).first()
+            if cl:
+                cliente_id = str(cl.id)
+                cliente_nombre = f"{cl.nombre} {cl.apellidos or ''}".strip()
+
+        nota = NotaVenta(
+            numero=numero,
+            cliente_id=cliente_id,
+            cliente_nombre=cliente_nombre,
+            subtotal=subtotal,
+            igv=0,
+            total=subtotal,
+            estado="pagada",
+            notas="Creada vía Telegram Bot",
+            items=items_procesados,
+        )
+        db.add(nota)
+
+        # Descontar stock para ítems con código
+        for it in items_procesados:
+            if it.get("codigo"):
+                inv = db.query(ItemInventario).filter_by(codigo=it["codigo"]).first()
+                if inv:
+                    inv.stock = max(0, inv.stock - int(it["cantidad"]))
+
+        db.commit()
+
+        items_txt = "\n".join(
+            f"  • {it['cantidad']}x {it['nombre']} — S/ {it['precio']:.2f} = S/ {it['subtotal']:.2f}"
+            for it in items_procesados
+        )
+        return (
+            f"✅ *Nota de Venta {numero} creada*\n\n"
+            f"👤 Cliente: {cliente_nombre}\n\n"
+            f"📦 *Productos:*\n{items_txt}\n\n"
+            f"💰 *Total: S/ {subtotal:.2f}*\n\n"
+            f"_Ya aparece en el módulo Notas de Venta del dashboard._"
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[AGENT] nota_venta error: {e}", exc_info=True)
+        return f"❌ Error creando la nota de venta: {e}"
+    finally:
+        db.close()
+
 
 def _handle_cotizacion(intent: dict) -> str:
     """Crea cotización directamente y retorna JSON con pdf_path o mensaje de error."""
