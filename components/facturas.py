@@ -113,26 +113,20 @@ def _save_proveedor(nombre, tipo: str, ruc=''):
             pass
 
 def _check_duplicate_factura(proveedor: str, numero_factura: str) -> bool:
-    if not numero_factura or str(numero_factura).strip().upper() in ['S/N', 'SIN NUMERO', 'NONE', '']:
+    """Detecta duplicados por número de factura solo (el proveedor puede variar por OCR)."""
+    num = str(numero_factura or '').strip()
+    if not num or num.upper() in ['S/N', 'SIN NUMERO', 'NONE', 'NULL', '']:
         return False
-        
-    proveedor_clean = str(proveedor).strip().lower()
-    if not proveedor_clean:
-        return False
-        
+
     from sqlalchemy import text
     from utils.models import get_db
     db = get_db()
     try:
         row = db.execute(text("""
             SELECT id FROM facturas
-            WHERE LOWER(proveedor) = :prov
-            AND LOWER(numero_factura) = :num
+            WHERE LOWER(REPLACE(numero_factura, ' ', '')) = LOWER(REPLACE(:num, ' ', ''))
             LIMIT 1
-        """), {
-            'prov': proveedor_clean,
-            'num': str(numero_factura).strip().lower()
-        }).fetchone()
+        """), {'num': num}).fetchone()
         return bool(row)
     except:
         return False
