@@ -219,6 +219,25 @@ class NotaVenta(Base):
     cliente_rel = relationship('Cliente', foreign_keys=[cliente_id])
 
 
+class AgentMemoria(Base):
+    """Historial de conversación persistente por usuario de Telegram."""
+    __tablename__ = 'agent_memoria'
+    telegram_user_id = Column(Integer, primary_key=True)
+    historial_json   = Column(Text, default='[]')
+    updated_at       = Column(DateTime, default=datetime.now)
+
+
+class AgentCorreccion(Base):
+    """RAG de correcciones: Jarvis aprende de sus errores."""
+    __tablename__ = 'agent_correcciones'
+    id                 = Column(Integer, primary_key=True, autoincrement=True)
+    mensaje_original   = Column(Text, default='')
+    respuesta_jarvis   = Column(Text, default='')
+    correccion_usuario = Column(Text, default='')
+    keywords           = Column(Text, default='')  # palabras clave para búsqueda
+    fecha              = Column(DateTime, default=datetime.now)
+
+
 class OrdenComputadora(Base):
     __tablename__ = 'ordenes_computadoras'
     id                = Column(Integer, primary_key=True, autoincrement=True)
@@ -373,6 +392,30 @@ def init_db():
             conn.commit()
     except Exception:
         pass  # La columna ya existe
+
+    # Tablas Jarvis AI
+    try:
+        with engine.connect() as conn:
+            conn.execute(__import__('sqlalchemy').text("""
+                CREATE TABLE IF NOT EXISTS agent_memoria (
+                    telegram_user_id INTEGER PRIMARY KEY,
+                    historial_json TEXT DEFAULT '[]',
+                    updated_at DATETIME
+                )
+            """))
+            conn.execute(__import__('sqlalchemy').text("""
+                CREATE TABLE IF NOT EXISTS agent_correcciones (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mensaje_original TEXT DEFAULT '',
+                    respuesta_jarvis TEXT DEFAULT '',
+                    correccion_usuario TEXT DEFAULT '',
+                    keywords TEXT DEFAULT '',
+                    fecha DATETIME
+                )
+            """))
+            conn.commit()
+    except Exception:
+        pass
 
     # Crear tabla de computadoras si no existe
     try:

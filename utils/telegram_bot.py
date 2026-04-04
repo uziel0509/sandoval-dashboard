@@ -15,7 +15,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.models import get_db, ItemInventario, Vehiculo, Cliente
 from components.facturas import _save_factura, _agregar_items_a_inventario
-from utils.agent import run_agent
+from utils.agent import run_agent, ejecutar_accion_confirmada, es_correccion, registrar_correccion
 from utils.groq_service import get_groq_client, FACTURA_PROMPT
 
 load_dotenv()
@@ -92,6 +92,8 @@ async def cancelar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop('last_photo_path', None)
     context.user_data.pop('last_invoice_path', None)
     context.user_data.pop('agent_historial', None)
+    context.user_data.pop('pending_agent_confirm', None)
+    context.user_data.pop('_last_exchange', None)
     await update.message.reply_text("✅ Todo cancelado. Historial de conversación limpiado.")
 
 # ═══════════════════════════════════════════════════════════════════
@@ -481,30 +483,53 @@ async def _handle_credito_callbacks(data: str, query, context) -> bool:
 
 
 async def _process_bot_message(user_text: str, update, context, processing_msg, foto_path=None):
+    import json as _json, os as _os
+    user_id = update.effective_user.id
     try:
-        historial = context.user_data.get('agent_historial', [])
-        respuesta = await run_agent(user_text, foto_path=foto_path, historial=historial)
-        historial.append({'role': 'user', 'content': user_text})
-        historial.append({'role': 'assistant', 'content': respuesta})
-        context.user_data['agent_historial'] = historial[-20:]
+        # Detectar corrección ANTES de llamar al agente
+        historial_prev = context.user_data.get('_last_exchange', {})
+        if es_correccion(user_text) and historial_prev.get('user') and historial_prev.get('assistant'):
+            registrar_correccion(
+                historial_prev['user'],
+                historial_prev['assistant'],
+                user_text
+            )
 
-        # Detectar si la respuesta incluye un PDF para enviar
-        import json as _json, os as _os
+        respuesta = await run_agent(user_text, foto_path=foto_path, user_id=user_id)
+
+        # ── Manejar confirmación pendiente ──────────────────────────────
+        if isinstance(respuesta, str) and respuesta.startswith('{"__confirm__"'):
+            try:
+                confirm_data = _json.loads(respuesta)
+                if confirm_data.get('__confirm__'):
+                    context.user_data['pending_agent_confirm'] = confirm_data
+                    preview = confirm_data.get('preview', '¿Confirmas esta acción?')
+                    kb = InlineKeyboardMarkup([[
+                        InlineKeyboardButton("✅ Confirmar", callback_data='agent_confirm_yes'),
+                        InlineKeyboardButton("❌ Cancelar",  callback_data='agent_confirm_no'),
+                    ]])
+                    await processing_msg.edit_text(preview, reply_markup=kb, parse_mode='Markdown')
+                    return
+            except Exception:
+                pass
+
+        # Guardar último intercambio para RAG
+        context.user_data['_last_exchange'] = {'user': user_text, 'assistant': respuesta}
+
+        # ── PDF adjunto ─────────────────────────────────────────────────
         pdf_enviado = False
         try:
-            # El agente puede devolver JSON con pdf_path
             if '"pdf_path"' in respuesta:
                 data = _json.loads(respuesta)
                 pdf_path = data.get('pdf_path')
                 if pdf_path and _os.path.exists(pdf_path):
-                    numero = data.get('numero', '')
+                    numero  = data.get('numero', '')
                     cliente = data.get('cliente', '')
-                    caption = f"📄 PDF {numero} - {cliente}"
                     await context.bot.send_document(
                         chat_id=update.effective_chat.id,
                         document=open(pdf_path, 'rb'),
                         filename=_os.path.basename(pdf_path),
-                        caption=caption
+                        caption=f"📄 PDF {numero} - {cliente}"
                     )
                     try: await processing_msg.delete()
                     except: pass
@@ -523,6 +548,7 @@ async def _process_bot_message(user_text: str, update, context, processing_msg, 
                 except: pass
             else:
                 await processing_msg.edit_text(respuesta)
+
     except Exception as e:
         logger.error(f'Error agente: {e}', exc_info=True)
         try: await processing_msg.edit_text(f'Error: {str(e)[:200]}')
@@ -608,6 +634,42 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     data = query.data
+
+    # ── Confirmación de acción del agente ──
+    if data == 'agent_confirm_yes':
+        confirm_data = context.user_data.pop('pending_agent_confirm', None)
+        if not confirm_data:
+            await query.edit_message_text("⚠️ Sesión expirada. Repite la acción.")
+            return
+        try:
+            tool_name = confirm_data.get('tool', '')
+            args      = confirm_data.get('args', {})
+            args['__ya_confirmado__'] = True
+            resultado = ejecutar_accion_confirmada(tool_name, args)
+            import json as _json, os as _os
+            # PDF adjunto si aplica
+            if '"pdf_path"' in resultado:
+                data_pdf = _json.loads(resultado)
+                pdf_path = data_pdf.get('pdf_path')
+                if pdf_path and _os.path.exists(pdf_path):
+                    await context.bot.send_document(
+                        chat_id=update.effective_chat.id,
+                        document=open(pdf_path, 'rb'),
+                        filename=_os.path.basename(pdf_path),
+                        caption=f"📄 PDF {data_pdf.get('numero','')} - {data_pdf.get('cliente','')}"
+                    )
+                    await query.edit_message_text("✅ Acción completada.")
+                    return
+            await query.edit_message_text(resultado, parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Error confirmando acción agente: {e}", exc_info=True)
+            await query.edit_message_text(f"❌ Error al ejecutar: {str(e)[:200]}")
+        return
+
+    if data == 'agent_confirm_no':
+        context.user_data.pop('pending_agent_confirm', None)
+        await query.edit_message_text("❌ Acción cancelada.")
+        return
 
     # ── Créditos / Fiado ──
     credito_handled = await _handle_credito_callbacks(data, query, context)
