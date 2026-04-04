@@ -861,10 +861,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from components.facturas import _check_duplicate_factura
         is_duplicate = _check_duplicate_factura(factura_data['proveedor'], factura_data['numero_factura'])
 
-        duplicate_warning = "⚠️ *¡ATENCIÓN: ESTA FACTURA YA FUE REGISTRADA ANTES!*\n\n" if is_duplicate else ""
+        # Rechazo automático — no dar opción de guardar duplicado
+        if is_duplicate:
+            await query.edit_message_text(
+                f"🚫 *Factura rechazada — ya fue registrada antes*\n\n"
+                f"📄 *N° Factura:* {factura_data['numero_factura']}\n"
+                f"🏢 *Proveedor:* {factura_data['proveedor']}\n\n"
+                f"No se guardó nada. Si necesitas verla, búscala en la web por el número de factura.",
+                parse_mode='Markdown'
+            )
+            return
 
         preview_msg = (
-            f"{duplicate_warning}"
             f"🔍 *Vista Previa — {tipo.upper()}*\n\n"
             f"🏢 *Proveedor:* {factura_data['proveedor']}\n"
             f"🔢 *RUC proveedor:* {factura_data.get('ruc_proveedor') or '—'}\n"
@@ -876,17 +884,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📦 *Ítems ({len(all_items)}):*\n{items_str}\n\n"
             f"¿Los datos son correctos?"
         )
-        
-        keyboard = []
-        if not is_duplicate:
-            keyboard.append([InlineKeyboardButton("✅ Confirmar y Guardar", callback_data='save_factura')])
-        else:
-            keyboard.append([InlineKeyboardButton("⚠️ Guardar Doble de todas formas", callback_data='save_factura')])
-        
-        keyboard.append([InlineKeyboardButton("❌ Rechazar", callback_data='discard_factura')])
-        
+
+        keyboard = [
+            [InlineKeyboardButton("✅ Confirmar y Guardar", callback_data='save_factura')],
+            [InlineKeyboardButton("❌ Rechazar", callback_data='discard_factura')],
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         await query.edit_message_text(preview_msg, reply_markup=reply_markup, parse_mode='Markdown')
         
     except Exception as e:
