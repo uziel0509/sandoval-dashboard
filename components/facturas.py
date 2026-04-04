@@ -112,21 +112,40 @@ def _save_proveedor(nombre, tipo: str, ruc=''):
         except:
             pass
 
-def _check_duplicate_factura(proveedor: str, numero_factura: str) -> bool:
-    """Detecta duplicados por número de factura solo (el proveedor puede variar por OCR)."""
-    num = str(numero_factura or '').strip()
-    if not num or num.upper() in ['S/N', 'SIN NUMERO', 'NONE', 'NULL', '']:
-        return False
-
+def _check_duplicate_factura(proveedor: str, numero_factura: str, total: float = None, fecha: str = None) -> bool:
+    """Detecta duplicados:
+    - Si hay número de factura: busca por número exacto (más confiable)
+    - Si NO hay número: busca por proveedor + total + fecha (fallback)
+    """
     from sqlalchemy import text
     from utils.models import get_db
+
+    num = str(numero_factura or '').strip()
+    num_valido = bool(num) and num.upper() not in ['S/N', 'SIN NUMERO', 'NONE', 'NULL', '']
+
     db = get_db()
     try:
-        row = db.execute(text("""
-            SELECT id FROM facturas
-            WHERE LOWER(REPLACE(numero_factura, ' ', '')) = LOWER(REPLACE(:num, ' ', ''))
-            LIMIT 1
-        """), {'num': num}).fetchone()
+        if num_valido:
+            row = db.execute(text("""
+                SELECT id FROM facturas
+                WHERE LOWER(REPLACE(numero_factura, ' ', '')) = LOWER(REPLACE(:num, ' ', ''))
+                LIMIT 1
+            """), {'num': num}).fetchone()
+        else:
+            # Sin número: comparar proveedor + total + fecha
+            if not proveedor or total is None:
+                return False
+            row = db.execute(text("""
+                SELECT id FROM facturas
+                WHERE LOWER(proveedor) LIKE :prov
+                AND ABS(total - :total) < 0.01
+                AND fecha = :fecha
+                LIMIT 1
+            """), {
+                'prov': f'%{str(proveedor).strip().lower()[:20]}%',
+                'total': float(total),
+                'fecha': str(fecha or '').strip()
+            }).fetchone()
         return bool(row)
     except:
         return False
@@ -569,9 +588,12 @@ def _open_nueva_factura(list_container):
                                             ui.label(f"S/{float(item.get('precio_unitario', 0)):,.2f}").classes('text-xs font-bold text-gray-800')
                                             
                             # Verificación automática de duplicados
-                            duplicado = False
-                            if datos.get('proveedor') and datos.get('numero_factura'):
-                                duplicado = _check_duplicate_factura(datos['proveedor'], datos['numero_factura'])
+                            duplicado = _check_duplicate_factura(
+                                datos.get('proveedor', ''),
+                                datos.get('numero_factura', ''),
+                                total=datos.get('total'),
+                                fecha=datos.get('fecha', '')
+                            )
                                 
                             if duplicado:
                                 ia_status.set_text('⚠️ ATENCIÓN: Esta factura ya se subió anteriormente.')
@@ -604,7 +626,9 @@ def _open_nueva_factura(list_container):
                             return
                             
                         nro_fact = inp_nro.value.strip()
-                        if _check_duplicate_factura(proveedor, nro_fact):
+                        if _check_duplicate_factura(proveedor, nro_fact,
+                                                    total=float(inp_total.value or 0),
+                                                    fecha=inp_fecha.value.strip()):
                             theme.notify_warning('⚠️ Esta factura ya fue registrada. Verifica el proveedor y N° de Factura.')
                             return
 

@@ -859,7 +859,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         items_str = "\n".join(items_lines) if items_lines else "   (Ninguno o no legibles)"
 
         from components.facturas import _check_duplicate_factura
-        is_duplicate = _check_duplicate_factura(factura_data['proveedor'], factura_data['numero_factura'])
+        is_duplicate = _check_duplicate_factura(
+            factura_data['proveedor'],
+            factura_data['numero_factura'],
+            total=factura_data.get('total'),
+            fecha=factura_data.get('fecha')
+        )
 
         # Rechazo automático — no dar opción de guardar duplicado
         if is_duplicate:
