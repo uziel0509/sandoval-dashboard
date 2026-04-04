@@ -822,9 +822,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             temperature=0.1,
         )
         
-        raw = response.choices[0].message.content.strip()
+        raw = (response.choices[0].message.content or "").strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
         datos = json.loads(raw)
+        if not isinstance(datos, dict):
+            datos = {}
         
         # Estructurar la Data Final
         factura_data = {
@@ -846,7 +848,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['pending_factura'] = factura_data
         
         # Generar mensaje de confirmación
-        items_str = "\n".join([f"   - {i.get('cantidad', 1)}x {i.get('nombre', '...')[:25]} (S/ {i.get('total', 0)})" for i in factura_data['items'][:5]])
+        items_str = "\n".join([f"   - {i.get('cantidad') or 1}x {(i.get('nombre') or '...')[:25]} (S/ {i.get('total') or 0})" for i in (factura_data['items'] or [])[:5] if i])
         if len(factura_data['items']) > 5:
             items_str += f"\n   ... y {len(factura_data['items']) - 5} ítems más"
             
