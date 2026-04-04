@@ -847,26 +847,33 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Guardar temporalmente para confirmación
         context.user_data['pending_factura'] = factura_data
         
-        # Generar mensaje de confirmación
-        items_str = "\n".join([f"   - {i.get('cantidad') or 1}x {(i.get('nombre') or '...')[:25]} (S/ {i.get('total') or 0})" for i in (factura_data['items'] or [])[:5] if i])
-        if len(factura_data['items']) > 5:
-            items_str += f"\n   ... y {len(factura_data['items']) - 5} ítems más"
-            
+        # Generar mensaje de confirmación — todos los items, sin truncar
+        all_items = [i for i in (factura_data['items'] or []) if i]
+        items_lines = []
+        for i in all_items:
+            nombre = (i.get('nombre') or 'Ítem sin nombre')
+            cant   = i.get('cantidad') or 1
+            p_unit = i.get('precio_unitario') or 0
+            total  = i.get('total') or 0
+            items_lines.append(f"   • {cant}x {nombre} — S/ {p_unit:.2f} c/u = *S/ {total:.2f}*")
+        items_str = "\n".join(items_lines) if items_lines else "   (Ninguno o no legibles)"
+
         from components.facturas import _check_duplicate_factura
         is_duplicate = _check_duplicate_factura(factura_data['proveedor'], factura_data['numero_factura'])
-        
-        duplicate_warning = "⚠️ *¡ATENCIÓN: EL SISTEMA DETECTA QUE ESTA FACTURA YA FUE REGISTRADA ANTES!*\n\n" if is_duplicate else ""
-        
+
+        duplicate_warning = "⚠️ *¡ATENCIÓN: ESTA FACTURA YA FUE REGISTRADA ANTES!*\n\n" if is_duplicate else ""
+
         preview_msg = (
             f"{duplicate_warning}"
-            f"🔍 **Vista Previa de la Factura ({tipo.upper()})**\n\n"
+            f"🔍 *Vista Previa — {tipo.upper()}*\n\n"
             f"🏢 *Proveedor:* {factura_data['proveedor']}\n"
-            f"📄 *Nº Factura:* {factura_data['numero_factura']}\n"
+            f"🔢 *RUC proveedor:* {factura_data.get('ruc_proveedor') or '—'}\n"
+            f"📄 *N° Factura:* {factura_data['numero_factura']}\n"
             f"📅 *Fecha:* {factura_data['fecha']}\n"
-            f"� *Subtotal:* S/ {factura_data['subtotal']}\n"
-            f"� *IGV:* S/ {factura_data['igv']}\n"
-            f"💰 *Total:* S/ {factura_data['total']}\n\n"
-            f"� *Ítems detectados:*\n{items_str if items_str else '   (Ninguno o no legibles)'}\n\n"
+            f"💵 *Subtotal:* S/ {float(factura_data['subtotal'] or 0):.2f}\n"
+            f"🧾 *IGV:* S/ {float(factura_data['igv'] or 0):.2f}\n"
+            f"💰 *TOTAL:* S/ {float(factura_data['total'] or 0):.2f}\n\n"
+            f"📦 *Ítems ({len(all_items)}):*\n{items_str}\n\n"
             f"¿Los datos son correctos?"
         )
         

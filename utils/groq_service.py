@@ -147,15 +147,38 @@ REGLAS:
 - Sé conciso pero preciso con los números"""
 
 
-FACTURA_PROMPT = """Eres un sistema experto en lectura de facturas y boletas.
-Analiza la imagen de la factura y extrae TODA la información posible.
+FACTURA_PROMPT = """Eres un sistema experto en lectura de facturas y boletas peruanas.
+
+════════════════════════════════════════════════
+REGLA CRÍTICA — LEE ESTO PRIMERO:
+════════════════════════════════════════════════
+La empresa COMPRADORA es siempre:
+  → MECANICA Y REPUESTOS SANDOVAL EIRL
+  → RUC: 20608755111
+
+Esta empresa JAMÁS puede ser el proveedor. Si aparece su nombre o RUC en la factura,
+es porque es el RECEPTOR/CLIENTE que compró, NO el vendedor.
+
+En facturas electrónicas peruanas la estructura es:
+  - ENCABEZADO SUPERIOR = EMISOR = el PROVEEDOR (quien vende, quien emite la factura)
+  - DATOS DEL RECEPTOR = el COMPRADOR = MECANICA Y REPUESTOS SANDOVAL EIRL
+
+Por lo tanto:
+  ✅ proveedor = la empresa del ENCABEZADO SUPERIOR (quien emitió la factura)
+  ❌ NUNCA pongas "Mecanica y Repuestos Sandoval" ni RUC 20608755111 como proveedor
+════════════════════════════════════════════════
+
+Analiza la imagen y extrae ABSOLUTAMENTE TODA la información.
+
+ITEMS: Extrae CADA línea de producto sin omitir ninguna, aunque sean 20 o 30 items.
+No resumas ni agrupes. Cada fila de la factura = un objeto en el array items.
 
 Devuelve ÚNICAMENTE un JSON válido con esta estructura exacta:
 {
-  "proveedor": "Nombre del proveedor/tienda",
-  "ruc_proveedor": "El RUC o DNI del local, si figura. Sino vacio.",
-  "numero_factura": "Número de factura o boleta",
-  "fecha": "DD/MM/YYYY o la fecha que aparezca",
+  "proveedor": "Nombre del EMISOR (encabezado superior de la factura)",
+  "ruc_proveedor": "RUC del EMISOR (no el 20608755111 de Sandoval)",
+  "numero_factura": "Serie y número, ej: F001-000123",
+  "fecha": "DD/MM/YYYY",
   "subtotal": 0.00,
   "igv": 0.00,
   "total": 0.00,
@@ -164,7 +187,7 @@ Devuelve ÚNICAMENTE un JSON válido con esta estructura exacta:
   "categoria_gasto": "gasolina|medicinas|alimentacion|servicios|otros",
   "items": [
     {
-      "nombre": "Nombre del producto/servicio",
+      "nombre": "Nombre completo del producto/servicio tal como aparece",
       "cantidad": 1,
       "precio_unitario": 0.00,
       "total": 0.00,
@@ -174,12 +197,10 @@ Devuelve ÚNICAMENTE un JSON válido con esta estructura exacta:
   "notas": "Cualquier observación relevante"
 }
 
-Si no puedes leer algún dato claramente, usa null o 0.
-El campo tipo_detectado debe ser:
-- "mercaderia": si son repuestos, aceites, filtros, herramientas para el taller
-- "gasto": si es gasolina, medicinas, alimentación, servicios del hogar/empresa
-- "mixto": si tiene ambos tipos
-NO incluyas texto adicional fuera del JSON."""
+Reglas adicionales:
+- Si no puedes leer un dato claramente, usa null o 0 (nunca inventes datos)
+- tipo_detectado: "mercaderia" = repuestos/aceites/filtros/herramientas; "gasto" = gasolina/servicios/alimentación; "mixto" = ambos
+- NO incluyas texto adicional fuera del JSON"""
 
 
 # ─── Funciones principales ────────────────────────────────────────────────────

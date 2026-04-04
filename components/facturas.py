@@ -180,6 +180,23 @@ def _save_factura(data: dict) -> int:
         db.close()
 
 
+def _buscar_factura_por_codigo(codigo: str) -> list:
+    """Busca facturas por número de serie/código (ej: F001-000123)"""
+    from sqlalchemy import text
+    db = get_db()
+    try:
+        rows = db.execute(text("""
+            SELECT id, tipo, proveedor, numero_factura, fecha,
+                   subtotal, igv, total, imagen_path, items_json, notas
+            FROM facturas
+            WHERE LOWER(numero_factura) LIKE :q OR LOWER(proveedor) LIKE :q
+            ORDER BY id DESC LIMIT 20
+        """), {'q': f'%{codigo.lower().strip()}%'}).fetchall()
+        return [dict(r._mapping) for r in rows]
+    finally:
+        db.close()
+
+
 def _get_all_facturas() -> list:
     from sqlalchemy import text
     db = get_db()
@@ -242,6 +259,32 @@ def show_facturas(container):
             ).classes('font-bold')
 
         _render_stats()
+
+        # ── Buscador por número de factura / proveedor ──────────────────
+        with ui.card().classes('w-full p-4 bg-white border border-gray-100 rounded-xl shadow-sm mb-2'):
+            with ui.row().classes('items-center gap-3 w-full'):
+                ui.icon('search', size='22px').classes('text-[#274495]')
+                search_input = ui.input(
+                    placeholder='Buscar por N° factura (ej: F001-000123) o proveedor...'
+                ).classes('flex-1').props('outlined dense clearable')
+                search_results = ui.column().classes('w-full gap-2 mt-2')
+
+            def _do_search():
+                q = (search_input.value or '').strip()
+                search_results.clear()
+                if not q:
+                    return
+                resultados = _buscar_factura_por_codigo(q)
+                with search_results:
+                    if not resultados:
+                        ui.label(f'Sin resultados para "{q}"').classes('text-gray-400 text-sm')
+                        return
+                    for f in resultados:
+                        _factura_detalle_card(f)
+
+            search_input.on('keydown.enter', lambda: _do_search())
+            ui.button('Buscar', on_click=_do_search).props('unelevated dense color=primary').classes('font-bold')
+
         list_container = ui.column().classes('w-full gap-3')
         _render_lista(list_container)
 
@@ -310,6 +353,54 @@ def _factura_card(f: dict):
             with ui.row().classes('w-full px-4 pb-3 gap-2 flex-wrap'):
                 for item in items[:4]:
                     ui.badge(f"{item.get('nombre','')[:25]} ×{item.get('cantidad',1)}", color='grey-3').props('text-color=grey-8').classes('text-[9px]')
+
+
+def _factura_detalle_card(f: dict):
+    """Card expandida con todos los detalles de una factura — usada en búsqueda"""
+    try:
+        items = json.loads(f['items_json']) if f.get('items_json') else []
+    except:
+        items = []
+    tipo = f.get('tipo', 'mercaderia')
+    color = '#86efac' if tipo == 'mercaderia' else '#fcd34d'
+    with ui.card().classes('w-full p-4 bg-white shadow-sm rounded-xl').style(f'border:1.5px solid {color}'):
+        with ui.row().classes('w-full items-start justify-between gap-4'):
+            with ui.column().classes('gap-1 flex-1'):
+                ui.label(f.get('proveedor') or 'Sin proveedor').classes('font-bold text-gray-800 text-base')
+                with ui.row().classes('gap-3 flex-wrap'):
+                    if f.get('numero_factura'):
+                        ui.badge(f"N° {f['numero_factura']}", color='blue').classes('text-xs')
+                    ui.label(f.get('fecha') or '').classes('text-xs text-gray-400')
+                    ui.badge('MERCADERÍA' if tipo == 'mercaderia' else 'GASTO',
+                             color='green' if tipo == 'mercaderia' else 'amber').classes('text-xs')
+            with ui.column().classes('items-end gap-0'):
+                ui.label(f"S/ {float(f.get('total') or 0):,.2f}").classes('text-xl font-black text-gray-900')
+                subtotal = float(f.get('subtotal') or 0)
+                igv     = float(f.get('igv') or 0)
+                if igv > 0:
+                    ui.label(f"Subtotal: S/ {subtotal:.2f}  |  IGV: S/ {igv:.2f}").classes('text-xs text-gray-400')
+
+        if items:
+            ui.separator().classes('my-2')
+            ui.label(f'Ítems ({len(items)}):').classes('text-xs font-bold text-gray-500 mb-1')
+            with ui.column().classes('w-full gap-1'):
+                for item in items:
+                    if not item:
+                        continue
+                    nombre  = item.get('nombre') or '—'
+                    cant    = item.get('cantidad') or 1
+                    p_unit  = float(item.get('precio_unitario') or 0)
+                    total_i = float(item.get('total') or 0)
+                    unidad  = item.get('unidad') or 'und'
+                    with ui.row().classes('w-full items-center justify-between py-0.5'):
+                        ui.label(f"• {nombre}").classes('text-sm text-gray-700 flex-1')
+                        ui.label(f"{cant} {unidad}  ×  S/ {p_unit:.2f}  =  S/ {total_i:.2f}").classes(
+                            'text-sm text-gray-500 font-mono whitespace-nowrap')
+
+        if f.get('imagen_path') and os.path.exists(f['imagen_path']):
+            ui.button('Ver imagen original', icon='image',
+                      on_click=lambda fp=f['imagen_path']: _ver_imagen(fp)
+                      ).props('flat dense color=blue-7').classes('text-xs mt-2')
 
 
 def _ver_imagen(filepath: str):
