@@ -286,6 +286,7 @@ class CierreCaja(Base):
     total_tarjeta     = Column(Float, default=0.0)
     total_ordenes     = Column(Float, default=0.0)
     total_notas       = Column(Float, default=0.0)
+    total_creditos    = Column(Float, default=0.0)      # cobros de fiado/crédito
     total_mo          = Column(Float, default=0.0)      # mano de obra
     total_repuestos   = Column(Float, default=0.0)
     ganancia_neta     = Column(Float, default=0.0)
@@ -449,6 +450,16 @@ def init_db():
     except Exception:
         pass
 
+    # Migración: agregar total_creditos a cierres_caja si no existe
+    try:
+        with engine.connect() as conn:
+            conn.execute(__import__('sqlalchemy').text(
+                "ALTER TABLE cierres_caja ADD COLUMN total_creditos FLOAT DEFAULT 0"
+            ))
+            conn.commit()
+    except Exception:
+        pass
+
     # Migración: agregar campos de pago a ordenes
     for col_sql in [
         "ALTER TABLE ordenes ADD COLUMN metodo_pago VARCHAR(30) DEFAULT ''",
@@ -489,6 +500,7 @@ def init_db():
                     total_tarjeta FLOAT DEFAULT 0,
                     total_ordenes FLOAT DEFAULT 0,
                     total_notas FLOAT DEFAULT 0,
+                    total_creditos FLOAT DEFAULT 0,
                     total_mo FLOAT DEFAULT 0,
                     total_repuestos FLOAT DEFAULT 0,
                     ganancia_neta FLOAT DEFAULT 0,

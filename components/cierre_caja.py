@@ -24,11 +24,17 @@ def _caja_hoy(db) -> CierreCaja | None:
     return db.query(CierreCaja).filter_by(fecha=_hoy()).order_by(CierreCaja.id.desc()).first()
 
 
+def _sumar_metodo(metodo, monto, acum):
+    key = (metodo or 'Efectivo').strip()
+    acum[key] = acum.get(key, 0.0) + monto
+
+
 def _calcular_resumen(fecha: str) -> dict:
-    """Consulta ordenes archivadas + notas de venta del día y calcula totales."""
+    """Consulta ordenes archivadas + notas de venta + abonos de crédito del día."""
+    from sqlalchemy import text
     db = get_db()
     try:
-        # Órdenes archivadas cobradas hoy
+        # ── 1. Órdenes archivadas cobradas hoy ───────────────────────────────
         ordenes = db.query(Orden).filter(
             Orden.estado == 'ARCHIVADO',
             Orden.fecha_cobro == fecha
@@ -36,28 +42,27 @@ def _calcular_resumen(fecha: str) -> dict:
 
         total_ordenes = 0.0
         total_mo      = 0.0
-        total_rep     = 0.0
-        ef_ord = ya_ord = tr_ord = tc_ord = 0.0
+        total_rep_ord = 0.0
+        pago_ord: dict = {}
 
         for o in ordenes:
-            monto = float(o.monto_cobrado or 0)
+            # Recalcular desde items (excluye líneas de resumen/subtotal)
+            items_reales = [
+                it for it in (o.items_cotizacion or [])
+                if it.get('id') != 'subtotal_line' and it.get('categoria') != 'Resumen'
+            ]
+            monto = round(sum(float(it.get('total', 0) or 0) for it in items_reales), 2)
             total_ordenes += monto
-            metodo = (o.metodo_pago or 'Efectivo').strip()
-            if metodo == 'Efectivo':       ef_ord += monto
-            elif metodo == 'Yape':         ya_ord += monto
-            elif metodo == 'Transferencia': tr_ord += monto
-            elif metodo == 'Tarjeta':      tc_ord += monto
+            _sumar_metodo(o.metodo_pago, monto, pago_ord)
 
-            # Desglose MO vs repuestos
-            for it in (o.items_cotizacion or []):
-                cat = str(it.get('categoria') or it.get('tipo') or '').lower()
-                sub = float(it.get('subtotal') or 0)
-                if 'mano' in cat or 'labor' in cat or 'servicio' in cat:
-                    total_mo  += sub
+            for it in items_reales:
+                val = float(it.get('total', 0) or 0)
+                if it.get('categoria') == 'Servicio':
+                    total_mo += val
                 else:
-                    total_rep += sub
+                    total_rep_ord += val
 
-        # Notas de venta del día
+        # ── 2. Notas de venta pagadas hoy ────────────────────────────────────
         fecha_dt_ini = datetime.strptime(fecha, '%Y-%m-%d')
         fecha_dt_fin = fecha_dt_ini + timedelta(days=1)
         notas = db.query(NotaVenta).filter(
@@ -66,32 +71,52 @@ def _calcular_resumen(fecha: str) -> dict:
             NotaVenta.fecha < fecha_dt_fin,
         ).all()
 
-        total_notas = 0.0
-        ef_nv = ya_nv = tr_nv = tc_nv = 0.0
+        total_notas   = 0.0
+        total_rep_nv  = 0.0
+        pago_nv: dict = {}
 
         for nv in notas:
             monto = float(nv.total or 0)
-            total_notas += monto
-            metodo = (nv.metodo_pago or 'Efectivo').strip()
-            if metodo == 'Efectivo':       ef_nv += monto
-            elif metodo == 'Yape':         ya_nv += monto
-            elif metodo == 'Transferencia': tr_nv += monto
-            elif metodo == 'Tarjeta':      tc_nv += monto
-            # notas = repuestos
-            total_rep += monto
+            total_notas  += monto
+            total_rep_nv += monto   # notas de venta = productos/repuestos
+            _sumar_metodo(nv.metodo_pago, monto, pago_nv)
+
+        # ── 3. Abonos de crédito recibidos hoy ───────────────────────────────
+        total_creditos = 0.0
+        pago_cr: dict  = {}
+        try:
+            rows = db.execute(text(
+                "SELECT monto, metodo_pago FROM abonos_credito WHERE fecha LIKE :fecha"
+            ), {'fecha': f'{fecha}%'}).fetchall()
+            for r in rows:
+                monto = float(r._mapping['monto'] or 0)
+                total_creditos += monto
+                mp = r._mapping.get('metodo_pago') or 'Efectivo'
+                _sumar_metodo(mp, monto, pago_cr)
+        except Exception:
+            pass   # tabla puede no tener columna metodo_pago en DBs antiguas
+
+        # ── Consolidar métodos de pago ────────────────────────────────────────
+        def _total_mp(key):
+            return round(
+                pago_ord.get(key, 0) + pago_nv.get(key, 0) + pago_cr.get(key, 0), 2
+            )
+
+        ganancia = round(total_ordenes + total_notas + total_creditos, 2)
 
         return {
-            'total_efectivo':     round(ef_ord + ef_nv, 2),
-            'total_yape':         round(ya_ord + ya_nv, 2),
-            'total_transferencia': round(tr_ord + tr_nv, 2),
-            'total_tarjeta':      round(tc_ord + tc_nv, 2),
-            'total_ordenes':      round(total_ordenes, 2),
-            'total_notas':        round(total_notas, 2),
-            'total_mo':           round(total_mo, 2),
-            'total_repuestos':    round(total_rep, 2),
-            'ganancia_neta':      round(total_ordenes + total_notas, 2),
-            'num_ordenes':        len(ordenes),
-            'num_notas':          len(notas),
+            'total_efectivo':      _total_mp('Efectivo'),
+            'total_yape':          _total_mp('Yape'),
+            'total_transferencia': _total_mp('Transferencia'),
+            'total_tarjeta':       _total_mp('Tarjeta'),
+            'total_ordenes':       round(total_ordenes, 2),
+            'total_notas':         round(total_notas, 2),
+            'total_creditos':      round(total_creditos, 2),
+            'total_mo':            round(total_mo, 2),
+            'total_repuestos':     round(total_rep_ord + total_rep_nv, 2),
+            'ganancia_neta':       ganancia,
+            'num_ordenes':         len(ordenes),
+            'num_notas':           len(notas),
         }
     finally:
         db.close()
@@ -172,15 +197,16 @@ def _open_cierre_dialog(caja: CierreCaja, resumen: dict, on_done):
                         ui.label(label).style(f'font-size:13px;color:#64748b')
                         ui.label(f'S/ {value:,.2f}').style(f'font-size:13px;font-weight:700;color:{color}')
 
-                _row('Órdenes de servicio cobradas', resumen['total_ordenes'], '#059669')
-                _row('Notas de venta', resumen['total_notas'], '#059669')
+                _row('🔧 Órdenes de servicio', resumen['total_ordenes'], '#059669')
+                _row('🧾 Notas de venta', resumen['total_notas'], '#059669')
+                _row('💳 Cobros de crédito/fiado', resumen['total_creditos'], '#059669')
                 ui.separator().style('margin:6px 0')
                 _row('💵 Efectivo', resumen['total_efectivo'])
                 _row('📱 Yape', resumen['total_yape'])
                 _row('🏦 Transferencia', resumen['total_transferencia'])
                 _row('💳 Tarjeta', resumen['total_tarjeta'])
                 ui.separator().style('margin:6px 0')
-                _row('🔧 Mano de obra', resumen['total_mo'])
+                _row('⚙️ Mano de obra', resumen['total_mo'])
                 _row('🔩 Repuestos / productos', resumen['total_repuestos'])
                 ui.separator().style('margin:6px 0')
                 _row('💰 TOTAL INGRESADO', resumen['ganancia_neta'], '#0369a1')
@@ -208,6 +234,7 @@ def _open_cierre_dialog(caja: CierreCaja, resumen: dict, on_done):
                         c.total_tarjeta     = resumen['total_tarjeta']
                         c.total_ordenes     = resumen['total_ordenes']
                         c.total_notas       = resumen['total_notas']
+                        c.total_creditos    = resumen['total_creditos']
                         c.total_mo          = resumen['total_mo']
                         c.total_repuestos   = resumen['total_repuestos']
                         c.ganancia_neta     = resumen['ganancia_neta']
@@ -235,7 +262,6 @@ def _open_cierre_dialog(caja: CierreCaja, resumen: dict, on_done):
 # ─── Historial card ──────────────────────────────────────────────────────────
 
 def _render_historial_card(caja: CierreCaja):
-    estado_color = '#059669' if caja.estado == 'cerrada' else '#d97706'
     estado_icon  = 'check_circle' if caja.estado == 'cerrada' else 'pending'
     with ui.card().classes('w-full').style('border-radius:16px;border:1px solid #e2e8f0;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.05)'):
         with ui.row().classes('w-full justify-between items-center mb-3'):
@@ -252,6 +278,10 @@ def _render_historial_card(caja: CierreCaja):
                     ui.label(f'S/ {value:,.2f}').style(f'font-size:15px;font-weight:800;color:{color}')
 
             _stat('Total ingresado', caja.ganancia_neta, '#0369a1')
+            _stat('Órdenes', caja.total_ordenes, '#1d4ed8')
+            _stat('Notas venta', caja.total_notas, '#7e22ce')
+            if (caja.total_creditos or 0) > 0:
+                _stat('Cobros fiado', caja.total_creditos, '#c2410c')
             _stat('Efectivo', caja.total_efectivo)
             _stat('Yape', caja.total_yape)
             _stat('Transferencia', caja.total_transferencia)
@@ -284,7 +314,7 @@ def show_cierre_caja(container):
                 with ui.column().classes('gap-0'):
                     ui.label('Apertura / Cierre de Caja').style('font-size:28px;font-weight:900;color:#1e293b;font-family:Inter,sans-serif')
                     ui.label('Control de turnos y métodos de pago').style('font-size:13px;color:#94a3b8;font-weight:500')
-                refresh_btn = ui.button(icon='refresh', on_click=lambda: show_cierre_caja(container)).props('flat round color=grey-6')
+                ui.button(icon='refresh', on_click=lambda: show_cierre_caja(container)).props('flat round color=grey-6')
 
             # ── Estado de caja hoy ────────────────────────────────────────────
             status_area = ui.column().classes('w-full')
@@ -332,6 +362,8 @@ def show_cierre_caja(container):
                                 _card_metrica('payments', 'Total día', resumen['ganancia_neta'], '#f0fdf4', '#86efac', '#166534')
                                 _card_metrica('build', 'Órdenes', resumen['total_ordenes'], '#eff6ff', '#bfdbfe', '#1d4ed8')
                                 _card_metrica('receipt_long', 'Notas venta', resumen['total_notas'], '#faf5ff', '#e9d5ff', '#7e22ce')
+                                if resumen['total_creditos'] > 0:
+                                    _card_metrica('handshake', 'Cobros fiado', resumen['total_creditos'], '#fff7ed', '#fed7aa', '#c2410c')
 
                             ui.separator().style('margin:16px 0')
 

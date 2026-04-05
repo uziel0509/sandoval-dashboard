@@ -98,7 +98,12 @@ def _init_tablas():
             except: pass
         db.execute(text("""CREATE TABLE IF NOT EXISTS abonos_credito (
             id INTEGER PRIMARY KEY AUTOINCREMENT, credito_id INTEGER NOT NULL,
-            monto REAL DEFAULT 0, nota TEXT DEFAULT '', fecha TEXT DEFAULT '')"""))
+            monto REAL DEFAULT 0, nota TEXT DEFAULT '', fecha TEXT DEFAULT '',
+            metodo_pago TEXT DEFAULT 'Efectivo')"""))
+        try:
+            db.execute(text("ALTER TABLE abonos_credito ADD COLUMN metodo_pago TEXT DEFAULT 'Efectivo'"))
+        except Exception:
+            pass
         db.commit()
     finally:
         db.close()
@@ -359,7 +364,8 @@ def _modal_abono(credito_id, tabla_ref, filtro):
                 venc = cred['fecha_amortizacion'] < date.today().isoformat()
                 ui.label(f'Fecha límite: {cred["fecha_amortizacion"]} {"⚠️ VENCIDO" if venc else ""}').classes(f'text-sm {"text-red-500 font-bold" if venc else "text-gray-500"}')
             monto_in = ui.number('Monto S/ *', min=0.5, step=0.5, max=pendiente, prefix='S/').props('outlined dense').classes('w-full')
-            nota_in = ui.input('Nota (efectivo, yape...)').props('outlined dense').classes('w-full')
+            metodo_abono = ui.select(['Efectivo', 'Yape', 'Transferencia', 'Tarjeta'], value='Efectivo', label='Método de pago').props('outlined dense').classes('w-full')
+            nota_in = ui.input('Nota (opcional)').props('outlined dense').classes('w-full')
             with ui.row().classes('w-full justify-end gap-3 pt-2'):
                 ui.button('Cancelar', on_click=dlg.close).props('flat color=gray-6')
                 async def abonar():
@@ -368,8 +374,8 @@ def _modal_abono(credito_id, tabla_ref, filtro):
                     from sqlalchemy import text as sqlt
                     db2 = get_db()
                     try:
-                        db2.execute(sqlt("INSERT INTO abonos_credito (credito_id,monto,nota,fecha) VALUES (:cid,:monto,:nota,:fecha)"),
-                            {'cid':credito_id,'monto':monto,'nota':(nota_in.value or '').strip(),'fecha':datetime.now().isoformat()})
+                        db2.execute(sqlt("INSERT INTO abonos_credito (credito_id,monto,nota,fecha,metodo_pago) VALUES (:cid,:monto,:nota,:fecha,:mp)"),
+                            {'cid':credito_id,'monto':monto,'nota':(nota_in.value or '').strip(),'fecha':datetime.now().isoformat(),'mp':metodo_abono.value or 'Efectivo'})
                         db2.commit()
                         _actualizar_estado(credito_id)
                         ui.notify(f'Abono S/ {monto:.2f} registrado ✓', type='positive')

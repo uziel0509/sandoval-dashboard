@@ -1423,11 +1423,11 @@ def open_archive_dialog(consecutivo: str, container, state, stats_container=None
                 metodo = metodo_pago_sel.value or 'Efectivo'
                 total_orden = 0.0
                 try:
-                    items_cot = order.items_cotizacion or []
-                    total_orden = sum(
-                        float(it.get('subtotal') or it.get('precio', 0) * it.get('cantidad', 1))
-                        for it in items_cot
-                    )
+                    items_cot = [
+                        it for it in (order.items_cotizacion or [])
+                        if it.get('id') != 'subtotal_line' and it.get('categoria') != 'Resumen'
+                    ]
+                    total_orden = sum(float(it.get('total', 0) or 0) for it in items_cot)
                 except Exception:
                     pass
                 db2 = get_db()
