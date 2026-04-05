@@ -164,6 +164,10 @@ class Orden(Base):
     pdf_cotizacion = Column(String(300), default='')
     # Factura SUNAT subida por el administrador
     factura_sunat = Column(String(300), default='')
+    # Pago al archivar
+    metodo_pago   = Column(String(30), default='')   # Efectivo, Yape, Transferencia, Tarjeta
+    fecha_cobro   = Column(String(20), default='')
+    monto_cobrado = Column(Float, default=0.0)
 
 
     cliente_rel = relationship('Cliente', back_populates='ordenes')
@@ -214,6 +218,7 @@ class NotaVenta(Base):
     total          = Column(Float, default=0)
     estado         = Column(String(20), default='pagada')  # borrador, pagada, anulada
     notas          = Column(Text, default='')
+    metodo_pago    = Column(String(30), default='')  # Efectivo, Yape, Transferencia, Tarjeta
     items          = Column(JSON, default=list)   # [{codigo, nombre, cantidad, precio, subtotal}]
 
     cliente_rel = relationship('Cliente', foreign_keys=[cliente_id])
@@ -263,6 +268,33 @@ class OrdenComputadora(Base):
 
     orden_servicio_rel = relationship('Orden', back_populates='computadoras')
 
+
+
+# ─────────────────────── CIERRE DE CAJA ───────────────────────
+
+class CierreCaja(Base):
+    __tablename__ = 'cierres_caja'
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    fecha             = Column(String(20), nullable=False)   # YYYY-MM-DD
+    apertura_hora     = Column(String(10), default='')
+    cierre_hora       = Column(String(10), default='')
+    saldo_apertura    = Column(Float, default=0.0)
+    saldo_cierre      = Column(Float, default=0.0)
+    total_efectivo    = Column(Float, default=0.0)
+    total_yape        = Column(Float, default=0.0)
+    total_transferencia = Column(Float, default=0.0)
+    total_tarjeta     = Column(Float, default=0.0)
+    total_ordenes     = Column(Float, default=0.0)
+    total_notas       = Column(Float, default=0.0)
+    total_mo          = Column(Float, default=0.0)      # mano de obra
+    total_repuestos   = Column(Float, default=0.0)
+    ganancia_neta     = Column(Float, default=0.0)
+    num_ordenes       = Column(Integer, default=0)
+    num_notas         = Column(Integer, default=0)
+    notas_operador    = Column(Text, default='')
+    estado            = Column(String(20), default='abierta')  # abierta, cerrada
+    usuario_apertura  = Column(String(100), default='')
+    usuario_cierre    = Column(String(100), default='')
 
 
 # ─────────────────────── COTIZACIONES ───────────────────────
@@ -411,6 +443,61 @@ def init_db():
                     correccion_usuario TEXT DEFAULT '',
                     keywords TEXT DEFAULT '',
                     fecha DATETIME
+                )
+            """))
+            conn.commit()
+    except Exception:
+        pass
+
+    # Migración: agregar campos de pago a ordenes
+    for col_sql in [
+        "ALTER TABLE ordenes ADD COLUMN metodo_pago VARCHAR(30) DEFAULT ''",
+        "ALTER TABLE ordenes ADD COLUMN fecha_cobro VARCHAR(20) DEFAULT ''",
+        "ALTER TABLE ordenes ADD COLUMN monto_cobrado FLOAT DEFAULT 0",
+    ]:
+        try:
+            with engine.connect() as conn:
+                conn.execute(__import__('sqlalchemy').text(col_sql))
+                conn.commit()
+        except Exception:
+            pass
+
+    # Migración: agregar metodo_pago a notas_venta
+    try:
+        with engine.connect() as conn:
+            conn.execute(__import__('sqlalchemy').text(
+                "ALTER TABLE notas_venta ADD COLUMN metodo_pago VARCHAR(30) DEFAULT ''"
+            ))
+            conn.commit()
+    except Exception:
+        pass
+
+    # Crear tabla cierres_caja si no existe
+    try:
+        with engine.connect() as conn:
+            conn.execute(__import__('sqlalchemy').text("""
+                CREATE TABLE IF NOT EXISTS cierres_caja (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fecha VARCHAR(20) NOT NULL,
+                    apertura_hora VARCHAR(10) DEFAULT '',
+                    cierre_hora VARCHAR(10) DEFAULT '',
+                    saldo_apertura FLOAT DEFAULT 0,
+                    saldo_cierre FLOAT DEFAULT 0,
+                    total_efectivo FLOAT DEFAULT 0,
+                    total_yape FLOAT DEFAULT 0,
+                    total_transferencia FLOAT DEFAULT 0,
+                    total_tarjeta FLOAT DEFAULT 0,
+                    total_ordenes FLOAT DEFAULT 0,
+                    total_notas FLOAT DEFAULT 0,
+                    total_mo FLOAT DEFAULT 0,
+                    total_repuestos FLOAT DEFAULT 0,
+                    ganancia_neta FLOAT DEFAULT 0,
+                    num_ordenes INTEGER DEFAULT 0,
+                    num_notas INTEGER DEFAULT 0,
+                    notas_operador TEXT DEFAULT '',
+                    estado VARCHAR(20) DEFAULT 'abierta',
+                    usuario_apertura VARCHAR(100) DEFAULT '',
+                    usuario_cierre VARCHAR(100) DEFAULT ''
                 )
             """))
             conn.commit()

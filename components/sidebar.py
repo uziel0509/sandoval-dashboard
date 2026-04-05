@@ -36,6 +36,7 @@ def create_sidebar(drawer, on_navigate):
                 {'icon': 'receipt_long',  'label': 'Notas de Venta',      'page': 'notas_venta',  'modulo': 'notas_venta'},
                 {'icon': 'receipt',       'label': 'Facturas',            'page': 'facturas',     'modulo': 'facturas'},
                 {'icon': 'account_balance_wallet', 'label': 'Creditos / Fiado', 'page': 'creditos', 'modulo': 'creditos'},
+                {'icon': 'point_of_sale',         'label': 'Apertura / Cierre Caja', 'page': 'cierre_caja', 'modulo': 'cierre_caja'},
                 {'icon': 'event',         'label': 'Citas / Agenda',      'page': 'citas',         'modulo': 'citas'},
                 {'icon': 'assessment',    'label': 'Reportes',            'page': 'reportes',     'modulo': 'reportes'},
                 {'icon': 'trending_up',   'label': 'Rentabilidad',        'page': 'rentabilidad', 'modulo': 'rentabilidad'},

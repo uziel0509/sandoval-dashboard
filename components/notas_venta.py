@@ -487,6 +487,16 @@ def open_nota_dialog(list_container, state, nota_id=None):
                                           ).props('unelevated color=green-7')
 
         # ── Footer ────────────────────────────────────────────────────────────
+        with ui.column().classes('w-full px-6 pb-4 bg-gray-50'):
+            if not read_only:
+                metodo_pago_nv = ui.select(
+                    ['Efectivo', 'Yape', 'Transferencia', 'Tarjeta'],
+                    value=(existing.get('metodo_pago') or 'Efectivo') if existing else 'Efectivo',
+                    label='Método de pago'
+                ).props('outlined dense').style('width:200px')
+            else:
+                metodo_pago_nv = None
+
         with ui.row().classes(
             'w-full justify-end gap-3 px-6 py-4 border-t border-gray-100 '
             'bg-gray-50 rounded-b-2xl'
@@ -530,12 +540,13 @@ def open_nota_dialog(list_container, state, nota_id=None):
                                             prod.stock -= diff
                                             if prod.stock < 0:
                                                 prod.stock = 0
-                            nota.items    = list(items_state)
-                            nota.subtotal = sub
-                            nota.igv      = 0
-                            nota.total    = tot
-                            nota.estado   = cerrar_como
-                            nota.notas    = (notas_in.value or '').strip()
+                            nota.items       = list(items_state)
+                            nota.subtotal    = sub
+                            nota.igv         = 0
+                            nota.total       = tot
+                            nota.estado      = cerrar_como
+                            nota.metodo_pago = (metodo_pago_nv.value or 'Efectivo') if metodo_pago_nv else 'Efectivo'
+                            nota.notas       = (notas_in.value or '').strip()
                             db.commit()
                             log_actividad(
                                 f'Nota {nota.numero} editada — S/ {tot:.2f}',
@@ -577,6 +588,7 @@ def open_nota_dialog(list_container, state, nota_id=None):
                                 igv=0,
                                 total=tot,
                                 estado=cerrar_como,
+                                metodo_pago=(metodo_pago_nv.value or 'Efectivo') if metodo_pago_nv else 'Efectivo',
                                 notas=(notas_in.value or '').strip(),
                                 items=list(items_state),
                             )

@@ -61,7 +61,7 @@ try:
         sidebar, clientes, proveedores, ordenes_servicio, cotizaciones, creditos,
         inventario, metricas, vehiculos, reportes, configuracion,
         usuarios, citas, rentabilidad, notas_venta,
-        facturas, asistente_ia
+        facturas, asistente_ia, cierre_caja
     )
     from pages.approval import approval_page
     from pages.reporte_entrega import reporte_entrega_page
@@ -211,6 +211,8 @@ try:
                     notas_venta.show_notas_venta(content_area)
                 elif page_name == 'facturas':
                     facturas.show_facturas(content_area)
+                elif page_name == 'cierre_caja':
+                    cierre_caja.show_cierre_caja(content_area)
                 elif page_name == 'asistente_ia':
                     asistente_ia.show_asistente(content_area)
                 elif page_name == 'citas':

@@ -1405,10 +1405,43 @@ def open_archive_dialog(consecutivo: str, container, state, stats_container=None
         with ui.column().classes('w-full p-8 gap-4'):
             ui.label('Esta orden de servicio se cerrará, ¿Cómo deseas enviar la encuesta de satisfacción?').style('font-size:15px; color:#475569; line-height:1.6; font-family:Inter,sans-serif;')
 
+            # ── SECCIÓN MÉTODO DE PAGO ──────────────────────────────────
+            with ui.element('div').style('width:100%;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px 16px;'):
+                ui.label('💳 Método de cobro').style('font-size:13px;font-weight:700;color:#166534;margin-bottom:10px;display:block')
+                metodo_pago_sel = ui.select(
+                    ['Efectivo', 'Yape', 'Transferencia', 'Tarjeta'],
+                    value='Efectivo',
+                    label='Forma de pago'
+                ).props('outlined dense').style('width:100%')
+
             def _btn_style(bg='#bef264', text='#166534'):
                 return f'width:100%; height:50px; border-radius:12px; font-weight:700; font-size:12px; background:{bg}; color:{text}; letter-spacing:0.5px; transition:all 0.2s;'
 
             async def _do_archive(method=None):
+                from datetime import datetime as _dt
+                # Guardar método de pago
+                metodo = metodo_pago_sel.value or 'Efectivo'
+                total_orden = 0.0
+                try:
+                    items_cot = order.items_cotizacion or []
+                    total_orden = sum(
+                        float(it.get('subtotal') or it.get('precio', 0) * it.get('cantidad', 1))
+                        for it in items_cot
+                    )
+                except Exception:
+                    pass
+                db2 = get_db()
+                try:
+                    o2 = db2.query(Orden).filter_by(consecutivo=consecutivo).first()
+                    if o2:
+                        o2.metodo_pago   = metodo
+                        o2.fecha_cobro   = _dt.now().strftime('%Y-%m-%d')
+                        o2.monto_cobrado = total_orden
+                        db2.commit()
+                except Exception:
+                    pass
+                finally:
+                    db2.close()
                 advance_order(consecutivo, 'ARCHIVADO')
                 dlg.close()
                 refresh_orders(container, state, stats_container)
