@@ -412,7 +412,7 @@ def get_context_data() -> dict:
             total_productos = len(todos_items)
             stock_critico = [
                 {'nombre': i.nombre, 'stock': i.stock, 'minimo': i.stock_minimo}
-                for i in todos_items if i.stock <= i.stock_minimo
+                for i in todos_items if (i.stock or 0) <= (i.stock_minimo or 0) and i.stock_minimo is not None
             ]
             valor_total_inventario = sum((i.precio or 0) * (i.stock or 0) for i in todos_items)
             

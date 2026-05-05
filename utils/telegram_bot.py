@@ -3,20 +3,24 @@ SANDOVAL Dashboard - Telegram Assistant Bot
 """
 import os
 import json
+import html
 import logging
+import traceback
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.error import NetworkError, TimedOut, RetryAfter, BadRequest
 from dotenv import load_dotenv
 import sys
 
 # Agregar la ruta base para poder importar utils y components
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.models import get_db, ItemInventario, Vehiculo, Cliente
-from components.facturas import _save_factura, _agregar_items_a_inventario
-from utils.agent import run_agent, ejecutar_accion_confirmada, es_correccion, registrar_correccion
-from utils.groq_service import get_groq_client, FACTURA_PROMPT
+from utils.models import get_db, Vehiculo, Cliente
+from utils.facturas_helpers import _save_factura, _agregar_items_a_inventario
+from utils.groq_service import get_groq_client, FACTURA_PROMPT, get_context_data, analizar_intencion_cotizacion, analizar_edicion_cotizacion, analizar_intencion_credito
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 load_dotenv()
 
@@ -24,77 +28,111 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 
 ALLOWED_USERS = [int(x.strip()) for x in os.getenv("ALLOWED_USERS", "").split(",") if x.strip()]
 
+# Chat admin para alertas de excepciones. Default: primer ALLOWED_USERS.
+_raw_admin = os.getenv("ADMIN_CHAT_ID", "").strip()
+ADMIN_CHAT_ID = int(_raw_admin) if _raw_admin.isdigit() else (ALLOWED_USERS[0] if ALLOWED_USERS else None)
+
+# Multi-tenant: el bot atiende solo al taller propietario (id=1).
+# 2026-04-29 audit V11: TALLER_ID configurable via env (default=1 para Sandoval anchor)
+TALLER_ID = int(os.environ.get('SANDOVAL_TALLER_ID', '1'))
+
+
+def _ensure_rls_context():
+    """El bot Telegram corre fuera de un request HTTP, sin middleware que
+    setee el ContextVar de RLS. Forzamos el setting al taller propietario
+    para que las INSERT/SELECT con `taller_id=TALLER_ID` no sean bloqueadas
+    por las policies STRICT.
+    """
+    try:
+        from utils.rls_session import set_current_taller_id
+        set_current_taller_id(TALLER_ID)
+    except Exception:
+        pass
+
+import logging as _lg
+_lg.getLogger("httpx").setLevel(_lg.WARNING)
+_lg.getLogger("httpcore").setLevel(_lg.WARNING)
+_lg.getLogger("urllib3").setLevel(_lg.WARNING)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Captura global de excepciones: loguea y notifica al admin por Telegram.
+
+    Filtra errores TRANSITORIOS de red (NetworkError/TimedOut/ReadError) — esos pasan cuando
+    Telegram cierra el long-polling de getUpdates por inactividad, microcortes de red, etc.
+    La librería tiene su propio retry loop, así que basta con un WARNING y NO spammear al admin.
+    """
+    err = context.error
+
+    # ── 1) Errores TRANSITORIOS: solo log WARNING, no notificar ─────────
+    if isinstance(err, (NetworkError, TimedOut)):
+        logger.warning("Error transitorio de red (auto-reintenta): %s", str(err)[:200])
+        return
+    if err is not None and "httpx." in (str(err) or ""):
+        logger.warning("Error transitorio httpx (auto-reintenta): %s", str(err)[:200])
+        return
+
+    logger.error("Excepcion no manejada en handler del bot", exc_info=err)
+
+    tb_list = traceback.format_exception(None, err, err.__traceback__) if err else []
+    tb_text = "".join(tb_list)[-3000:]
+
+    upd_desc = "—"
+    user_desc = "—"
+    try:
+        if isinstance(update, Update):
+            if update.effective_user:
+                user_desc = f"{update.effective_user.id} ({update.effective_user.username or '-'})"
+            if update.callback_query and update.callback_query.data:
+                upd_desc = f"callback: {update.callback_query.data}"
+            elif update.message and update.message.text:
+                upd_desc = f"text: {update.message.text[:120]}"
+            elif update.message and update.message.photo:
+                upd_desc = "photo"
+            elif update.message and (update.message.voice or update.message.audio):
+                upd_desc = "voice/audio"
+    except Exception:
+        pass
+
+    if ADMIN_CHAT_ID:
+        try:
+            msg = (
+                f"🚨 <b>Error en bot Sandoval</b>\n"
+                f"<b>Fecha:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"<b>Usuario:</b> {html.escape(user_desc)}\n"
+                f"<b>Update:</b> <code>{html.escape(upd_desc)}</code>\n\n"
+                f"<pre>{html.escape(tb_text)}</pre>"
+            )
+            await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=msg, parse_mode="HTML")
+        except Exception:
+            logger.exception("Fallo notificando excepcion al admin")
+
+    # Aviso breve al usuario que disparó el update (no exponer traceback).
+    try:
+        if isinstance(update, Update):
+            if update.callback_query:
+                await update.callback_query.answer("⚠️ Error interno. El admin fue notificado.", show_alert=True)
+            elif update.effective_message:
+                await update.effective_message.reply_text("⚠️ Ocurrió un error procesando tu mensaje. El admin fue notificado.")
+    except Exception:
+        pass
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if ALLOWED_USERS and user_id not in ALLOWED_USERS:
         await update.message.reply_text(f"🛑 Acceso denegado. Tu ID es: {user_id}. No estás en la lista blanca del Taller Sandoval.")
         return
-
+        
     await update.message.reply_text(
-        f"👋 ¡Hola! Soy el Asistente IA del Taller Sandoval.\n\n"
-        f"🔑 Tu ID de Telegram es: `{user_id}`\n\n"
-        f"Dime lo que necesitas en lenguaje natural, por ejemplo:\n"
-        f"  • _'cotización para ABC-123, cambio aceite 80 y filtro 25'_\n"
-        f"  • _'cuánto gané hoy'_\n"
-        f"  • _'Mario Flores se llevó 2 filtros a 25 soles al fiado'_\n"
-        f"  • _'Mario abonó 40 soles por yape'_\n"
-        f"  • _'stock de filtros'_\n"
-        f"  • _'órdenes activas'_\n\n"
-        f"También puedo recibir 📸 fotos y 🎙️ notas de voz.\n"
-        f"Usa /help para ver todos los comandos."
+        f"👋 ¡Hola! Soy el Asistente del Taller Sandoval.\n\n"
+        f"🔑 Tu ID secreto de Telegram es: `{user_id}`\n(Pásamelo para blindar el bot a tu cuenta).\n\n"
+        f"Puedes:\n"
+        f"1️⃣ Preguntarme sobre el taller (inventario, repuestos, clientes).\n"
+        f"2️⃣ Enviarme una foto de una factura para subirla al sistema web.\n"
+        f"3️⃣ Enviarme una **NOTA DE VOZ** si no puedes escribir."
     )
-
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if ALLOWED_USERS and user_id not in ALLOWED_USERS:
-        return
-    await update.message.reply_text(
-        "📋 *Comandos disponibles:*\n\n"
-        "/start — Bienvenida\n"
-        "/help — Esta ayuda\n"
-        "/cancelar — Cancela cualquier operación pendiente\n\n"
-        "💬 *Lo que puedes decirme:*\n\n"
-        "📊 *Ganancias:*\n"
-        "  _'cuánto gané hoy/ayer/semana/mes'_\n\n"
-        "📦 *Inventario:*\n"
-        "  _'stock de filtros de aceite'_\n"
-        "  _'hay bujías NGK'_\n\n"
-        "📋 *Órdenes:*\n"
-        "  _'estado de la orden ABC-123'_\n"
-        "  _'órdenes activas'_\n"
-        "  _'crea orden para Juan Pérez, placa XYZ-123, cambio frenos'_\n\n"
-        "📄 *Cotizaciones:*\n"
-        "  _'cotización para ABC-123, aceite 80 y filtro 25'_\n\n"
-        "💳 *Créditos / Fiados:*\n"
-        "  _'Mario se llevó 2 filtros a 25 al fiado'_\n"
-        "  _'Mario abonó 50 soles por yape'_\n"
-        "  _'créditos pendientes'_\n\n"
-        "📸 *Fotos:* facturas de proveedores o evidencias de órdenes\n"
-        "🎙️ *Nota de voz:* cualquier comando por audio",
-        parse_mode='Markdown'
-    )
-
-
-async def cancelar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if ALLOWED_USERS and user_id not in ALLOWED_USERS:
-        return
-    context.user_data.pop('pending_credito', None)
-    context.user_data.pop('pending_abono', None)
-    context.user_data.pop('abono_pendiente_datos', None)
-    context.user_data.pop('pending_cotizacion', None)
-    context.user_data.pop('cotizacion_activa', None)
-    context.user_data.pop('pending_factura', None)
-    context.user_data.pop('last_photo_path', None)
-    context.user_data.pop('last_invoice_path', None)
-    context.user_data.pop('agent_historial', None)
-    context.user_data.pop('pending_agent_confirm', None)
-    context.user_data.pop('_last_exchange', None)
-    await update.message.reply_text("✅ Todo cancelado. Historial de conversación limpiado.")
 
 # ═══════════════════════════════════════════════════════════════════
 #  CRÉDITOS / FIADO - Funciones auxiliares del bot
@@ -107,10 +145,11 @@ def _buscar_creditos_por_nombre(nombre: str) -> list:
     try:
         rows = db.execute(text("""
             SELECT * FROM creditos
-            WHERE LOWER(cliente_nombre) LIKE :nombre
-            AND estado IN ('PENDIENTE', 'PARCIAL', 'VENCIDO')
+            WHERE taller_id=:t
+              AND LOWER(cliente_nombre) LIKE :nombre
+              AND estado IN ('PENDIENTE', 'PARCIAL', 'VENCIDO')
             ORDER BY fecha_venta DESC
-        """), {'nombre': f'%{nombre.lower()}%'}).fetchall()
+        """), {'t': TALLER_ID, 'nombre': f'%{nombre.lower()}%'}).fetchall()
         return [dict(r._mapping) for r in rows]
     except Exception:
         return []
@@ -125,9 +164,10 @@ def _get_todos_creditos_pendientes() -> list:
     try:
         rows = db.execute(text("""
             SELECT * FROM creditos
-            WHERE estado IN ('PENDIENTE', 'PARCIAL', 'VENCIDO')
+            WHERE taller_id=:t
+              AND estado IN ('PENDIENTE', 'PARCIAL', 'VENCIDO')
             ORDER BY fecha_venta DESC LIMIT 20
-        """)).fetchall()
+        """), {'t': TALLER_ID}).fetchall()
         return [dict(r._mapping) for r in rows]
     except Exception:
         return []
@@ -141,16 +181,24 @@ def _registrar_abono_bot(credito_id: int, monto: float, nota: str) -> bool:
     from datetime import date
     db = get_db()
     try:
+        ahora = datetime.now()
         db.execute(text("""
-            INSERT INTO abonos_credito (credito_id, monto, nota, fecha)
-            VALUES (:cid, :monto, :nota, :fecha)
-        """), {'cid': credito_id, 'monto': monto, 'nota': nota, 'fecha': datetime.now().isoformat()})
+            INSERT INTO abonos_credito (taller_id, credito_id, monto, nota, fecha, fecha_dt)
+            VALUES (:t, :cid, :monto, :nota, :fecha, :fecha_dt)
+        """), {
+            't': TALLER_ID, 'cid': credito_id, 'monto': monto, 'nota': nota,
+            'fecha': ahora.isoformat(), 'fecha_dt': ahora,
+        })
         db.commit()
         # Recalcular estado
-        cred = db.execute(text("SELECT * FROM creditos WHERE id=:id"), {'id': credito_id}).fetchone()
+        cred = db.execute(text("SELECT * FROM creditos WHERE id=:id AND taller_id=:t"),
+                          {'id': credito_id, 't': TALLER_ID}).fetchone()
         if cred:
             cred = dict(cred._mapping)
-            ab = db.execute(text("SELECT COALESCE(SUM(monto),0) as t FROM abonos_credito WHERE credito_id=:cid"), {'cid': credito_id}).fetchone()
+            ab = db.execute(text(
+                "SELECT COALESCE(SUM(monto),0) as t FROM abonos_credito "
+                "WHERE credito_id=:cid AND taller_id=:t"
+            ), {'cid': credito_id, 't': TALLER_ID}).fetchone()
             total_ab = float(ab._mapping['t'])
             pendiente = round(float(cred['total']) - total_ab, 2)
             vencido = cred.get('fecha_amortizacion','') and cred.get('fecha_amortizacion','') < date.today().isoformat()
@@ -158,8 +206,8 @@ def _registrar_abono_bot(credito_id: int, monto: float, nota: str) -> bool:
             elif vencido: estado = 'VENCIDO'
             elif total_ab > 0: estado = 'PARCIAL'
             else: estado = 'PENDIENTE'
-            db.execute(text("UPDATE creditos SET pendiente=:p, estado=:e WHERE id=:id"),
-                {'p': max(pendiente, 0), 'e': estado, 'id': credito_id})
+            db.execute(text("UPDATE creditos SET pendiente=:p, estado=:e WHERE id=:id AND taller_id=:t"),
+                {'p': max(pendiente, 0), 'e': estado, 'id': credito_id, 't': TALLER_ID})
             db.commit()
         return True
     except Exception as e:
@@ -175,32 +223,28 @@ def _crear_credito_bot(data: dict) -> bool:
     from sqlalchemy import text
     db = get_db()
     try:
-        db.execute(text("""
-            CREATE TABLE IF NOT EXISTS creditos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, cliente_nombre TEXT NOT NULL,
-                telefono TEXT DEFAULT '', descripcion TEXT DEFAULT '',
-                items_json TEXT DEFAULT '[]', total REAL DEFAULT 0,
-                pendiente REAL DEFAULT 0, estado TEXT DEFAULT 'PENDIENTE',
-                nota TEXT DEFAULT '', fecha_venta TEXT DEFAULT '',
-                fecha_amortizacion TEXT DEFAULT '', creado_por TEXT DEFAULT '')
-        """))
         import json as _json
         items = data.get('items', [])
         desc  = data.get('descripcion', '')
         if not desc and items:
             desc = ', '.join(f"{it.get('cantidad',1)}x {it['nombre']} S/{float(it.get('precio',0)):.2f}" for it in items)
+        ahora = datetime.now()
         db.execute(text("""
             INSERT INTO creditos
-            (cliente_nombre, telefono, descripcion, items_json, total, pendiente, estado, nota, fecha_venta, creado_por)
-            VALUES (:cn, :tel, :desc, :items, :total, :total, 'PENDIENTE', :nota, :fecha, 'Bot Telegram')
+            (taller_id, cliente_nombre, telefono, descripcion, items_json,
+             total, pendiente, estado, nota, fecha_venta, fecha_venta_dt, creado_por)
+            VALUES (:t, :cn, :tel, :desc, :items,
+                    :total, :total, 'PENDIENTE', :nota, :fecha, :fecha_dt, 'Bot Telegram')
         """), {
-            'cn':    data.get('cliente_nombre', ''),
-            'tel':   data.get('telefono', ''),
-            'desc':  desc,
-            'items': _json.dumps(items),
-            'total': float(data.get('total', 0)),
-            'nota':  data.get('nota', ''),
-            'fecha': datetime.now().isoformat()
+            't':       TALLER_ID,
+            'cn':      data.get('cliente_nombre', ''),
+            'tel':     data.get('telefono', ''),
+            'desc':    desc,
+            'items':   _json.dumps(items),
+            'total':   float(data.get('total', 0)),
+            'nota':    data.get('nota', ''),
+            'fecha':   ahora.isoformat(),
+            'fecha_dt': ahora,
         })
         db.commit()
         return True
@@ -265,6 +309,7 @@ async def _handle_credito_intent(intencion: dict, update: Update, context: Conte
                         db2 = get_db()
                         try:
                             prod = db2.query(ItemInventario).filter(
+                                ItemInventario.taller_id == TALLER_ID,
                                 ItemInventario.nombre.ilike(f"%{it['nombre']}%")
                             ).first()
                             if prod:
@@ -447,7 +492,8 @@ async def _handle_credito_callbacks(data: str, query, context) -> bool:
         from sqlalchemy import text as sqlt
         db = get_db()
         try:
-            cred = db.execute(sqlt("SELECT * FROM creditos WHERE id=:id"), {'id': credito_id}).fetchone()
+            cred = db.execute(sqlt("SELECT * FROM creditos WHERE id=:id AND taller_id=:t"),
+                              {'id': credito_id, 't': TALLER_ID}).fetchone()
             if not cred:
                 await query.edit_message_text("❌ Crédito no encontrado.")
                 return True
@@ -482,77 +528,121 @@ async def _handle_credito_callbacks(data: str, query, context) -> bool:
     return False
 
 
-async def _process_bot_message(user_text: str, update, context, processing_msg, foto_path=None):
-    import json as _json, os as _os
-    user_id = update.effective_user.id
+async def _process_bot_message(user_text: str, update: Update, context: ContextTypes.DEFAULT_TYPE, processing_msg):
     try:
-        # Detectar corrección ANTES de llamar al agente
-        historial_prev = context.user_data.get('_last_exchange', {})
-        if es_correccion(user_text) and historial_prev.get('user') and historial_prev.get('assistant'):
-            registrar_correccion(
-                historial_prev['user'],
-                historial_prev['assistant'],
-                user_text
-            )
+        # ── Primero verificar si es sobre créditos/fiado ──
+        credito_intent = analizar_intencion_credito(user_text)
+        if credito_intent.get('intencion') != 'ninguna':
+            handled = await _handle_credito_intent(credito_intent, update, context, processing_msg)
+            if handled:
+                return
 
-        respuesta = await run_agent(user_text, foto_path=foto_path, user_id=user_id)
+        # ── Si hay cotización activa, intentar editarla primero ──
+        cot_activa = context.user_data.get('cotizacion_activa')
+        if cot_activa:
+            edicion = analizar_edicion_cotizacion(user_text, cot_activa['items'])
+            if edicion.get('es_edicion'):
+                # Aplicar cambios
+                items_actualizados = edicion.get('items', cot_activa['items'])
+                total = sum(int(i.get('cantidad',1)) * float(i.get('precio',0)) for i in items_actualizados)
+                cot_activa['items'] = items_actualizados
+                cot_activa['total'] = total
+                context.user_data['cotizacion_activa'] = cot_activa
+                context.user_data['pending_cotizacion'] = cot_activa
 
-        # ── Manejar confirmación pendiente ──────────────────────────────
-        if isinstance(respuesta, str) and respuesta.startswith('{"__confirm__"'):
+                resumen = "\n".join([
+                    f"• {i.get('nombre','?')} x{i.get('cantidad',1)} → S/ {float(i.get('precio',0))*int(i.get('cantidad',1)):.2f}"
+                    for i in items_actualizados
+                ])
+                keyboard = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("✅ Confirmar cambios", callback_data="confirmar_cotizacion"),
+                    InlineKeyboardButton("❌ Cancelar", callback_data="cancelar_cotizacion"),
+                ]])
+                await processing_msg.edit_text(
+                    f"✏️ *Cotización actualizada:*\n\n{resumen}\n\n💰 *Total: S/ {total:.2f}*",
+                    reply_markup=keyboard, parse_mode="Markdown"
+                )
+                return
+
+        # Analizar intención de cotización
+        intencion = analizar_intencion_cotizacion(user_text)
+        if intencion.get('is_cotizacion'):
+            placa = str(intencion.get('placa', '')).upper()
+            
+            # Buscar dueño si la placa existe
+            db = get_db()
             try:
-                confirm_data = _json.loads(respuesta)
-                if confirm_data.get('__confirm__'):
-                    context.user_data['pending_agent_confirm'] = confirm_data
-                    preview = confirm_data.get('preview', '¿Confirmas esta acción?')
-                    kb = InlineKeyboardMarkup([[
-                        InlineKeyboardButton("✅ Confirmar", callback_data='agent_confirm_yes'),
-                        InlineKeyboardButton("❌ Cancelar",  callback_data='agent_confirm_no'),
-                    ]])
-                    await processing_msg.edit_text(preview, reply_markup=kb, parse_mode='Markdown')
-                    return
-            except Exception:
-                pass
+                vehiculo = db.query(Vehiculo).filter_by(placa=placa, taller_id=TALLER_ID).first()
+                if vehiculo and vehiculo.cliente_id:
+                    cliente = db.query(Cliente).filter_by(id=vehiculo.cliente_id, taller_id=TALLER_ID).first()
+                    if cliente:
+                        # Auto-completar
+                        intencion['cliente_nombre'] = f"{cliente.nombre} {cliente.apellidos or ''}".strip()
+                        if not intencion.get('telefono') or intencion.get('telefono') == "":
+                            intencion['telefono'] = cliente.telefono
+            finally:
+                db.close()
+                
+            # Guardamos la data
+            context.user_data['pending_cotizacion'] = intencion
+            context.user_data['cotizacion_activa'] = intencion  # guardar para posible edición
+            
+            # Calcula el total iterando los items
+            total = sum(float(i.get('precio', 0)) * int(i.get('cantidad', 1)) for i in intencion.get('items', []))
+            
+            items_str = "\n".join([f"  - {i.get('nombre')} x{i.get('cantidad', 1)}: S/ {float(i.get('precio', 0))*int(i.get('cantidad', 1)):.2f}" for i in intencion.get('items', [])])
+            if not items_str: items_str = "  (Ningún ítem detectado o con precio válido)"
+            
+            msg = (
+                f"📝 **Cotización Generada por IA**\n\n"
+                f"🚗 *Placa:* {intencion.get('placa', '')}\n"
+                f"👤 *Cliente:* {intencion.get('cliente_nombre', '')}\n"
+                f"📱 *Teléfono:* {intencion.get('telefono', '')}\n"
+                f"🛣️ *Kilometraje:* {intencion.get('kilometraje', '')} km\n\n"
+                f"**Servicios y Repuestos Detectados:**\n"
+                f"{items_str}\n\n"
+                f"💰 **Total Estimado:** S/ {total:.2f}\n\n"
+                f"¿Es correcta esta cotización y deseas crearla oficialmente?"
+            )
+            
+            keyboard = [
+                [InlineKeyboardButton("✅ Confirmar, Crear y Generar PDF", callback_data='save_cotizacion')],
+                [InlineKeyboardButton("❌ Cancelar", callback_data='cancel_cotizacion')]
+            ]
+            await processing_msg.edit_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+            return
 
-        # Guardar último intercambio para RAG
-        context.user_data['_last_exchange'] = {'user': user_text, 'assistant': respuesta}
-
-        # ── PDF adjunto ─────────────────────────────────────────────────
-        pdf_enviado = False
-        try:
-            if '"pdf_path"' in respuesta:
-                data = _json.loads(respuesta)
-                pdf_path = data.get('pdf_path')
-                if pdf_path and _os.path.exists(pdf_path):
-                    numero  = data.get('numero', '')
-                    cliente = data.get('cliente', '')
-                    await context.bot.send_document(
-                        chat_id=update.effective_chat.id,
-                        document=open(pdf_path, 'rb'),
-                        filename=_os.path.basename(pdf_path),
-                        caption=f"📄 PDF {numero} - {cliente}"
-                    )
-                    try: await processing_msg.delete()
-                    except: pass
-                    pdf_enviado = True
-                elif data.get('error'):
-                    await processing_msg.edit_text(f"❌ {data['error']}")
-                    pdf_enviado = True
-        except Exception:
-            pass
-
-        if not pdf_enviado:
-            if len(respuesta) > 4000:
-                for i in range(0, len(respuesta), 4000):
-                    await update.message.reply_text(respuesta[i:i+4000])
-                try: await processing_msg.delete()
-                except: pass
-            else:
-                await processing_msg.edit_text(respuesta)
-
+        # ── DIRRETRICES ESTRICTAS DE SEGURIDAD Y CONTEXTO ──
+        system_prompt = """
+        Eres el asistente exclusivo del Taller Sandoval. Tu única función es ayudar con temas 
+        relacionados a mecánica automotriz, inventario de repuestos, gestión de clientes, gastos 
+        del taller y operaciones diarias. 
+        
+        REGLA DE ORO: Si el usuario te pregunta sobre la universidad, tareas académicas, historia, 
+        matemáticas, o CUALQUIER TEMA que no tenga que ver directa y exclusivamente con el taller, 
+        debes NEGARTÉ a responder cortésmente y recordarle que eres un asistente de taller automotriz.
+        Responde de forma concisa, profesional y yendo directo al grano.
+        """
+        context_data = get_context_data()
+        full_prompt = f"{system_prompt}\n\nCONTEXTO DEL TALLER:\n{context_data}"
+        
+        client = get_groq_client()
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": full_prompt},
+                {"role": "user", "content": user_text}
+            ],
+            max_tokens=1000,
+            temperature=0.3
+        )
+        reply = response.choices[0].message.content
+        await processing_msg.edit_text(reply)
+        
     except Exception as e:
-        logger.error(f'Error agente: {e}', exc_info=True)
-        try: await processing_msg.edit_text(f'Error: {str(e)[:200]}')
-        except: pass
+        logger.error(f"Error AI: {e}", exc_info=True)
+        await processing_msg.edit_text("❌ Hubo un error procesando el mensaje mediante IA.")
+
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -567,63 +657,35 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if ALLOWED_USERS and user_id not in ALLOWED_USERS:
         return
-
+        
+    # Agarrar la versión de mayor resolución de la foto
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
-    caption = (update.message.caption or '').strip().lower()
-
-    # Descargar foto
-    os.makedirs('/var/www/sandoval/static/evidencia/temp', exist_ok=True)
-    fname = f"tg_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.file_id}.jpg"
-
-    # Decidir si es EVIDENCIA DE ORDEN o FACTURA
-    palabras_orden = ['orden', 'os-', 'evidencia', 'foto', 'placa', 'vehiculo',
-                      'vehículo', 'trabajo', 'reparacion', 'reparación', 'entrega',
-                      'listo', 'terminado', 'avanzar', 'fase', 'subir']
-    es_evidencia = any(p in caption for p in palabras_orden)
-
-    # Si tiene caption con placa (formato ABC-123 o ABC123)
-    import re
-    tiene_placa = bool(re.search(r'[A-Za-z]{3}[-\s]?\d{3,4}', caption))
-    if tiene_placa:
-        es_evidencia = True
-
-    if es_evidencia:
-        # Guardar en carpeta de evidencias
-        fpath = f'/var/www/sandoval/static/evidencia/temp/{fname}'
-        await file.download_to_drive(fpath)
-        context.user_data['last_photo_path'] = fpath
-
-        # Pasar al agente con el caption como texto
-        processing_msg = await update.message.reply_text('⏳ Procesando foto...')
-        user_text = update.message.caption or 'El usuario mandó una foto de evidencia de una orden.'
-        await _process_bot_message(user_text, update, context, processing_msg, foto_path=fpath)
-    else:
-        # Sin caption claro: preguntar qué es la foto
-        # Guardar en temp primero
-        os.makedirs('/var/www/sandoval/static/evidencia/temp', exist_ok=True)
-        fpath_temp = f'/var/www/sandoval/static/evidencia/temp/{fname}'
-        await file.download_to_drive(fpath_temp)
-        context.user_data['last_photo_path'] = fpath_temp
-        context.user_data['last_invoice_path'] = fpath_temp
-
-        keyboard = [
-            [
-                InlineKeyboardButton("📋 Evidencia de Orden", callback_data='foto_evidencia'),
-                InlineKeyboardButton("🛒 Factura Mercadería", callback_data='tipo_mercaderia'),
-            ],
-            [
-                InlineKeyboardButton("💸 Gasto/Factura", callback_data='tipo_gasto'),
-                InlineKeyboardButton("❌ Cancelar", callback_data='cancelar_factura'),
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            "📸 Foto recibida. *¿Qué es esta foto?*\n\n"
-            "💡 Tip: Si mandas la foto con el caption de la placa o número de orden, el bot la procesa automáticamente.",
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
-        )
+    
+    # Validar carpetas
+    os.makedirs(os.path.join(BASE_DIR, "static", "facturas"), exist_ok=True)
+    fname = f"tg_img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.file_id}.jpg"
+    fpath = os.path.join(os.path.join(BASE_DIR, "static", "facturas"), fname)
+    
+    # Descargar la imagen de los servidores de Telegram a nuestro servidor
+    await file.download_to_drive(fpath)
+    context.user_data['last_invoice_path'] = fpath
+    
+    # Menú de botones
+    keyboard = [
+        [
+            InlineKeyboardButton("🛒 Mercadería (Al Inventario)", callback_data='tipo_mercaderia'),
+            InlineKeyboardButton("💸 Gasto (Contabilidad)", callback_data='tipo_gasto')
+        ],
+        [InlineKeyboardButton("❌ Cancelar", callback_data='cancelar_factura')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "📸 Factura recibida con éxito.\n*¿Qué tipo de registro es este?*", 
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -634,42 +696,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     data = query.data
-
-    # ── Confirmación de acción del agente ──
-    if data == 'agent_confirm_yes':
-        confirm_data = context.user_data.pop('pending_agent_confirm', None)
-        if not confirm_data:
-            await query.edit_message_text("⚠️ Sesión expirada. Repite la acción.")
-            return
-        try:
-            tool_name = confirm_data.get('tool', '')
-            args      = confirm_data.get('args', {})
-            args['__ya_confirmado__'] = True
-            resultado = ejecutar_accion_confirmada(tool_name, args)
-            import json as _json, os as _os
-            # PDF adjunto si aplica
-            if '"pdf_path"' in resultado:
-                data_pdf = _json.loads(resultado)
-                pdf_path = data_pdf.get('pdf_path')
-                if pdf_path and _os.path.exists(pdf_path):
-                    await context.bot.send_document(
-                        chat_id=update.effective_chat.id,
-                        document=open(pdf_path, 'rb'),
-                        filename=_os.path.basename(pdf_path),
-                        caption=f"📄 PDF {data_pdf.get('numero','')} - {data_pdf.get('cliente','')}"
-                    )
-                    await query.edit_message_text("✅ Acción completada.")
-                    return
-            await query.edit_message_text(resultado, parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Error confirmando acción agente: {e}", exc_info=True)
-            await query.edit_message_text(f"❌ Error al ejecutar: {str(e)[:200]}")
-        return
-
-    if data == 'agent_confirm_no':
-        context.user_data.pop('pending_agent_confirm', None)
-        await query.edit_message_text("❌ Acción cancelada.")
-        return
 
     # ── Créditos / Fiado ──
     credito_handled = await _handle_credito_callbacks(data, query, context)
@@ -700,6 +726,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             res_msg, pdf_path = _crear_cotizacion_desde_bot(cot_data)
             context.user_data.pop('pending_cotizacion', None)
+            context.user_data.pop('cotizacion_activa', None)
             if pdf_path and os.path.exists(pdf_path):
                 await context.bot.send_document(
                     chat_id=update.effective_chat.id,
@@ -715,18 +742,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"❌ Error interno al generar la cotización: {str(e)}")
         return
 
-    if data == 'foto_evidencia':
-        fpath = context.user_data.get('last_photo_path')
-        if not fpath:
-            await query.edit_message_text("⚠️ Foto no encontrada. Vuelve a enviarla.")
-            return
-        await query.edit_message_text("⏳ Procesando foto como evidencia de orden...")
-        await _process_bot_message(
-            "El usuario mandó una foto de evidencia de una orden o vehículo. Busca la orden activa más reciente y sube esta foto como evidencia.",
-            update, context, query.message, foto_path=fpath
-        )
-        return
-
     if data == 'cancelar_factura' or data == 'discard_factura':
         context.user_data.pop('pending_factura', None)
         await query.edit_message_text("❌ Subida de recibo cancelada.")
@@ -735,57 +750,36 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == 'save_factura':
         factura_data = context.user_data.get('pending_factura')
         if not factura_data:
-            await query.edit_message_text(
-                "⚠️ *Sesión expirada*\n\nEl bot se reinició y perdió los datos temporales. "
-                "Vuelve a mandar la foto de la factura.",
-                parse_mode='Markdown'
-            )
+            await query.edit_message_text("⚠️ Sesión expirada. Vuelve a subir la foto.")
             return
-
+            
         try:
-            from components.facturas import _check_duplicate_factura
-            # Segunda verificación justo antes de guardar
-            if _check_duplicate_factura(
-                factura_data.get('proveedor', ''),
-                factura_data.get('numero_factura', ''),
-                total=factura_data.get('total'),
-                fecha=factura_data.get('fecha')
-            ):
-                context.user_data.pop('pending_factura', None)
-                await query.edit_message_text(
-                    f"🚫 *Factura rechazada — ya fue registrada antes*\n\n"
-                    f"📄 *N° Factura:* {factura_data.get('numero_factura') or '(sin número)'}\n"
-                    f"🏢 *Proveedor:* {factura_data.get('proveedor') or '—'}\n"
-                    f"💰 *Total:* S/ {float(factura_data.get('total') or 0):.2f}\n\n"
-                    f"No se guardó nada. Búscala en la web si necesitas verla.",
-                    parse_mode='Markdown'
-                )
-                return
-
-            _save_factura(factura_data)
-
+            # Inyectar silenciosamente a SQLite de la página web
+            factura_id = _save_factura(factura_data)
+            
+            # Si es mercadería, añadir también al stock disponible internamente
             if factura_data['tipo'] == 'mercaderia' and factura_data.get('items'):
                 _agregar_items_a_inventario(factura_data['items'])
-
-            n_items = len(factura_data.get('items') or [])
+                
             res_msg = (
-                f"✅ *¡Factura guardada!*\n\n"
-                f"🏢 *Proveedor:* {factura_data.get('proveedor') or '—'}\n"
-                f"📄 *N° Factura:* {factura_data.get('numero_factura') or '(sin número)'}\n"
-                f"💰 *Total:* S/ {float(factura_data.get('total') or 0):.2f}\n"
-                f"📦 *Ítems:* {n_items}\n"
-                f"📌 *Tipo:* {factura_data.get('tipo', '').upper()}\n\n"
-                f"_Ya visible en la página web._"
+                f"✅ **¡Factura Registrada Exitosamente!**\n\n"
+                f"🏢 *Proveedor:* {factura_data['proveedor']}\n"
+                f"📄 *Nº Factura:* {factura_data['numero_factura']}\n"
+                f"💰 *Total:* S/ {factura_data['total']}\n"
+                f"📦 *Items detectados:* {len(factura_data['items'])}\n"
+                f"📌 *Clasificación:* {factura_data['tipo'].upper()}\n\n"
+                f"*(Ya está disponible en la página web)*"
             )
             await query.edit_message_text(res_msg, parse_mode='Markdown')
             context.user_data.pop('pending_factura', None)
         except Exception as e:
-            logger.error(f"Error guardando factura telegram: {e}", exc_info=True)
-            await query.edit_message_text(f"❌ Error al guardar: {str(e)[:200]}")
+            logger.error(f"Error guardando factura telegram: {e}")
+            await query.edit_message_text(f"❌ Falló el guardado. Error técnico: {str(e)}")
         return
         
     if data == 'cancel_cotizacion':
         context.user_data.pop('pending_cotizacion', None)
+        context.user_data.pop('cotizacion_activa', None)
         await query.edit_message_text("❌ Cotización cancelada / descartada.")
         return
         
@@ -803,12 +797,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if pdf_path and os.path.exists(pdf_path):
                 with open(pdf_path, 'rb') as doc:
                     await context.bot.send_document(
-                        chat_id=update.effective_chat.id,
-                        document=doc,
+                        chat_id=update.effective_chat.id, 
+                        document=doc, 
                         filename=os.path.basename(pdf_path),
                         caption="📄 PDF listo para reenviar al cliente."
                     )
             context.user_data.pop('pending_cotizacion', None)
+            context.user_data.pop('cotizacion_activa', None)
         except Exception as e:
             logger.error(f"Error creando cotización TG: {e}", exc_info=True)
             await query.edit_message_text(f"❌ Error interno al generar la cotización: {str(e)}")
@@ -844,12 +839,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             temperature=0.1,
         )
         
-        raw = (response.choices[0].message.content or "").strip()
+        raw = response.choices[0].message.content.strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
         datos = json.loads(raw)
-        if not isinstance(datos, dict):
-            datos = {}
         
+        # fname no esta en este scope (se definio en handle_photo). Recuperarlo del path.
+        img_basename = os.path.basename(fpath)
+
         # Estructurar la Data Final
         factura_data = {
             'tipo': tipo,
@@ -857,72 +853,106 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'proveedor': datos.get('proveedor', 'Desconocido'),
             'ruc_proveedor': datos.get('ruc_proveedor', ''),
             'numero_factura': datos.get('numero_factura', 'S/N'),
-            'fecha': datos.get('fecha', datetime.now().strftime('%d/%m/%Y')),
+            'fecha': datos.get('fecha', datetime.now().strftime('%Y-%m-%d')),
             'subtotal': datos.get('subtotal', 0),
             'igv': datos.get('igv', 0),
             'total': datos.get('total', 0),
-            'imagen_path': f"{fpath}",
+            'imagen_path': f"/facturas/{img_basename}",
             'items': datos.get('items', []),
-            'notas': 'Subida vía Telegram Bot Sandoval'
+            'notas': 'Subida via Telegram Bot Sandoval'
         }
         
         # Guardar temporalmente para confirmación
         context.user_data['pending_factura'] = factura_data
         
-        # Generar mensaje de confirmación — todos los items, sin truncar
-        all_items = [i for i in (factura_data['items'] or []) if i]
-        items_lines = []
-        for i in all_items:
-            nombre = (i.get('nombre') or 'Ítem sin nombre')
-            cant   = i.get('cantidad') or 1
-            p_unit = i.get('precio_unitario') or 0
-            total  = i.get('total') or 0
-            items_lines.append(f"   • {cant}x {nombre} — S/ {p_unit:.2f} c/u = *S/ {total:.2f}*")
-        items_str = "\n".join(items_lines) if items_lines else "   (Ninguno o no legibles)"
+        # Generar mensaje de confirmacion con verificacion aritmetica
+        all_items_f = [i for i in (factura_data.get('items') or []) if i]
+        item_lines = []
+        sum_calc = 0.0
+        has_item_err = False
+        for it in all_items_f:
+            nm = str(it.get('nombre') or 'Item')[:35]
+            qty = float(it.get('cantidad') or 1)
+            pu = float(it.get('precio_unitario') or 0)
+            tt = float(it.get('total') or 0)
+            exp_val = round(qty * pu, 2)
+            ok_it = abs(exp_val - tt) <= 0.02
+            if not ok_it:
+                has_item_err = True
+                item_lines.append(
+                    f'   ⚠️ {int(qty) if qty==int(qty) else qty}x {nm} '
+                    f'S/{pu:.2f}={tt:.2f} calc={exp_val:.2f}'
+                )
+            else:
+                item_lines.append(
+                    f'   ✅ {int(qty) if qty==int(qty) else qty}x {nm} '
+                    f'S/{pu:.2f} c/u = S/{tt:.2f}'
+                )
+            sum_calc += tt
+        items_str = chr(10).join(item_lines) if item_lines else '   (Ninguno o no legibles)'
+        sum_calc = round(sum_calc, 2)
+        sub_v = float(factura_data.get('subtotal') or 0)
+        igv_v = float(factura_data.get('igv') or 0)
+        tot_v = float(factura_data.get('total') or 0)
+        sub_ok2 = abs(sum_calc - sub_v) <= 0.10 or not all_items_f
+        igv_exp2 = round(sub_v * 0.18, 2)
+        igv_ok2 = abs(igv_v - igv_exp2) <= 0.10 or igv_v == 0
+        tot_exp2 = round(sub_v + igv_v, 2)
+        tot_ok2 = abs(tot_v - tot_exp2) <= 0.10 or tot_v == 0
+        vr_lines = []
+        if all_items_f:
+            s_icon = '✅' if sub_ok2 else '⚠️'
+            s_eq = '=' if sub_ok2 else '!='
+            vr_lines.append(f'{s_icon} Suma S/{sum_calc:.2f} {s_eq} Subtotal S/{sub_v:.2f}')
+        if igv_v > 0:
+            i_icon = '✅' if igv_ok2 else '⚠️'
+            vr_lines.append(f'{i_icon} IGV S/{igv_v:.2f} (18% de S/{sub_v:.2f}=S/{igv_exp2:.2f})')
+        t_icon = '✅' if tot_ok2 else '⚠️'
+        t_eq = '=' if tot_ok2 else '!='
+        vr_lines.append(f'{t_icon} Sub+IGV S/{tot_exp2:.2f} {t_eq} Total S/{tot_v:.2f}')
+        verify_str = chr(10).join(vr_lines)
+        has_any_err = has_item_err or not sub_ok2 or not tot_ok2
+        estado_aritm = '⚠️ *HAY DISCREPANCIAS*' if has_any_err else '✅ *Todo cuadra*'
 
-        from components.facturas import _check_duplicate_factura
-        is_duplicate = _check_duplicate_factura(
-            factura_data['proveedor'],
-            factura_data['numero_factura'],
-            total=factura_data.get('total'),
-            fecha=factura_data.get('fecha')
-        )
-
-        # Rechazo automático — no dar opción de guardar duplicado
-        if is_duplicate:
-            await query.edit_message_text(
-                f"🚫 *Factura rechazada — ya fue registrada antes*\n\n"
-                f"📄 *N° Factura:* {factura_data['numero_factura']}\n"
-                f"🏢 *Proveedor:* {factura_data['proveedor']}\n\n"
-                f"No se guardó nada. Si necesitas verla, búscala en la web por el número de factura.",
-                parse_mode='Markdown'
-            )
-            return
-
+        from utils.facturas_helpers import _check_duplicate_factura
+        is_duplicate = _check_duplicate_factura(factura_data['proveedor'], factura_data['numero_factura'])
+        
+        duplicate_warning = "⚠️ *¡ATENCIÓN: EL SISTEMA DETECTA QUE ESTA FACTURA YA FUE REGISTRADA ANTES!*\n\n" if is_duplicate else ""
+        
         preview_msg = (
-            f"🔍 *Vista Previa — {tipo.upper()}*\n\n"
+            f"{duplicate_warning}"
+            f"🔍 **Vista Previa de la Factura ({tipo.upper()})**\n\n"
             f"🏢 *Proveedor:* {factura_data['proveedor']}\n"
-            f"🔢 *RUC proveedor:* {factura_data.get('ruc_proveedor') or '—'}\n"
-            f"📄 *N° Factura:* {factura_data['numero_factura']}\n"
+            f"📄 *Nº Factura:* {factura_data['numero_factura']}\n"
             f"📅 *Fecha:* {factura_data['fecha']}\n"
-            f"💵 *Subtotal:* S/ {float(factura_data['subtotal'] or 0):.2f}\n"
-            f"🧾 *IGV:* S/ {float(factura_data['igv'] or 0):.2f}\n"
-            f"💰 *TOTAL:* S/ {float(factura_data['total'] or 0):.2f}\n\n"
-            f"📦 *Ítems ({len(all_items)}):*\n{items_str}\n\n"
+            f"� *Subtotal:* S/ {factura_data['subtotal']}\n"
+            f"� *IGV:* S/ {factura_data['igv']}\n"
+            f"💰 *Total:* S/ {factura_data['total']}\n\n"
+            f"📦 *Ítems ({len(all_items_f)}):*\n{items_str}\n\n"
+            f"🔢 *Verificación:*\n{verify_str}\n"
+            f"{estado_aritm}\n\n"
             f"¿Los datos son correctos?"
         )
-
-        keyboard = [
-            [InlineKeyboardButton("✅ Confirmar y Guardar", callback_data='save_factura')],
-            [InlineKeyboardButton("❌ Rechazar", callback_data='discard_factura')],
-        ]
+        
+        keyboard = []
+        if not is_duplicate:
+            keyboard.append([InlineKeyboardButton("✅ Confirmar y Guardar", callback_data='save_factura')])
+        else:
+            keyboard.append([InlineKeyboardButton("⚠️ Guardar Doble de todas formas", callback_data='save_factura')])
+        
+        keyboard.append([InlineKeyboardButton("✏️ Corregir en computadora", callback_data='corregir_factura')])
+        keyboard.append([InlineKeyboardButton("❌ Rechazar", callback_data='discard_factura')])
+        
         reply_markup = InlineKeyboardMarkup(keyboard)
-
+        
         await query.edit_message_text(preview_msg, reply_markup=reply_markup, parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Error procesando factura telegram: {e}")
-        await query.edit_message_text(f"❌ Falló la visión artificial. Error técnico: {str(e)}")
+        logger.error("Error procesando factura telegram: %s", e, exc_info=True)
+        await query.edit_message_text(
+            "❌ No pude leer la factura. El admin fue notificado. "
+            "Vuelve a enviar la foto con mejor iluminación o corrige manualmente."
+        )
 
 def _crear_cotizacion_desde_bot(data: dict):
     from utils.models import Cotizacion, CotizacionItem, log_actividad
@@ -933,23 +963,26 @@ def _crear_cotizacion_desde_bot(data: dict):
         nombre_cotizacion = data.get('cliente_nombre', 'Cliente sin registrar')
         placa_busqueda = (data.get('placa') or '').upper().replace('-', '').replace(' ', '')
         if placa_busqueda:
-            v_existente = db.query(Vehiculo).filter_by(placa=placa_busqueda).first()
+            v_existente = db.query(Vehiculo).filter_by(placa=placa_busqueda, taller_id=TALLER_ID).first()
             if v_existente and v_existente.cliente_id:
                 cliente_id = v_existente.cliente_id
-                c = db.query(Cliente).filter_by(id=cliente_id).first()
+                c = db.query(Cliente).filter_by(id=cliente_id, taller_id=TALLER_ID).first()
                 if c:
                     nombre_cotizacion = f"{c.nombre} {c.apellidos or ''}".strip()
 
-        # Generar número de cotización
+        # Generar numero de cotizacion
         hoy = datetime.now().strftime('%Y%m')
-        count = db.query(Cotizacion).filter(Cotizacion.numero.like(f'COT-{hoy}%')).count()
+        count = db.query(Cotizacion).filter(
+            Cotizacion.taller_id == TALLER_ID,
+            Cotizacion.numero.like(f'COT-{hoy}%')
+        ).count()
         numero = f'COT-{hoy}-{count + 1:04d}'
 
         # Calcular total
         items = data.get('items', [])
         total = sum(int(i.get('cantidad',1)) * float(i.get('precio',0)) for i in items)
 
-        # Crear cotización en tabla Cotizacion (NO en Orden)
+        # Crear cotizacion en tabla Cotizacion (NO en Orden)
         cot = Cotizacion(
             numero=numero,
             nombre_cliente=nombre_cotizacion,
@@ -958,6 +991,7 @@ def _crear_cotizacion_desde_bot(data: dict):
             total=total,
             estado='PENDIENTE',
             creado_por='Jarvis (Telegram)',
+            taller_id=TALLER_ID,
         )
         db.add(cot)
         db.flush()
@@ -979,13 +1013,13 @@ def _crear_cotizacion_desde_bot(data: dict):
 
         # Generar PDF
         import os
-        os.makedirs('/var/www/sandoval/pdfs', exist_ok=True)
+        os.makedirs(os.path.join(BASE_DIR, "pdfs"), exist_ok=True)
         pdf_path = None
         try:
             from utils.pdf_cotizacion import generar_pdf_cotizacion
             pdf_path = generar_pdf_cotizacion(cot.id)
         except Exception as e:
-            print(f"[BOT] Error PDF: {e}")
+            logger.warning("[BOT] Error PDF: %s", e)
 
         return f"✅ *Cotización {numero}* creada\n👤 Cliente: {nombre_cotizacion}\n💰 Total: S/ {total:.2f}\n📋 Ya aparece en el dashboard.", pdf_path
 
@@ -1007,10 +1041,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         voice = update.message.voice or update.message.audio
         file = await context.bot.get_file(voice.file_id)
         
-        audio_dir = '/var/www/sandoval/static/audios'
-        os.makedirs(audio_dir, exist_ok=True)
+        os.makedirs(os.path.join(BASE_DIR, "static", "audios"), exist_ok=True)
         fname = f"tg_audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.file_id}.ogg"
-        fpath = os.path.join(audio_dir, fname)
+        fpath = os.path.join(os.path.join(BASE_DIR, "static", "audios"), fname)
         await file.download_to_drive(fpath)
         
         # Procesar con Groq Whisper
@@ -1036,49 +1069,22 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error AI Audio: {e}")
         await processing_msg.edit_text("❌ Hubo un error entendiendo tu nota de voz.")
 
-async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja videos enviados al bot - los trata como evidencia de órdenes"""
-    user_id = update.effective_user.id
-    if ALLOWED_USERS and user_id not in ALLOWED_USERS:
-        return
-
-    # Obtener el video (puede ser video normal o video_note = circulito)
-    video = update.message.video or update.message.video_note
-    if not video:
-        return
-
-    caption = (update.message.caption or '').strip()
-    processing_msg = await update.message.reply_text('⏳ Procesando video...')
-
-    try:
-        file = await context.bot.get_file(video.file_id)
-        os.makedirs('/var/www/sandoval/static/evidencia/temp', exist_ok=True)
-        fname = f"tg_video_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{video.file_id}.mp4"
-        fpath = f'/var/www/sandoval/static/evidencia/temp/{fname}'
-        await file.download_to_drive(fpath)
-        context.user_data['last_photo_path'] = fpath
-
-        user_text = caption or 'El usuario mandó un video de evidencia de una orden o vehículo.'
-        await _process_bot_message(user_text, update, context, processing_msg, foto_path=fpath)
-
-    except Exception as e:
-        logger.error(f"Error handle_video: {e}", exc_info=True)
-        await processing_msg.edit_text(f"❌ Error procesando el video: {e}")
-
-
 def run_telegram_bot():
+    # Setear el ContextVar de RLS al taller propietario antes de cualquier
+    # query. python-telegram-bot ejecuta los handlers en el mismo thread
+    # del polling, por lo que el setting se hereda en cada handler.
+    _ensure_rls_context()
+
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("cancelar", cancelar_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(MessageHandler(filters.VIDEO | filters.VIDEO_NOTE, handle_video))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
     app.add_handler(CallbackQueryHandler(button_callback))
-    
-    logger.info("🤖 Motores del Bot de Telegram Iniciados...")
+    app.add_error_handler(error_handler)
+
+    logger.info("🤖 Motores del Bot de Telegram Iniciados (ADMIN_CHAT_ID=%s)", ADMIN_CHAT_ID)
     app.run_polling()
 
 if __name__ == '__main__':

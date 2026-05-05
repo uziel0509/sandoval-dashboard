@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SANDOVAL — Auditoría</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font:14px/1.5 -apple-system,system-ui,sans-serif;background:#0f172a;color:#e2e8f0;padding:12px}
+  h1{font-size:16px;margin-bottom:12px;color:#60a5fa}
+  h2{font-size:13px;margin:14px 0 6px;color:#fbbf24;border-bottom:1px solid #334155;padding-bottom:4px}
+  pre{background:#1e293b;padding:10px;border-radius:6px;font:11px/1.4 monospace;overflow-x:auto;white-space:pre-wrap;word-break:break-all;border:1px solid #334155}
+  .ok{color:#10b981}
+  .err{color:#ef4444}
+  .warn{color:#fbbf24}
+  button{width:100%;padding:14px;font-size:15px;background:#3b82f6;color:#fff;border:none;border-radius:8px;margin:6px 0;cursor:pointer;font-weight:600}
+  button:active{background:#2563eb}
+  .big-test{background:#10b981;font-size:18px;padding:20px;margin:12px 0}
+  .big-test:active{background:#059669}
+  #tapcount{background:#1e293b;padding:14px;border-radius:8px;font-size:20px;text-align:center;margin:10px 0}
+</style>
+</head>
+<body>
+<h1>🔎 SANDOVAL — Auditoría de navegador</h1>
+
+<div id="tapcount">Taps al botón verde: <b id="tc">0</b></div>
+<button class="big-test" id="tapbtn">TOCA AQUÍ PARA PROBAR CLICKS</button>
+<button id="reset">💣 Borrar todo (SW + caché + storage) y recargar</button>
+
+<h2>📱 Navegador</h2><pre id="ua"></pre>
+
+<h2>🌐 URL actual</h2><pre id="url"></pre>
+
+<h2>⚙️ Service Workers registrados</h2><pre id="sw">cargando…</pre>
+
+<h2>💾 Cachés activas</h2><pre id="caches">cargando…</pre>
+
+<h2>🗃️ localStorage</h2><pre id="ls"></pre>
+
+<h2>🔌 Test de API endpoints</h2><pre id="api">probando…</pre>
+
+<h2>📄 HTML servido en /app/ (primeros 2 KB)</h2><pre id="app">cargando…</pre>
+
+<h2>🛡️ Flags de JS</h2><pre id="flags"></pre>
+
+<h2>🖱️ Eventos capturados</h2><pre id="events">(toca el botón verde arriba)</pre>
+
+<script>
+(function(){
+  var tc = 0;
+  var tcEl = document.getElementById('tc');
+  var evEl = document.getElementById('events');
+  function logEv(msg){ evEl.textContent += msg + '\n'; }
+  document.getElementById('tapbtn').addEventListener('click', function(){
+    tc++; tcEl.textContent = tc;
+    logEv('click tap #' + tc + ' @ ' + new Date().toLocaleTimeString());
+  });
+  document.getElementById('tapbtn').addEventListener('touchstart', function(){
+    logEv('touchstart @ ' + new Date().toLocaleTimeString());
+  }, {passive:true});
+
+  document.getElementById('reset').addEventListener('click', async function(){
+    var log = function(m){ evEl.textContent += m + '\n'; };
+    log('=== RESET INICIADO ===');
+    if ('serviceWorker' in navigator){
+      try { var rs = await navigator.serviceWorker.getRegistrations();
+        for (var r of rs){ await r.unregister(); log('SW desregistrado: ' + r.scope); }
+      } catch(e){ log('err SW: ' + e.message); }
+    }
+    if ('caches' in window){
+      try { var ks = await caches.keys();
+        for (var k of ks){ await caches.delete(k); log('cache borrada: ' + k); }
+      } catch(e){ log('err caches: ' + e.message); }
+    }
+    try { localStorage.clear(); log('localStorage limpio'); } catch(_){}
+    try { sessionStorage.clear(); log('sessionStorage limpio'); } catch(_){}
+    log('=== DONE. Recargando en 2s ===');
+    setTimeout(function(){ location.href = '/app/'; }, 2000);
+  });
+
+  document.getElementById('ua').textContent = navigator.userAgent + '\n\nplatform: ' + navigator.platform + '\nlang: ' + navigator.language + '\ncookies: ' + navigator.cookieEnabled + '\nonline: ' + navigator.onLine;
+
+  document.getElementById('url').textContent = 'href: ' + location.href + '\norigin: ' + location.origin + '\nprotocol: ' + location.protocol + '\nhost: ' + location.host;
+
+  // SW
+  if ('serviceWorker' in navigator){
+    navigator.serviceWorker.getRegistrations().then(function(rs){
+      var s = 'total: ' + rs.length + '\n';
+      rs.forEach(function(r,i){
+        s += '\n#' + (i+1) + ' scope: ' + r.scope;
+        s += '\n  active: ' + (r.active ? r.active.scriptURL + ' [' + r.active.state + ']' : 'null');
+        s += '\n  waiting: ' + (r.waiting ? r.waiting.scriptURL + ' [' + r.waiting.state + ']' : 'null');
+        s += '\n  installing: ' + (r.installing ? '[' + r.installing.state + ']' : 'null');
+      });
+      document.getElementById('sw').textContent = s;
+    });
+  } else {
+    document.getElementById('sw').textContent = 'no soportado';
+  }
+
+  // caches
+  if ('caches' in window){
+    caches.keys().then(async function(ks){
+      var s = 'total: ' + ks.length + '\n';
+      for (var k of ks){
+        var c = await caches.open(k);
+        var rs = await c.keys();
+        s += '\n' + k + ' (' + rs.length + ' entries)';
+        rs.slice(0,6).forEach(function(r){ s += '\n    ' + r.url; });
+        if (rs.length > 6) s += '\n    ... +' + (rs.length-6) + ' más';
+      }
+      document.getElementById('caches').textContent = s;
+    });
+  }
+
+  // localStorage
+  try {
+    var ls = '';
+    for (var i=0; i<localStorage.length; i++){
+      var k = localStorage.key(i);
+      var v = localStorage.getItem(k);
+      ls += k + ' = ' + (v && v.length > 80 ? v.slice(0,80) + '... (' + v.length + ' chars)' : v) + '\n';
+    }
+    document.getElementById('ls').textContent = ls || '(vacío)';
+  } catch(e){ document.getElementById('ls').textContent = 'err: ' + e.message; }
+
+  // API
+  Promise.all([
+    fetch('/api/auth/me').then(r => r.status).catch(e => 'err: ' + e.message),
+    fetch('/api/finanzas').then(r => r.status).catch(e => 'err: ' + e.message),
+    fetch('/api/ordenes?limit=1').then(r => r.status).catch(e => 'err: ' + e.message),
+  ]).then(function(res){
+    document.getElementById('api').textContent =
+      'GET /api/auth/me       → ' + res[0] + '\n' +
+      'GET /api/finanzas      → ' + res[1] + '\n' +
+      'GET /api/ordenes?lim=1 → ' + res[2];
+  });
+
+  // Fetch del /app/ con no-cache y mostrar primeros 2KB
+  fetch('/app/', { cache: 'no-store' }).then(r => r.text()).then(function(text){
+    var size = text.length;
+    var hashes = {
+      'tiene kill-switch (?reset=1)': text.indexOf('__reset_mode__') >= 0,
+      'tiene error overlay (__err_overlay)': text.indexOf('__err_overlay') >= 0,
+      'tiene try/catch IIFE (__IIFE_E)': text.indexOf('__IIFE_E') >= 0,
+      'tiene normStr con escape \\u0300': text.indexOf('\\u0300-\\u036F') >= 0,
+      'tiene renderGallery': text.indexOf('function renderGallery') >= 0,
+      'tiene pageDashboard': text.indexOf('async function pageDashboard') >= 0,
+      'btn-drawer en DOM': text.indexOf('id="btn-drawer"') >= 0,
+    };
+    var summary = 'size: ' + size + ' bytes\n\n';
+    for (var k in hashes){ summary += (hashes[k] ? '✓ ' : '✗ ') + k + '\n'; }
+    summary += '\n--- primeros 800 chars ---\n' + text.slice(0,800);
+    document.getElementById('app').textContent = summary;
+  }).catch(function(e){
+    document.getElementById('app').textContent = 'err: ' + e.message;
+  });
+
+  // flags de JS
+  var flags = {
+    'fetch': typeof fetch,
+    'Promise': typeof Promise,
+    'async': (function(){ try { return eval('(async()=>1)()') instanceof Promise ? 'ok' : 'no'; } catch(_){ return 'no'; } })(),
+    'optional chaining ?.': (function(){ try { eval('var a={};a?.b'); return 'ok'; } catch(_){ return 'no'; } })(),
+    'null coalescing ??': (function(){ try { eval('null ?? 1'); return 'ok'; } catch(_){ return 'no'; } })(),
+    'arrow functions': (function(){ try { eval('()=>1'); return 'ok'; } catch(_){ return 'no'; } })(),
+    'String.normalize': typeof ''.normalize,
+    'unicode regex': (function(){ try { return /[̀-ͯ]/.test('á'.normalize('NFD')) ? 'ok' : 'no'; } catch(_){ return 'err'; } })(),
+  };
+  var fs = '';
+  for (var k in flags){ fs += k + ': ' + flags[k] + '\n'; }
+  document.getElementById('flags').textContent = fs;
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sandoval SaaS — Super Admin</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
+  .sidebar { width: 240px; min-height: 100vh; background: #1e293b; border-right: 1px solid #334155; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 8px;
+              cursor: pointer; transition: all .15s; color: #94a3b8; font-size: 14px; margin: 2px 8px; }
+  .nav-item:hover { background: #334155; color: #e2e8f0; }
+  .nav-item.active { background: #4f46e5; color: #fff; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; }
+  .kpi-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; }
+  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+  .badge-green { background: #064e3b; color: #6ee7b7; }
+  .badge-red { background: #450a0a; color: #fca5a5; }
+  .badge-yellow { background: #451a03; color: #fcd34d; }
+  .badge-blue { background: #0c1a4e; color: #93c5fd; }
+  .badge-purple { background: #2e1065; color: #c4b5fd; }
+  .badge-gray { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
+         border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer;
+         border: none; transition: all .15s; }
+  .btn-primary { background: #4f46e5; color: #fff; }
+  .btn-primary:hover { background: #4338ca; }
+  .btn-danger { background: #dc2626; color: #fff; }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn-success { background: #059669; color: #fff; }
+  .btn-success:hover { background: #047857; }
+  .btn-ghost { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+  .btn-ghost:hover { background: #334155; color: #e2e8f0; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .input { background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+           padding: 9px 12px; color: #e2e8f0; font-size: 14px; width: 100%; outline: none; }
+  .input:focus { border-color: #4f46e5; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { padding: 10px 12px; text-align: left; color: #64748b; font-weight: 600;
+       border-bottom: 1px solid #334155; background: #0f172a; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  td { padding: 10px 12px; border-bottom: 1px solid #1e293b; vertical-align: middle; }
+  tr:hover td { background: #1e293b66; }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
+                   z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: #1e293b; border: 1px solid #334155; border-radius: 16px; width: 100%;
+           max-width: 520px; max-height: 90vh; overflow-y: auto; padding: 24px; }
+  .alert-critical { border-left: 3px solid #dc2626; background: #450a0a22; }
+  .alert-warn { border-left: 3px solid #f59e0b; background: #451a0322; }
+  .alert-info { border-left: 3px solid #4f46e5; background: #0c1a4e22; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0f172a; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  .view { display: none; }
+  .view.active { display: block; }
+  #loginView { display: flex; min-height: 100vh; align-items: center; justify-content: center; }
+  #appLayout { display: none; }
+  .spinner { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .impersonar-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    background: #f59e0b; color: #000; padding: 8px 16px; font-size: 13px; font-weight: 600;
+    display: none; align-items: center; gap: 12px; }
+</style>
+</head>
+<body>
+
+<!-- IMPERSONAR BANNER -->
+<div class="impersonar-banner" id="impersonarBanner">
+  <span>⚠️ MODO SOPORTE ACTIVO — Entrando al portal de: <strong id="impersonarNombre"></strong></span>
+  <span style="flex:1"></span>
+  <button class="btn btn-sm" onclick="document.getElementById('impersonarBanner').style.display='none'" style="background:#000;color:#f59e0b">Cancelar</button>
+</div>
+
+<!-- LOGIN -->
+<div id="loginView">
+  <div style="width:380px">
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="font-size:32px;font-weight:800;color:#4f46e5">Sandoval</div>
+      <div style="font-size:14px;color:#64748b;margin-top:4px">Super Admin Panel</div>
+    </div>
+    <div class="card" style="padding:32px">
+      <div id="loginError" style="display:none;background:#450a0a;border:1px solid #dc2626;border-radius:8px;padding:10px 14px;font-size:13px;color:#fca5a5;margin-bottom:16px"></div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:6px">Email</label>
+        <input type="email" id="loginEmail" class="input" placeholder="admin@sandoval.app" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div style="margin-bottom:24px">
+        <label style="display:block;font-size:13px;color:#94a3b8;margin-bottom:6px">Contraseña</label>
+        <input type="password" id="loginPassword" class="input" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:11px" onclick="doLogin()" id="loginBtn">
+        Iniciar sesión
+      </button>
+    </div>
+    <div style="text-align:center;margin-top:16px;font-size:12px;color:#475569">
+      Sandoval SaaS © 2026 — Portal exclusivo de administración
+    </div>
+  </div>
+</div>
+
+<!-- APP LAYOUT -->
+<div id="appLayout" style="display:flex;min-height:100vh">
+  <!-- Sidebar -->
+  <div class="sidebar" style="position:fixed;top:0;left:0;height:100vh;overflow-y:auto;z-index:50;flex-shrink:0">
+    <div style="padding:20px 16px 12px;border-bottom:1px solid #334155">
+      <div style="font-size:18px;font-weight:800;color:#4f46e5">Sandoval</div>
+      <div style="font-size:11px;color:#475569;margin-top:2px">Super Admin Panel</div>
+    </div>
+    <nav style="padding:12px 0">
+      <div class="nav-item active" onclick="showView('dashboard')" id="nav-dashboard">
+        <span>📊</span> Dashboard
+      </div>
+      <div class="nav-item" onclick="showView('talleres')" id="nav-talleres">
+        <span>🏪</span> Talleres
+      </div>
+      <div class="nav-item" onclick="showView('facturacion')" id="nav-facturacion">
+        <span>💳</span> Facturación
+      </div>
+      <div class="nav-item" onclick="showView('seguridad')" id="nav-seguridad">
+        <span>🛡️</span> Seguridad
+        <span id="alertBadge" style="margin-left:auto;background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;display:none">0</span>
+      </div>
+      <div class="nav-item" onclick="showView('actividad')" id="nav-actividad">
+        <span>📋</span> Actividad Global
+      </div>
+      <div class="nav-item" onclick="showView('metricas')" id="nav-metricas">
+        <span>📈</span> Métricas
+      </div>
+      <div class="nav-item" onclick="showView('config')" id="nav-config">
+        <span>⚙️</span> Configuración
+      </div>
+    </nav>
+    <div style="position:absolute;bottom:0;left:0;right:0;padding:16px;border-top:1px solid #334155">
+      <div style="font-size:12px;color:#475569" id="sidebarUser"></div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%;justify-content:center" onclick="doLogout()">
+        Cerrar sesión
+      </button>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div style="margin-left:240px;flex:1;padding:24px;min-height:100vh">
+
+    <!-- DASHBOARD -->
+    <div class="view active" id="view-dashboard">
+      <div style="margin-bottom:24px">
+        <h1 style="font-size:22px;font-weight:700">Dashboard Global</h1>
+        <p style="color:#64748b;font-size:14px;margin-top:4px">Vista en tiempo real de todos los talleres</p>
+      </div>
+
+      <!-- KPIs Row 1 -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px" id="kpiGrid">
+        <div class="kpi-card"><div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:.05em">Talleres Activos</div><div style="font-size:32px;font-weight:700;margin-top:4px;color:#6ee7b7" id="kpiActivos">—</div></div>
+        <div class="kpi-card"><div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:.05em">MRR (S/)</div><div style="font-size:32px;font-weight:700;margin-top:4px;color:#93c5fd" id="kpiMRR">—</div></div>
+        <div class="kpi-card"><div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:.05em">Órdenes Hoy (global)</div><div style="font-size:32px;font-weight:700;margin-top:4px;color:#c4b5fd" id="kpiOrdenes">—</div></div>
+        <div class="kpi-card"><div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:.05em">Nuevos este mes</div><div style="font-size:32px;font-weight:700;margin-top:4px;color:#fcd34d" id="kpiNuevos">—</div></div>
+      </div>
+
+      <!-- KPIs Row 2 -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px">
+        <div class="kpi-card"><div style="color:#64748b;font-size:12px">Órdenes activas</div><div style="font-size:24px;font-weight:700;margin-top:4px" id="kpiOrdenesActivas">—</div></div>
+        <div class="kpi-card"><div style="color:#64748b;font-size:12px">Suspendidos</div><div style="font-size:24px;font-weight:700;margin-top:4px;color:#fca5a5" id="kpiSuspendidos">—</div></div>
+        <div class="kpi-card"><div style="color:#64748b;font-size:12px">En prueba</div><div style="font-size:24px;font-weight:700;margin-top:4px;color:#fcd34d" id="kpiPrueba">—</div></div>
+        <div class="kpi-card"><div style="color:#64748b;font-size:12px">Cobrado este mes</div><div style="font-size:24px;font-weight:700;margin-top:4px;color:#6ee7b7" id="kpiCobrado">—</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:20px">
+        <!-- Gráfico MRR -->
+        <div class="card" style="padding:20px">
+          <div style="font-size:14px;font-weight:600;margin-bottom:16px">MRR Histórico (cobrado)</div>
+          <canvas id="chartMRR" height="180"></canvas>
+        </div>
+        <!-- Planes -->
+        <div class="card" style="padding:20px">
+          <div style="font-size:14px;font-weight:600;margin-bottom:16px">Distribución de planes</div>
+          <canvas id="chartPlanes" height="180"></canvas>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <!-- Alertas recientes -->
+        <div class="card" style="padding:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <span style="font-size:14px;font-weight:600">Alertas recientes</span>
+            <button class="btn btn-ghost btn-sm" onclick="showView('seguridad')">Ver todas →</button>
+          </div>
+          <div id="alertasList" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+        <!-- Top talleres -->
+        <div class="card" style="padding:20px">
+          <div style="font-size:14px;font-weight:600;margin-bottom:14px">Talleres más activos hoy</div>
+          <div id="topTalleres"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TALLERES -->
+    <div class="view" id="view-talleres">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+        <div>
+          <h1 style="font-size:22px;font-weight:700">Gestión de Talleres</h1>
+          <p style="color:#64748b;font-size:14px;margin-top:4px">Administra todos los talleres clientes</p>
+        </div>
+        <button class="btn btn-primary" onclick="openModalCrearTaller()">+ Nuevo Taller</button>
+      </div>
+
+      <!-- Filtros -->
+      <div style="display:flex;gap:12px;margin-bottom:16px">
+        <input class="input" style="max-width:280px" id="filtroTallerQ" placeholder="Buscar por nombre, email, RUC..." oninput="loadTalleres()">
+        <select class="input" style="max-width:160px" id="filtroTallerEstado" onchange="loadTalleres()">
+          <option value="">Todos los estados</option>
+          <option value="activo">Activo</option>
+          <option value="prueba">Prueba</option>
+          <option value="suspendido">Suspendido</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+        <select class="input" style="max-width:160px" id="filtroTallerPlan" onchange="loadTalleres()">
+          <option value="">Todos los planes</option>
+          <option value="basico">Básico</option>
+          <option value="pro">Pro</option>
+          <option value="premium">Premium</option>
+        </select>
+      </div>
+
+      <div class="card" style="overflow:hidden">
+        <div style="overflow-x:auto">
+          <table id="talleresTbl">
+            <thead><tr>
+              <th>Nombre</th><th>Plan</th><th>Estado</th><th>Email</th>
+              <th>Órdenes</th><th>Usuarios</th><th>Última actividad</th>
+              <th>Precio/mes</th><th>Acciones</th>
+            </tr></thead>
+            <tbody id="talleresBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- FACTURACIÓN -->
+    <div class="view" id="view-facturacion">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+        <div>
+          <h1 style="font-size:22px;font-weight:700">Facturación SaaS</h1>
+          <p style="color:#64748b;font-size:14px;margin-top:4px">Control de cobros mensuales a los talleres</p>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input type="month" class="input" id="facturacionPeriodo" style="max-width:180px" onchange="loadFacturacion()">
+          <button class="btn btn-primary" onclick="generarCobros()">Generar cobros del mes</button>
+        </div>
+      </div>
+
+      <!-- Resumen -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px" id="facturacionResumen"></div>
+
+      <!-- Tabla pagos -->
+      <div class="card" style="overflow:hidden">
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th>Taller</th><th>Plan</th><th>Monto</th><th>Estado</th>
+              <th>Fecha pago</th><th>Método</th><th>Acciones</th>
+            </tr></thead>
+            <tbody id="pagosBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEGURIDAD -->
+    <div class="view" id="view-seguridad">
+      <div style="margin-bottom:24px">
+        <h1 style="font-size:22px;font-weight:700">Centro de Seguridad</h1>
+        <p style="color:#64748b;font-size:14px;margin-top:4px">Monitoreo de eventos y amenazas en toda la plataforma</p>
+      </div>
+
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:20px">
+        <!-- Eventos -->
+        <div>
+          <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+            <select class="input" style="max-width:180px" id="filtroEvTipo" onchange="loadSeguridad()">
+              <option value="">Todos los tipos</option>
+              <option value="BRUTE_FORCE">Brute Force</option>
+              <option value="SQL_INJECTION">SQL Injection</option>
+              <option value="CROSS_TENANT">Cross Tenant</option>
+              <option value="LOGIN_FALLIDO">Login Fallido</option>
+              <option value="RATE_LIMIT">Rate Limit</option>
+              <option value="IP_BLOQUEADA">IP Bloqueada</option>
+              <option value="ACCION_CRITICA">Acción Crítica</option>
+              <option value="TOKEN_INVALIDO">Token Inválido</option>
+              <option value="ERROR_500">Error 500</option>
+            </select>
+            <select class="input" style="max-width:160px" id="filtroEvSev" onchange="loadSeguridad()">
+              <option value="">Todas las severidades</option>
+              <option value="CRITICAL">CRITICAL</option>
+              <option value="WARN">WARN</option>
+              <option value="INFO">INFO</option>
+            </select>
+          </div>
+          <div class="card" style="overflow:hidden">
+            <div style="overflow-x:auto">
+              <table>
+                <thead><tr>
+                  <th>Tipo</th><th>Severidad</th><th>Descripción</th>
+                  <th>IP</th><th>Taller</th><th>Fecha</th><th></th>
+                </tr></thead>
+                <tbody id="eventosBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- IPs bloqueadas -->
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <span style="font-size:14px;font-weight:600">IPs Bloqueadas</span>
+            <button class="btn btn-danger btn-sm" onclick="openModalBloquearIP()">+ Bloquear IP</button>
+          </div>
+          <div class="card" id="ipsBloqueadasList" style="padding:12px;display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACTIVIDAD GLOBAL -->
+    <div class="view" id="view-actividad">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+        <div>
+          <h1 style="font-size:22px;font-weight:700">Actividad Global</h1>
+          <p style="color:#64748b;font-size:14px;margin-top:4px">Acciones en todos los talleres</p>
+        </div>
+        <select class="input" style="max-width:200px" id="filtroActividadTaller" onchange="loadActividad()">
+          <option value="">Todos los talleres</option>
+        </select>
+      </div>
+      <div class="card" style="overflow:hidden">
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Taller</th><th>Módulo</th><th>Acción</th><th>Usuario</th><th>Fecha</th></tr></thead>
+            <tbody id="actividadBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- MÉTRICAS -->
+    <div class="view" id="view-metricas">
+      <div style="margin-bottom:24px">
+        <h1 style="font-size:22px;font-weight:700">Métricas de la Plataforma</h1>
+        <p style="color:#64748b;font-size:14px;margin-top:4px">Uso e indicadores de todos los talleres</p>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+        <div class="card" style="padding:20px">
+          <div style="font-size:14px;font-weight:600;margin-bottom:14px">Órdenes diarias (últimas 2 semanas)</div>
+          <canvas id="chartOrdenes" height="200"></canvas>
+        </div>
+        <div class="card" style="padding:20px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-size:14px;font-weight:600">Totales de la plataforma</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px" id="metricasTotales"></div>
+        </div>
+      </div>
+
+      <div class="card" style="overflow:hidden">
+        <div style="padding:16px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600">
+          Uso por taller (últimos 30 días)
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Taller</th><th>Plan</th><th>Órdenes (30d)</th><th>Usuarios activos</th></tr></thead>
+            <tbody id="metricasTalleresBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONFIGURACIÓN -->
+    <div class="view" id="view-config">
+      <div style="margin-bottom:24px">
+        <h1 style="font-size:22px;font-weight:700">Configuración</h1>
+        <p style="color:#64748b;font-size:14px;margin-top:4px">Ajustes del Super Admin Panel</p>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <!-- Cambiar contraseña -->
+        <div class="card" style="padding:24px">
+          <div style="font-size:15px;font-weight:600;margin-bottom:16px">🔐 Cambiar contraseña</div>
+          <div id="configMsg" style="display:none;padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px"></div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px">Contraseña actual</label>
+            <input type="password" class="input" id="pwActual" placeholder="••••••••">
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px">Nueva contraseña (mín 8 chars)</label>
+            <input type="password" class="input" id="pwNuevo" placeholder="••••••••">
+          </div>
+          <div style="margin-bottom:16px">
+            <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px">Confirmar nueva contraseña</label>
+            <input type="password" class="input" id="pwConfirmar" placeholder="••••••••">
+          </div>
+          <button class="btn btn-primary" onclick="cambiarPassword()">Cambiar contraseña</button>
+        </div>
+
+        <!-- Usuarios Super Admin -->
+        <div class="card" style="padding:24px">
+          <div style="font-size:15px;font-weight:600;margin-bottom:16px">👤 Cuentas Super Admin</div>
+          <div id="saUsersList"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end main -->
+</div><!-- end appLayout -->
+
+<!-- MODAL CREAR TALLER -->
+<div class="modal-overlay" id="modalCrearTaller">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div style="font-size:16px;font-weight:700">Crear nuevo taller</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modalCrearTaller')">✕</button>
+    </div>
+    <div id="crearTallerMsg" style="display:none;padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div style="grid-column:span 2">
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:5px">Nombre del taller *</label>
+        <input class="input" id="ct_nombre" placeholder="AutoMec Perú">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:5px">Email admin *</label>
+        <input class="input" id="ct_email" type="email" placeholder="admin@taller.com">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:5px">Contraseña inicial *</label>
+        <input class="input" id="ct_password" type="password" placeholder="mín 8 caracteres">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:5px">Plan</label>
+        <select class="input" id="ct_plan">
+          <option value="basico">Básico — S/ 89/mes</option>
+          <option value="pro">Pro — S/ 179/mes</option>
+          <option value="premium">Premium — S/ 299/mes</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:5px">Precio acordado (S/)</label>
+        <input class="input" id="ct_precio" type="number" placeholder="89">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:5px">Teléfono</label>
+        <input class="input" id="ct_telefono" placeholder="987654321">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:5px">RUC</label>
+        <input class="input" id="ct_ruc" placeholder="12345678901">
+      </div>
+      <div style="grid-column:span 2">
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:5px">Subdominio</label>
+        <input class="input" id="ct_subdominio" placeholder="automec">
+      </div>
+      <div style="grid-column:span 2">
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:5px">Notas internas</label>
+        <textarea class="input" id="ct_notas" rows="2" placeholder="Notas sobre este taller..."></textarea>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal('modalCrearTaller')">Cancelar</button>
+      <button class="btn btn-primary" onclick="crearTaller()" id="btnCrearTaller">Crear Taller</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DETALLE TALLER -->
+<div class="modal-overlay" id="modalDetalleTaller" style="align-items:flex-start;overflow-y:auto;padding:20px">
+  <div class="modal" style="max-width:700px;width:100%">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div style="font-size:16px;font-weight:700" id="detalleTallerNombre">Detalle del taller</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modalDetalleTaller')">✕</button>
+    </div>
+    <div id="detalleTallerContent"></div>
+  </div>
+</div>
+
+<!-- MODAL SUSPENDER TALLER -->
+<div class="modal-overlay" id="modalSuspender">
+  <div class="modal" style="max-width:420px">
+    <div style="font-size:16px;font-weight:700;margin-bottom:12px">Suspender taller</div>
+    <p style="font-size:13px;color:#94a3b8;margin-bottom:16px">El taller no podrá acceder al sistema mientras esté suspendido.</p>
+    <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px">Motivo de suspensión *</label>
+    <textarea class="input" id="motivoSuspension" rows="3" placeholder="Ej: Pago pendiente, incumplimiento de términos..."></textarea>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
+      <button class="btn btn-ghost" onclick="closeModal('modalSuspender')">Cancelar</button>
+      <button class="btn btn-danger" onclick="confirmarSuspender()">Suspender</button>
+    </div>
+    <input type="hidden" id="suspenderTallerId">
+  </div>
+</div>
+
+<!-- MODAL BLOQUEAR IP -->
+<div class="modal-overlay" id="modalBloquearIP">
+  <div class="modal" style="max-width:420px">
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px">Bloquear IP</div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px">Dirección IP *</label>
+      <input class="input" id="bloquearIPInput" placeholder="192.168.1.1">
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px">Motivo *</label>
+      <input class="input" id="bloquearIPMotivo" placeholder="Ataque detectado...">
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:16px">
+      <input type="checkbox" id="bloquearIPPermanente"> Bloqueo permanente (sin expiración)
+    </label>
+    <div style="display:flex;justify-content:flex-end;gap:10px">
+      <button class="btn btn-ghost" onclick="closeModal('modalBloquearIP')">Cancelar</button>
+      <button class="btn btn-danger" onclick="confirmarBloquearIP()">Bloquear</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" style="position:fixed;bottom:24px;right:24px;z-index:500;display:none;
+  padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;max-width:320px;
+  box-shadow:0 4px 20px rgba(0,0,0,.4)"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+const S = { token: null, user: null, currentView: 'dashboard', talleresList: [] };
+
+// ── Init ──────────────────────────────────────────────────────────────────
+// 2026-05-05 P1-1 MIGRACIÓN HttpOnly: hidratar sesión via /superadmin/api/me
+// con credentials:'include'. La cookie sandoval_sa_token es HttpOnly+Secure
+// y JS no la puede leer — eso es el feature anti-XSS.
+window.onload = async () => {
+  // Compat transitorio: si hay token legacy en localStorage, usarlo y limpiar
+  // localStorage cuando el backend confirme la sesión via cookie.
+  const tLegacy = localStorage.getItem('sa_token');
+  const uLegacy = localStorage.getItem('sa_user');
+  try {
+    const r = await fetch('/superadmin/api/me', { credentials: 'include' });
+    if (r.ok) {
+      const d = await r.json();
+      S.token = '';  // HttpOnly cookie maneja auth; backend dual-auth la lee
+      S.user = { email: d.email, nombre: d.nombre || d.email };
+      // Limpiar localStorage legacy: cookie ya autentica, no necesitamos el token
+      try {
+        localStorage.removeItem('sa_token');
+        localStorage.removeItem('sa_user');
+      } catch(_){}
+      showApp();
+    } else if (tLegacy && uLegacy) {
+      // Fallback: sesión legacy en localStorage (pre-migración). El backend
+      // dual-auth la acepta vía Bearer header.
+      S.token = tLegacy;
+      S.user = JSON.parse(uLegacy);
+      showApp();
+    }
+  } catch (_) {
+    // Sin red: si hay localStorage legacy, mostrar app; si no, login
+    if (tLegacy && uLegacy) {
+      S.token = tLegacy;
+      S.user = JSON.parse(uLegacy);
+      showApp();
+    }
+  }
+  const now = new Date();
+  const elPer = document.getElementById('facturacionPeriodo');
+  if (elPer) elPer.value =
+    `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+};
+
+// ── HTTP helpers ──────────────────────────────────────────────────────────
+// 2026-05-05 P1-2 CSRF Double Submit: cookie csrf_token (NO HttpOnly) seteada
+// por backend. Frontend la lee y reenvía como X-CSRF-Token en mutaciones.
+function _saCookie(name) {
+  const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+  return m ? m.pop() : '';
+}
+function _saCsrfHeaders(method) {
+  const m = (method || 'GET').toUpperCase();
+  if (m === 'GET' || m === 'HEAD' || m === 'OPTIONS') return {};
+  const tok = _saCookie('csrf_token');
+  return tok ? { 'X-CSRF-Token': tok } : {};
+}
+async function api(method, path, body = null) {
+  // 2026-05-05 MIGRACION HttpOnly: credentials:'include' para recibir
+  // Set-Cookie del backend (necesario para impersonar que setea sandoval_token).
+  const opts = {
+    method,
+    credentials: 'include',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, _saCsrfHeaders(method)),
+  };
+  if (S.token) opts.headers['Authorization'] = `Bearer ${S.token}`;
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch('/superadmin' + path, opts);
+  if (res.status === 401) { doLogout(); return null; }
+  if (res.status === 403) {
+    const dd = await res.clone().json().catch(()=>({}));
+    if (dd && dd.error && String(dd.error).startsWith('CSRF')) {
+      console.warn('CSRF rejected — reloading');
+      location.reload();
+      return null;
+    }
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Error del servidor');
+  return data;
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginBtn');
+  const errEl = document.getElementById('loginError');
+
+  if (!email || !password) { showLoginError('Ingresa email y contraseña'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner">⟳</span> Verificando...';
+  errEl.style.display = 'none';
+
+  try {
+    const data = await api('POST', '/api/login', { email, password });
+    if (!data) return;
+    // 2026-05-05 P1-1 MIGRACIÓN: el backend ya seteó la cookie HttpOnly
+    // sandoval_sa_token. NO guardamos token en localStorage (cierre XSS surface).
+    // S.token queda en memoria volátil solo para fallback Bearer si la cookie
+    // no fuera enviada por algún motivo (compat).
+    S.token = data.token || '';
+    S.user = { email: data.email, nombre: data.nombre };
+    showApp();
+  } catch(e) {
+    showLoginError(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Iniciar sesión';
+  }
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('loginError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+async function doLogout() {
+  // 2026-05-05 P0-4 FIX: llamar backend ANTES de limpiar localStorage para que
+  // el jti se agregue a jwt_revoked. Antes el token vivía hasta su exp natural
+  // (60 min) en jwt_revoked tras logout silencioso.
+  try {
+    if (S.token) {
+      await fetch('/superadmin/api/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${S.token}` }
+      });
+    }
+  } catch (_) { /* offline / red — limpiar local igual */ }
+  S.token = null; S.user = null;
+  localStorage.removeItem('sa_token');
+  localStorage.removeItem('sa_user');
+  document.getElementById('appLayout').style.display = 'none';
+  document.getElementById('loginView').style.display = 'flex';
+}
+
+function showApp() {
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('appLayout').style.display = 'flex';
+  document.getElementById('sidebarUser').textContent = S.user?.nombre || S.user?.email || '';
+  showView('dashboard');
+  loadTalleresForFilter();
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────
+function showView(view) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const vEl = document.getElementById(`view-${view}`);
+  const nEl = document.getElementById(`nav-${view}`);
+  if (vEl) vEl.classList.add('active');
+  if (nEl) nEl.classList.add('active');
+  S.currentView = view;
+  if (view === 'dashboard') loadDashboard();
+  else if (view === 'talleres') loadTalleres();
+  else if (view === 'facturacion') loadFacturacion();
+  else if (view === 'seguridad') loadSeguridad();
+  else if (view === 'actividad') loadActividad();
+  else if (view === 'metricas') loadMetricas();
+  else if (view === 'config') loadConfig();
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────
+let chartMRR = null, chartPlanes = null;
+
+async function loadDashboard() {
+  try {
+    const d = await api('GET', '/api/dashboard');
+    if (!d) return;
+
+    document.getElementById('kpiActivos').textContent = d.talleres.activos;
+    document.getElementById('kpiMRR').textContent = `S/ ${d.mrr.toFixed(0)}`;
+    document.getElementById('kpiOrdenes').textContent = d.ordenes.hoy;
+    document.getElementById('kpiNuevos').textContent = d.talleres.nuevos_mes;
+    document.getElementById('kpiOrdenesActivas').textContent = d.ordenes.activas;
+    document.getElementById('kpiSuspendidos').textContent = d.talleres.suspendidos;
+    document.getElementById('kpiPrueba').textContent = d.talleres.prueba;
+    document.getElementById('kpiCobrado').textContent = `S/ ${d.cobros.cobrado.toFixed(0)}`;
+
+    // Badge de alertas no resueltas
+    const criticas = d.alertas.filter(a => !a.resuelto && a.severidad !== 'INFO').length;
+    const badge = document.getElementById('alertBadge');
+    if (criticas > 0) { badge.style.display='flex'; badge.textContent = criticas; }
+    else badge.style.display = 'none';
+
+    // Alertas list
+    const alList = document.getElementById('alertasList');
+    alList.innerHTML = d.alertas.length === 0
+      ? '<div style="color:#475569;font-size:13px;text-align:center;padding:16px">Sin alertas recientes ✓</div>'
+      : d.alertas.map(a => `
+        <div class="alert-${a.severidad === 'CRITICAL' ? 'critical' : a.severidad === 'WARN' ? 'warn' : 'info'}"
+             style="padding:8px 12px;border-radius:6px;font-size:12px">
+          <div style="display:flex;justify-content:space-between">
+            <span style="font-weight:600">${a.tipo}</span>
+            <span style="color:#64748b">${a.fecha}</span>
+          </div>
+          <div style="color:#94a3b8;margin-top:2px">${a.descripcion.substring(0,80)}</div>
+          ${a.taller ? `<div style="color:#64748b;font-size:11px">Taller: ${a.taller}</div>` : ''}
+        </div>`).join('');
+
+    // Top talleres
+    document.getElementById('topTalleres').innerHTML = d.top_talleres.map(t => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #334155">
+        <span style="font-size:13px">${t.nombre}</span>
+        <span class="badge badge-blue">${t.ordenes_hoy} órdenes hoy</span>
+      </div>`).join('') || '<div style="color:#475569;font-size:13px;padding:8px 0">Sin actividad hoy</div>';
+
+    // Chart MRR
+    const mrrLabels = d.mrr_historico.map(r => r.mes);
+    const mrrData = d.mrr_historico.map(r => r.cobrado);
+    if (chartMRR) chartMRR.destroy();
+    const ctxMRR = document.getElementById('chartMRR').getContext('2d');
+    chartMRR = new Chart(ctxMRR, {
+      type: 'bar',
+      data: {
+        labels: mrrLabels,
+        datasets: [{ label: 'S/ cobrado', data: mrrData,
+          backgroundColor: '#4f46e5', borderRadius: 6 }]
+      },
+      options: { responsive: true, plugins: { legend: { display: false } },
+        scales: { x: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
+                  y: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } } } }
+    });
+
+    // Chart Planes
+    const planLabels = d.planes.map(p => p.plan);
+    const planData = d.planes.map(p => p.cantidad);
+    if (chartPlanes) chartPlanes.destroy();
+    const ctxP = document.getElementById('chartPlanes').getContext('2d');
+    chartPlanes = new Chart(ctxP, {
+      type: 'doughnut',
+      data: {
+        labels: planLabels,
+        datasets: [{ data: planData, backgroundColor: ['#4f46e5','#06b6d4','#f59e0b'] }]
+      },
+      options: { responsive: true, plugins: { legend: { labels: { color: '#94a3b8' } } } }
+    });
+
+  } catch(e) { showToast('Error cargando dashboard: ' + e.message, 'error'); }
+}
+
+// ── Talleres ──────────────────────────────────────────────────────────────
+async function loadTalleres() {
+  const q = document.getElementById('filtroTallerQ').value;
+  const estado = document.getElementById('filtroTallerEstado').value;
+  const plan = document.getElementById('filtroTallerPlan').value;
+
+  let url = '/api/talleres?';
+  if (q) url += `q=${encodeURIComponent(q)}&`;
+  if (estado) url += `estado=${estado}&`;
+  if (plan) url += `plan=${plan}&`;
+
+  try {
+    const rows = await api('GET', url);
+    if (!rows) return;
+    S.talleresList = rows;
+    const tbody = document.getElementById('talleresBody');
+    tbody.innerHTML = rows.map(t => `
+      <tr>
+        <td><span style="font-weight:500">${escHtml(t.nombre)}</span></td>
+        <td><span class="badge ${planBadge(t.plan)}">${t.plan}</span></td>
+        <td><span class="badge ${estadoBadge(t.estado)}">${t.estado}</span></td>
+        <td style="color:#94a3b8">${escHtml(t.email || '—')}</td>
+        <td style="text-align:center">${t.ordenes_total}</td>
+        <td style="text-align:center">${t.usuarios}</td>
+        <td style="color:#64748b;font-size:12px">${t.ultima_actividad}</td>
+        <td>S/ ${t.precio_mensual.toFixed(0)}</td>
+        <td>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" onclick="verDetalleTaller(${t.id})">Ver</button>
+            <button class="btn btn-ghost btn-sm" onclick="impersonarTaller(${t.id},'${escHtml(t.nombre)}')">Soporte</button>
+            ${t.estado === 'activo' || t.estado === 'prueba'
+              ? `<button class="btn btn-sm" style="background:#451a03;color:#fcd34d;border:none" onclick="openModalSuspender(${t.id},'${escHtml(t.nombre)}')">Suspender</button>`
+              : `<button class="btn btn-success btn-sm" onclick="activarTaller(${t.id},'${escHtml(t.nombre)}')">Activar</button>`}
+          </div>
+        </td>
+      </tr>`).join('');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function loadTalleresForFilter() {
+  try {
+    const rows = await api('GET', '/api/talleres');
+    if (!rows) return;
+    S.talleresList = rows;
+    const sel = document.getElementById('filtroActividadTaller');
+    sel.innerHTML = '<option value="">Todos los talleres</option>';
+    rows.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.nombre;
+      sel.appendChild(opt);
+    });
+  } catch(e) {}
+}
+
+async function verDetalleTaller(id) {
+  try {
+    const d = await api('GET', `/api/talleres/${id}`);
+    if (!d) return;
+    const t = d.taller;
+    document.getElementById('detalleTallerNombre').textContent = t.nombre;
+    document.getElementById('detalleTallerContent').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+        <div>
+          <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:10px">Información</div>
+          ${infoRow('Plan', `<span class="badge ${planBadge(t.plan)}">${t.plan}</span>`)}
+          ${infoRow('Estado', `<span class="badge ${estadoBadge(t.estado)}">${t.estado}</span>`)}
+          ${infoRow('Email', t.email || '—')}
+          ${infoRow('Teléfono', t.telefono || '—')}
+          ${infoRow('RUC', t.ruc || '—')}
+          ${infoRow('Subdominio', t.subdominio || '—')}
+          ${infoRow('Precio/mes', `S/ ${t.precio_mensual.toFixed(2)}`)}
+          ${infoRow('Registrado', t.fecha_registro || '—')}
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:10px">Estadísticas</div>
+          ${infoRow('Órdenes totales', d.stats.ordenes_total)}
+          ${infoRow('Órdenes este mes', d.stats.ordenes_mes)}
+          ${infoRow('Clientes', d.stats.clientes)}
+          ${infoRow('Ítems inventario', d.stats.inventario)}
+          ${infoRow('Usuarios activos', d.stats.usuarios)}
+        </div>
+      </div>
+      ${t.notas ? `<div style="background:#0f172a;border-radius:8px;padding:12px;font-size:12px;color:#94a3b8;margin-bottom:20px"><strong>Notas:</strong> ${escHtml(t.notas)}</div>` : ''}
+      <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:10px">Historial de pagos</div>
+      <div style="overflow-x:auto;margin-bottom:20px">
+        <table>
+          <thead><tr><th>Período</th><th>Monto</th><th>Plan</th><th>Estado</th><th>Fecha pago</th><th>Método</th></tr></thead>
+          <tbody>${d.pagos.map(p => `<tr>
+            <td>${p.periodo}</td><td>S/ ${p.monto.toFixed(2)}</td><td>${p.plan}</td>
+            <td><span class="badge ${p.estado==='PAGADO'?'badge-green':p.estado==='PENDIENTE'?'badge-yellow':'badge-red'}">${p.estado}</span></td>
+            <td style="color:#94a3b8">${p.fecha_pago||'—'}</td><td>${p.metodo_pago||'—'}</td>
+          </tr>`).join('') || '<tr><td colspan="6" style="color:#475569;text-align:center">Sin pagos registrados</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:10px">Últimos eventos de seguridad</div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Tipo</th><th>Severidad</th><th>Descripción</th><th>IP</th><th>Fecha</th></tr></thead>
+          <tbody>${d.eventos.map(e => `<tr>
+            <td>${e.tipo}</td>
+            <td><span class="badge ${sevBadge(e.severidad)}">${e.severidad}</span></td>
+            <td style="color:#94a3b8">${escHtml(e.descripcion).substring(0,60)}</td>
+            <td style="color:#64748b">${e.ip||'—'}</td>
+            <td style="color:#64748b;font-size:11px">${e.fecha}</td>
+          </tr>`).join('') || '<tr><td colspan="5" style="color:#475569;text-align:center">Sin eventos</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeModal('modalDetalleTaller')">Cerrar</button>
+        <button class="btn btn-primary" onclick="impersonarTaller(${t.id},'${escHtml(t.nombre)}');closeModal('modalDetalleTaller')">Entrar en soporte</button>
+      </div>`;
+    document.getElementById('modalDetalleTaller').classList.add('open');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+function infoRow(label, val) {
+  return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #0f172a;font-size:13px">
+    <span style="color:#64748b">${label}</span><span>${val}</span></div>`;
+}
+
+function openModalCrearTaller() {
+  ['ct_nombre','ct_email','ct_password','ct_telefono','ct_ruc','ct_subdominio','ct_notas'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('ct_plan').value = 'basico';
+  document.getElementById('ct_precio').value = '89';
+  const msg = document.getElementById('crearTallerMsg');
+  msg.style.display = 'none';
+  document.getElementById('modalCrearTaller').classList.add('open');
+}
+
+async function crearTaller() {
+  const btn = document.getElementById('btnCrearTaller');
+  const msg = document.getElementById('crearTallerMsg');
+  msg.style.display = 'none';
+
+  const body = {
+    nombre: document.getElementById('ct_nombre').value.trim(),
+    email: document.getElementById('ct_email').value.trim(),
+    password: document.getElementById('ct_password').value,
+    plan: document.getElementById('ct_plan').value,
+    precio_mensual: document.getElementById('ct_precio').value || 0,
+    telefono: document.getElementById('ct_telefono').value.trim(),
+    ruc: document.getElementById('ct_ruc').value.trim(),
+    subdominio: document.getElementById('ct_subdominio').value.trim(),
+    notas: document.getElementById('ct_notas').value.trim(),
+  };
+
+  btn.disabled = true;
+  try {
+    const res = await api('POST', '/api/talleres', body);
+    if (!res) return;
+    msg.style.display = 'block';
+    msg.style.background = '#064e3b';
+    msg.style.color = '#6ee7b7';
+    msg.style.border = '1px solid #059669';
+    msg.textContent = `✓ ${res.mensaje}`;
+    btn.disabled = false;
+    setTimeout(() => { closeModal('modalCrearTaller'); loadTalleres(); }, 1500);
+  } catch(e) {
+    msg.style.display = 'block';
+    msg.style.background = '#450a0a';
+    msg.style.color = '#fca5a5';
+    msg.style.border = '1px solid #dc2626';
+    msg.textContent = e.message;
+    btn.disabled = false;
+  }
+}
+
+function openModalSuspender(id, nombre) {
+  document.getElementById('suspenderTallerId').value = id;
+  document.getElementById('motivoSuspension').value = '';
+  document.getElementById('modalSuspender').classList.add('open');
+}
+
+async function confirmarSuspender() {
+  const id = document.getElementById('suspenderTallerId').value;
+  const motivo = document.getElementById('motivoSuspension').value.trim();
+  if (!motivo) { showToast('El motivo es obligatorio', 'error'); return; }
+  try {
+    await api('POST', `/api/talleres/${id}/suspender`, { motivo });
+    closeModal('modalSuspender');
+    showToast('Taller suspendido', 'success');
+    loadTalleres();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function activarTaller(id, nombre) {
+  if (!confirm(`¿Activar el taller "${nombre}"?`)) return;
+  try {
+    await api('POST', `/api/talleres/${id}/activar`, {});
+    showToast('Taller activado ✓', 'success');
+    loadTalleres();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function impersonarTaller(id, nombre) {
+  try {
+    // 2026-05-05 P0-4/P2-3 FIX: el backend ya setea Set-Cookie sandoval_token
+    // (HttpOnly + Secure + SameSite=Lax) tras este GET. NO necesitamos pasar
+    // el JWT en la URL — antes era `?sa_impersonate=${token}` que filtraba
+    // el JWT en logs nginx, Referer y historial del navegador.
+    const res = await api('GET', `/api/talleres/${id}/impersonar`);
+    if (!res) return;
+    document.getElementById('impersonarNombre').textContent = nombre;
+    document.getElementById('impersonarBanner').style.display = 'flex';
+    // Abrir admin SPA: la cookie HttpOnly se envia automatica al cargar /admin/
+    const url = `/admin/index.html?taller=${encodeURIComponent(nombre)}&impersonado=1`;
+    window.open(url, '_blank');
+    showToast(`Entrando al portal de ${nombre}`, 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+// ── Facturación ───────────────────────────────────────────────────────────
+async function loadFacturacion() {
+  const periodo = document.getElementById('facturacionPeriodo').value;
+  try {
+    const d = await api('GET', `/api/facturacion?periodo=${periodo}`);
+    if (!d) return;
+
+    document.getElementById('facturacionResumen').innerHTML = [
+      { label: 'Esperado', val: `S/ ${d.resumen.total_esperado.toFixed(0)}`, cls: 'badge-blue' },
+      { label: 'Cobrado', val: `S/ ${d.resumen.total_cobrado.toFixed(0)}`, cls: 'badge-green' },
+      { label: 'Pendiente', val: `S/ ${(d.resumen.total_esperado - d.resumen.total_cobrado).toFixed(0)}`, cls: 'badge-yellow' },
+      { label: 'Tasa cobro', val: `${d.resumen.tasa_cobro}%`, cls: 'badge-purple' },
+      { label: 'Talleres facturados', val: d.resumen.total, cls: 'badge-gray' },
+    ].map(k => `<div class="kpi-card"><div style="color:#64748b;font-size:11px;text-transform:uppercase">${k.label}</div>
+      <div style="font-size:24px;font-weight:700;margin-top:6px">${k.val}</div></div>`).join('');
+
+    document.getElementById('pagosBody').innerHTML = d.pagos.map(p => `
+      <tr>
+        <td><span style="font-weight:500">${escHtml(p.taller_nombre)}</span></td>
+        <td><span class="badge ${planBadge(p.plan)}">${p.plan}</span></td>
+        <td>S/ ${p.monto.toFixed(2)}</td>
+        <td><span class="badge ${p.estado==='PAGADO'?'badge-green':p.estado==='VENCIDO'?'badge-red':'badge-yellow'}">${p.estado}</span></td>
+        <td style="color:#94a3b8">${p.fecha_pago || '—'}</td>
+        <td style="color:#94a3b8">${p.metodo_pago || '—'}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            ${p.estado !== 'PAGADO' ? `<button class="btn btn-success btn-sm" onclick="marcarPagado(${p.id})">✓ Pagado</button>` : ''}
+            ${p.estado === 'PENDIENTE' ? `<button class="btn btn-sm" style="background:#450a0a;color:#fca5a5;border:none" onclick="marcarVencido(${p.id})">Vencido</button>` : ''}
+          </div>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:#475569;padding:24px">Sin cobros para este período. Usa "Generar cobros del mes".</td></tr>';
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function generarCobros() {
+  if (!confirm('¿Generar cobros PENDIENTES para todos los talleres activos del mes actual?')) return;
+  try {
+    const res = await api('POST', '/api/facturacion/generar_cobros', {});
+    if (!res) return;
+    showToast(`${res.creados} cobros generados para ${res.periodo}`, 'success');
+    loadFacturacion();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function marcarPagado(id) {
+  const metodo = prompt('Método de pago:', 'Yape');
+  if (!metodo) return;
+  try {
+    await api('PUT', `/api/facturacion/pagos/${id}`, { estado: 'PAGADO', metodo_pago: metodo });
+    showToast('Marcado como pagado ✓', 'success');
+    loadFacturacion();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function marcarVencido(id) {
+  try {
+    await api('PUT', `/api/facturacion/pagos/${id}`, { estado: 'VENCIDO' });
+    showToast('Marcado como vencido', 'success');
+    loadFacturacion();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+// ── Seguridad ─────────────────────────────────────────────────────────────
+async function loadSeguridad() {
+  const tipo = document.getElementById('filtroEvTipo').value;
+  const sev = document.getElementById('filtroEvSev').value;
+  let url = '/api/seguridad/eventos?';
+  if (tipo) url += `tipo=${tipo}&`;
+  if (sev) url += `severidad=${sev}&`;
+
+  try {
+    const [eventos, ips] = await Promise.all([
+      api('GET', url),
+      api('GET', '/api/seguridad/ips_bloqueadas'),
+    ]);
+    if (!eventos || !ips) return;
+
+    document.getElementById('eventosBody').innerHTML = eventos.map(e => `
+      <tr>
+        <td><span style="font-size:12px;font-weight:600">${e.tipo}</span></td>
+        <td><span class="badge ${sevBadge(e.severidad)}">${e.severidad}</span></td>
+        <td style="color:#94a3b8;font-size:12px;max-width:240px">${escHtml(e.descripcion).substring(0,80)}</td>
+        <td style="font-family:monospace;font-size:12px;color:#64748b">${e.ip||'—'}</td>
+        <td style="color:#64748b;font-size:12px">${e.taller||'Global'}</td>
+        <td style="color:#475569;font-size:11px">${e.fecha}</td>
+        <td>
+          ${!e.resuelto ? `<button class="btn btn-ghost btn-sm" onclick="resolverEvento(${e.id})">✓</button>` : '<span style="color:#475569;font-size:11px">OK</span>'}
+          ${e.ip ? `<button class="btn btn-sm btn-danger" onclick="bloquearDesdeEvento('${e.ip}')">Bloquear IP</button>` : ''}
+        </td>
+      </tr>`).join('') || '<tr><td colspan="7" style="color:#475569;text-align:center;padding:24px">Sin eventos. Sistema limpio ✓</td></tr>';
+
+    document.getElementById('ipsBloqueadasList').innerHTML = ips.map(ip => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:#0f172a;border-radius:8px">
+        <div>
+          <div style="font-family:monospace;font-size:13px;font-weight:600">${ip.ip}</div>
+          <div style="font-size:11px;color:#64748b">${escHtml(ip.motivo)} · hasta: ${ip.bloqueada_hasta}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="desbloquearIP(${ip.id},'${ip.ip}')">Desbloquear</button>
+      </div>`).join('') || '<div style="color:#475569;font-size:13px;text-align:center;padding:16px">Sin IPs bloqueadas</div>';
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function resolverEvento(id) {
+  try {
+    await api('POST', `/api/seguridad/eventos/${id}/resolver`, {});
+    showToast('Evento marcado como resuelto', 'success');
+    loadSeguridad();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+function bloquearDesdeEvento(ip) {
+  document.getElementById('bloquearIPInput').value = ip;
+  document.getElementById('bloquearIPMotivo').value = 'Evento de seguridad detectado';
+  document.getElementById('modalBloquearIP').classList.add('open');
+}
+
+function openModalBloquearIP() {
+  document.getElementById('bloquearIPInput').value = '';
+  document.getElementById('bloquearIPMotivo').value = '';
+  document.getElementById('bloquearIPPermanente').checked = false;
+  document.getElementById('modalBloquearIP').classList.add('open');
+}
+
+async function confirmarBloquearIP() {
+  const ip = document.getElementById('bloquearIPInput').value.trim();
+  const motivo = document.getElementById('bloquearIPMotivo').value.trim();
+  const perm = document.getElementById('bloquearIPPermanente').checked;
+  if (!ip || !motivo) { showToast('IP y motivo son obligatorios', 'error'); return; }
+  try {
+    await api('POST', '/api/seguridad/bloquear_ip', { ip, motivo, permanente: perm });
+    closeModal('modalBloquearIP');
+    showToast('IP bloqueada ✓', 'success');
+    loadSeguridad();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function desbloquearIP(id, ip) {
+  if (!confirm(`¿Desbloquear la IP ${ip}?`)) return;
+  try {
+    await api('DELETE', `/api/seguridad/ips_bloqueadas/${id}`);
+    showToast('IP desbloqueada ✓', 'success');
+    loadSeguridad();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+// ── Actividad ─────────────────────────────────────────────────────────────
+async function loadActividad() {
+  const taller_id = document.getElementById('filtroActividadTaller').value;
+  let url = '/api/actividad?limit=200';
+  if (taller_id) url += `&taller_id=${taller_id}`;
+  try {
+    const rows = await api('GET', url);
+    if (!rows) return;
+    document.getElementById('actividadBody').innerHTML = rows.map(r => `
+      <tr>
+        <td style="color:#94a3b8;font-size:12px">${r.taller || `#${r.taller_id}`}</td>
+        <td><span class="badge badge-gray">${r.modulo||'—'}</span></td>
+        <td style="font-size:12px">${escHtml(r.accion||'—')}</td>
+        <td style="color:#64748b;font-size:12px">${r.usuario_id ? `#${r.usuario_id}` : 'Sistema'}</td>
+        <td style="color:#475569;font-size:11px">${r.fecha}</td>
+      </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:#475569;padding:24px">Sin actividad registrada</td></tr>';
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── Métricas ──────────────────────────────────────────────────────────────
+let chartOrdenes = null;
+
+async function loadMetricas() {
+  try {
+    const d = await api('GET', '/api/metricas');
+    if (!d) return;
+
+    document.getElementById('metricasTotales').innerHTML = [
+      { label: 'Usuarios en plataforma', val: d.totales.usuarios_plataforma },
+      { label: 'Clientes en plataforma', val: d.totales.clientes_plataforma },
+    ].map(k => `<div style="background:#0f172a;border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:24px;font-weight:700">${k.val}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px">${k.label}</div>
+    </div>`).join('');
+
+    document.getElementById('metricasTalleresBody').innerHTML = d.uso_por_taller.map(t => `
+      <tr>
+        <td><span style="font-weight:500">${escHtml(t.nombre)}</span></td>
+        <td><span class="badge ${planBadge(t.plan)}">${t.plan}</span></td>
+        <td style="text-align:center">${t.ordenes_30d}</td>
+        <td style="text-align:center">${t.usuarios_activos}</td>
+      </tr>`).join('') || '<tr><td colspan="4" style="color:#475569;text-align:center">Sin datos</td></tr>';
+
+    // Gráfico órdenes diarias
+    if (chartOrdenes) chartOrdenes.destroy();
+    const ctx = document.getElementById('chartOrdenes').getContext('2d');
+    chartOrdenes = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: d.ordenes_diarias.map(r => r.dia),
+        datasets: [{
+          label: 'Órdenes', data: d.ordenes_diarias.map(r => r.ordenes),
+          borderColor: '#4f46e5', backgroundColor: '#4f46e520',
+          tension: 0.4, fill: true,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#64748b', font: { size: 11 } }, grid: { color: '#1e293b' } },
+          y: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } }
+        }
+      }
+    });
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── Config ────────────────────────────────────────────────────────────────
+async function loadConfig() {
+  try {
+    const d = await api('GET', '/api/config');
+    if (!d) return;
+    document.getElementById('saUsersList').innerHTML = d.usuarios.map(u => `
+      <div style="display:flex;justify-content:space-between;align-items:center;
+           padding:10px 0;border-bottom:1px solid #334155">
+        <div>
+          <div style="font-size:13px;font-weight:500">${escHtml(u.nombre)}</div>
+          <div style="font-size:11px;color:#64748b">${u.email} · Último acceso: ${u.ultimo_acceso}</div>
+        </div>
+        <span class="badge ${u.activo ? 'badge-green' : 'badge-red'}">${u.activo ? 'Activo' : 'Inactivo'}</span>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+async function cambiarPassword() {
+  const actual = document.getElementById('pwActual').value;
+  const nuevo = document.getElementById('pwNuevo').value;
+  const conf = document.getElementById('pwConfirmar').value;
+  const msgEl = document.getElementById('configMsg');
+
+  if (nuevo !== conf) {
+    msgEl.style.display='block'; msgEl.style.background='#450a0a'; msgEl.style.color='#fca5a5';
+    msgEl.style.border='1px solid #dc2626'; msgEl.textContent='Las contraseñas no coinciden';
+    return;
+  }
+  try {
+    const res = await api('POST', '/api/config/cambiar_password',
+      { password_actual: actual, password_nuevo: nuevo });
+    if (!res) return;
+    msgEl.style.display='block'; msgEl.style.background='#064e3b'; msgEl.style.color='#6ee7b7';
+    msgEl.style.border='1px solid #059669'; msgEl.textContent=res.mensaje;
+    document.getElementById('pwActual').value='';
+    document.getElementById('pwNuevo').value='';
+    document.getElementById('pwConfirmar').value='';
+  } catch(e) {
+    msgEl.style.display='block'; msgEl.style.background='#450a0a'; msgEl.style.color='#fca5a5';
+    msgEl.style.border='1px solid #dc2626'; msgEl.textContent=e.message;
+  }
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function showToast(msg, type='success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.background = type === 'error' ? '#450a0a' : type === 'success' ? '#064e3b' : '#0c1a4e';
+  el.style.color = type === 'error' ? '#fca5a5' : type === 'success' ? '#6ee7b7' : '#93c5fd';
+  el.style.border = `1px solid ${type === 'error' ? '#dc2626' : type === 'success' ? '#059669' : '#4f46e5'}`;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 3500);
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function planBadge(plan) {
+  if (plan === 'premium') return 'badge-purple';
+  if (plan === 'pro') return 'badge-blue';
+  return 'badge-gray';
+}
+
+function estadoBadge(estado) {
+  if (estado === 'activo') return 'badge-green';
+  if (estado === 'suspendido') return 'badge-red';
+  if (estado === 'prueba') return 'badge-yellow';
+  return 'badge-gray';
+}
+
+function sevBadge(s) {
+  if (s === 'CRITICAL') return 'badge-red';
+  if (s === 'WARN') return 'badge-yellow';
+  return 'badge-blue';
+}
+
+// Cerrar modales al hacer clic fuera
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+</script>
+</body>
+</html>

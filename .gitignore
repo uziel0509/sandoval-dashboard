@@ -11,3 +11,12 @@ exports/
 backups/
 data/*.json
 *.log
+
+# 2026-05-05 hardening sesion: backups timestamped + evidencia (1.5GB) fuera de git
+*.bak_*
+*.bak
+static/evidencia/
+_archive/
+.nicegui/
+node_modules/
+*.tmp

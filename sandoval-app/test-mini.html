@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Test Mini SANDOVAL</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font:14px/1.5 -apple-system,system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh}
+  header{position:fixed;top:0;left:0;right:0;height:56px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;padding:0 12px;gap:10px;z-index:50}
+  button.tb{width:40px;height:40px;border:none;background:transparent;border-radius:10px;cursor:pointer;font-size:22px;display:grid;place-items:center}
+  button.tb:active{background:#e2e8f0}
+  .brand{flex:1;font-weight:700;font-size:16px}
+  main{padding:80px 16px 20px}
+  .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  button.big{width:100%;padding:16px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600;margin:6px 0;cursor:pointer}
+  button.big:active{background:#2563eb;transform:scale(.98)}
+  .log{background:#0f172a;color:#10b981;font:11px/1.5 monospace;padding:10px;border-radius:6px;min-height:100px;white-space:pre-wrap;word-break:break-all}
+  #drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .25s;z-index:90}
+  #drawer-overlay.open{opacity:1;pointer-events:auto}
+  #drawer{position:fixed;top:0;bottom:0;left:0;width:80%;max-width:300px;background:#fff;transform:translateX(-100%);transition:transform .28s;z-index:100;padding:20px}
+  #drawer.open{transform:translateX(0);box-shadow:4px 0 20px rgba(0,0,0,.15)}
+  #drawer h3{margin-bottom:12px}
+  #drawer button{display:block;width:100%;text-align:left;padding:12px;border:none;background:transparent;border-radius:8px;font-size:14px;margin-bottom:4px;cursor:pointer}
+  #drawer button:active{background:#e2e8f0}
+  #counter{font-size:30px;font-weight:800;text-align:center;color:#3b82f6}
+</style>
+</head>
+<body>
+<header>
+  <button class="tb" id="btn-drawer">☰</button>
+  <div class="brand">Test Mini</div>
+  <button class="tb" id="btn-info">ℹ️</button>
+</header>
+
+<main>
+  <div class="card">
+    <h2 style="margin-bottom:10px">Test de clicks</h2>
+    <div id="counter">0</div>
+    <button class="big" id="btn-inc">➕ Sumar</button>
+    <button class="big" id="btn-reset" style="background:#ef4444">🔄 Reset contador</button>
+    <button class="big" id="btn-api" style="background:#10b981">🌐 Probar API</button>
+  </div>
+  <div class="card">
+    <h2 style="margin-bottom:10px">Log de eventos</h2>
+    <div class="log" id="log">(esperando interacción)</div>
+  </div>
+</main>
+
+<div id="drawer-overlay"></div>
+<aside id="drawer">
+  <h3>Menú de prueba</h3>
+  <button data-opt="a">Opción A</button>
+  <button data-opt="b">Opción B</button>
+  <button data-opt="c">Opción C</button>
+</aside>
+
+<script>
+// Sin IIFE, vanilla puro, mínimo absoluto
+var log = document.getElementById('log');
+function append(msg){
+  var t = new Date().toLocaleTimeString();
+  log.textContent = (log.textContent === '(esperando interacción)' ? '' : log.textContent) + '[' + t + '] ' + msg + '\n';
+}
+append('script cargado');
+append('userAgent: ' + navigator.userAgent.slice(0,80));
+
+// Contador
+var n = 0;
+var counterEl = document.getElementById('counter');
+document.getElementById('btn-inc').addEventListener('click', function(){
+  n++; counterEl.textContent = n; append('click sumar → ' + n);
+});
+document.getElementById('btn-reset').addEventListener('click', function(){
+  n = 0; counterEl.textContent = 0; append('click reset');
+});
+
+// API
+document.getElementById('btn-api').addEventListener('click', function(){
+  append('click API → fetching /api/auth/me ...');
+  fetch('/api/auth/me').then(function(r){
+    append('  status: ' + r.status);
+  }).catch(function(e){
+    append('  ERR: ' + e.message);
+  });
+});
+
+// Drawer
+var drawer = document.getElementById('drawer');
+var overlay = document.getElementById('drawer-overlay');
+function open(){ drawer.classList.add('open'); overlay.classList.add('open'); append('drawer abierto'); }
+function close(){ drawer.classList.remove('open'); overlay.classList.remove('open'); append('drawer cerrado'); }
+document.getElementById('btn-drawer').addEventListener('click', open);
+overlay.addEventListener('click', close);
+document.querySelectorAll('#drawer button').forEach(function(b){
+  b.addEventListener('click', function(){
+    append('drawer opt: ' + b.dataset.opt);
+    close();
+  });
+});
+document.getElementById('btn-info').addEventListener('click', function(){
+  append('info: clicks=' + n + ' drawer.open=' + drawer.classList.contains('open'));
+});
+
+append('listeners conectados OK');
+</script>
+</body>
+</html>

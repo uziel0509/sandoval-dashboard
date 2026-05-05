@@ -1,0 +1,16 @@
+{
+  "name": "Sandoval — Mi vehículo",
+  "short_name": "Sandoval",
+  "description": "Sigue el avance de tu vehículo en el taller en tiempo real.",
+  "start_url": "/portal/",
+  "scope": "/portal/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f1f5f9",
+  "theme_color": "#007aff",
+  "lang": "es-PE",
+  "icons": [
+    { "src": "/portal/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/portal/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

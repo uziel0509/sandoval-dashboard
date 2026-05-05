@@ -32,7 +32,14 @@ def ps(name, **kw):
     return ParagraphStyle(name, **{'fontName': 'Helvetica', **kw})
 
 
-def generar_pdf_cotizacion(cotizacion_id: int):
+def generar_pdf_cotizacion(cotizacion_id):
+    # Hardening: aceptar solo int o string numérico (evita bug histórico OS-codigo)
+    try:
+        cotizacion_id = int(cotizacion_id)
+    except (TypeError, ValueError):
+        import logging as _lg
+        _lg.getLogger(__name__).warning('generar_pdf_cotizacion ID inválido: %r — esperaba int', cotizacion_id)
+        return None
     db = get_db()
     try:
         cot = db.query(Cotizacion).filter_by(id=cotizacion_id).first()
@@ -201,6 +208,15 @@ def generar_pdf_cotizacion(cotizacion_id: int):
             ps('legal', fontSize=7, textColor=GRIS, leading=11)
         ))
         story.append(Spacer(1, 0.4*cm))
+
+        # ── FIRMA + SELLO DEL TITULAR ─────────────────────────
+        try:
+            from utils.pdf_generator import _firma_block
+            for f in _firma_block(taller_id=int(getattr(o, 'taller_id', 1) or 1)):
+                story.append(f)
+            story.append(Spacer(1, 0.3*cm))
+        except Exception:
+            pass
 
         footer = Table([[Paragraph(
             f'<font color="#274495"><b>{emp_nombre}</b></font> · RUC {emp_ruc} · {emp_tel}',

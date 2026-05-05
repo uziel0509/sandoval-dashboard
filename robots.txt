@@ -1,0 +1,31 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /admin/api/
+Disallow: /api/
+Disallow: /sandoval-app/
+Disallow: /portal-cliente/
+Disallow: /portal/
+Disallow: /pdfs/
+Disallow: /facturas/
+Disallow: /static/
+Disallow: /assets/firma/
+Disallow: /evidencia/
+Disallow: /superadmin/
+
+# Bloqueamos crawlers de IA salvo permiso explícito
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+Sitemap: https://xn--mecnicarysandoval-8ob.com/sitemap.xml

@@ -398,7 +398,7 @@ def _get_tools_registry():
                 "type": "object",
                 "properties": {
                     "referencia":   {"type": "string", "description": "Número de orden OS-XXXXX o placa"},
-                    "nuevo_estado": {"type": "string", "enum": ["COTIZACIÓN","APROBACIÓN","REPUESTOS","EN PROCESO","ENTREGA","ARCHIVADO"]}
+                    "nuevo_estado": {"type": "string", "enum": ["APROBACIÓN","REPUESTOS","EN PROCESO","ENTREGA","ARCHIVADO"]}
                 },
                 "required": ["referencia", "nuevo_estado"]
             },
@@ -700,21 +700,21 @@ def _tool_consultar_db(args: dict) -> str:
         sql = sql.rstrip(";") + " LIMIT 30"
 
     try:
-        import sqlite3
-        db_path = os.path.join(BASE_DIR, "data", "sandoval.db")
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute(sql)
-        rows = cur.fetchall()
-        conn.close()
+        from utils.models import get_db
+        from sqlalchemy import text as _sa_text
+        _db = get_db()
+        try:
+            _result = _db.execute(_sa_text(sql))
+            cols = list(_result.keys())
+            rows = _result.fetchall()
+        finally:
+            _db.close()
 
         if not rows:
             return f"ℹ️ La consulta '{desc}' no devolvió resultados."
 
         # Formatear resultado
-        cols = rows[0].keys()
-        lineas = [" | ".join(str(r[c]) for c in cols) for r in rows[:20]]
+        lineas = [" | ".join(str(r[i]) for i in range(len(cols))) for r in rows[:20]]
         encabezado = " | ".join(cols)
         return f"📊 *{desc}* ({len(rows)} filas)\n```\n{encabezado}\n{'─'*40}\n" + "\n".join(lineas) + "\n```"
 
@@ -946,7 +946,7 @@ def _tool_consultar_ordenes(args: dict) -> str:
             return (f"❌ No encontré órdenes para *{referencia}*." if referencia
                     else "ℹ️ No hay órdenes activas.")
 
-        emojis = {"COTIZACIÓN":"📝","APROBACIÓN":"⏳","REPUESTOS":"🔧",
+        emojis = {"APROBACIÓN":"⏳","REPUESTOS":"🔧",
                   "EN PROCESO":"⚙️","ENTREGA":"🚗","ARCHIVADO":"✅"}
         txt = "📋 *Órdenes:*\n\n"
         for o in ordenes:
@@ -1179,7 +1179,7 @@ def _tool_cambiar_estado_orden(args: dict) -> str:
     if not referencia or not nuevo_estado:
         return "⚠️ Necesito el número de orden y el nuevo estado."
 
-    estados_validos = {"COTIZACIÓN", "APROBACIÓN", "REPUESTOS", "EN PROCESO", "ENTREGA", "ARCHIVADO"}
+    estados_validos = {"APROBACIÓN", "REPUESTOS", "EN PROCESO", "ENTREGA", "ARCHIVADO"}
     if nuevo_estado not in estados_validos:
         return f"❌ Estado inválido. Opciones: {', '.join(estados_validos)}"
 

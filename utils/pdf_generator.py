@@ -312,11 +312,16 @@ def generate_cotizacion(order: dict, client: dict, vehicle: dict, items: list, f
         item_total = float(item.get('total', p_unit * can) or (p_unit * can))
         
         total_general += item_total
+        nombre_txt = str(item.get('item', item.get('nombre', '')) or '')
+        # Paragraph para wrap automático cuando es largo
+        from reportlab.lib.styles import ParagraphStyle as _PS
+        _ps_cell = _PS('cellNombre', fontSize=8.5, leading=11, textColor=SANDOVAL_DARK)
+        cant_str = ('%.2f' % can).rstrip('0').rstrip('.') if can != int(can) else str(int(can))
         table_data.append([
             str(i),
-            item.get('item', item.get('nombre', '')),
+            Paragraph(nombre_txt.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;'), _ps_cell),
             item.get('tipo', 'Servicio'),
-            str(int(can)),
+            cant_str,
             f"S/ {item_total:.2f}",
         ])
     
@@ -378,15 +383,40 @@ def generate_cotizacion(order: dict, client: dict, vehicle: dict, items: list, f
         elements.append(Paragraph(n, styles['SandovalSmall']))
         elements.append(Spacer(1, 0.5*mm))
     
-    # Footer
-    elements.append(Spacer(1, 15*mm))
+    # Footer con teléfono real del taller (lee de config_sistema, fallback default)
+    _emp_tel = '+51 924 980 586'
+    _emp_nom = 'MECÁNICA Y REPUESTOS SANDOVAL EIRL'
+    try:
+        from utils.models import get_db
+        from sqlalchemy import text as _sql
+        _db = get_db()
+        try:
+            _t_id = int(order.get('taller_id', 1) or 1) if isinstance(order, dict) else 1
+            _r = _db.execute(_sql(
+                "SELECT clave, valor FROM config_sistema WHERE taller_id=:t AND clave IN ('telefono','empresa_nombre','nombre_taller')"
+            ), {'t': _t_id}).fetchall()
+            for k, v in _r:
+                if k == 'telefono' and v: _emp_tel = v if v.startswith('+') else ('+51 ' + v.lstrip('+51').strip())
+                elif k in ('empresa_nombre','nombre_taller') and v: _emp_nom = v
+        finally:
+            _db.close()
+    except Exception:
+        pass
+
+    # Firma + sello al final
+    try:
+        for _ff in _firma_block(taller_id=int(order.get('taller_id', 1) or 1) if isinstance(order, dict) else 1):
+            elements.append(_ff)
+    except Exception:
+        pass
+
+    elements.append(Spacer(1, 8*mm))
     elements.append(Paragraph(
-        'MECÁNICA Y REPUESTOS SANDOVAL EIRL - Consultas al +51 999 999 999',
+        f'{_emp_nom} - Consultas al {_emp_tel}',
         styles['SandovalFooter']
     ))
-    
-    # SECCIÓN DE DIAGNÓSTICO INTEGRADO (NUEVO)
-    _add_diagnostic_report_section(elements, order, styles)
+    # NOTA: sección de diagnóstico/evidencia REMOVIDA del presupuesto.
+    # El presupuesto solo lleva los items + firma + footer.
     
     doc.build(elements, onFirstPage=on_page, onLaterPages=on_page)
     return filepath
@@ -455,6 +485,14 @@ def _add_diagnostic_report_section(elements, order, styles):
         img_cells = []
         row = []
         for path in fotos:
+            # Normalizar: si es dict, extraer url; si no es string válida, saltar
+            if isinstance(path, dict):
+                path = path.get('url') or path.get('path') or ''
+            if not isinstance(path, str) or not path:
+                continue
+            # Filtrar videos/PDFs (solo imágenes en el PDF de cotización)
+            if any(path.lower().endswith(ext) for ext in ('.mp4','.mov','.webm','.avi','.pdf')):
+                continue
             p = path.lstrip('/')
             # Ajuste de ruta para ReportLab
             if p.startswith('evidencia'): p = 'static/' + p
@@ -787,3 +825,38 @@ def generate_pdf(order: dict, client: dict, vehicle: dict, pdf_type: str, filepa
         return generate_qr_flyer(url, filepath)
     else:
         raise ValueError(f"Tipo de PDF no reconocido: {pdf_type}")
+
+
+# ── HELPER: solo la imagen digitalizada de firma + sello ──────────
+def _firma_block(taller_id: int = 1, **kwargs):
+    """Devuelve solo la imagen digitalizada del sello+firma del taller.
+    El upload_firma ya procesa la imagen (fondo transparente, contraste).
+    Si no existe, devuelve fallback texto simple."""
+    from reportlab.platypus import Spacer, Paragraph, Image as RLImage
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm, mm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+
+    elems = []
+    elems.append(Spacer(1, 1.0*cm))
+
+    firma_path = "/var/www/sandoval/assets/firma/taller_" + str(taller_id) + ".png"
+    if os.path.isfile(firma_path):
+        try:
+            img = RLImage(firma_path, width=8*cm, height=4*cm, kind='proportional')
+            img.hAlign = 'CENTER'
+            elems.append(img)
+            return elems
+        except Exception:
+            pass
+
+    # Fallback texto si no hay imagen
+    s_name = ParagraphStyle('FrName', fontSize=12, leading=15, textColor=colors.HexColor('#0f172a'),
+                            alignment=TA_CENTER, fontName='Helvetica-Oblique')
+    s_cargo = ParagraphStyle('FrCargo', fontSize=8, leading=11, textColor=colors.HexColor('#274495'),
+                             alignment=TA_CENTER, fontName='Helvetica-Bold')
+    elems.append(Spacer(1, 1.5*cm))
+    elems.append(Paragraph('Milton Fabio Sandoval Horna', s_name))
+    elems.append(Paragraph('TITULAR GERENTE', s_cargo))
+    return elems

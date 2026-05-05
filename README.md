@@ -15,9 +15,7 @@ python main.py
 O ejecuta **RUN_DASHBOARD.bat**
 
 **Credenciales por defecto:**
-- `admin / admin123` -> Administrador (acceso total)
-- `tecnico1 / tec123` -> Técnico
-- `recepcion / rec123` -> Recepcionista
+- `Para crear el admin inicial: `BOOTSTRAP_ADMIN_PASSWORD=tu-password python -c "from utils.models import init_db; init_db()"`
 
 ---
 
